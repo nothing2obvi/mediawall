@@ -70,7 +70,7 @@ body.idle {
 
 .backdrop-image {
   position: absolute;
-  inset: -8%;
+  inset: 0;
   background-position: center;
   background-size: cover;
   transform: scale(1);
@@ -92,7 +92,8 @@ body.idle {
 
 .animation-enabled .backdrop.active .backdrop-image,
 .animation-enabled .backdrop.base .backdrop-image {
-  animation-duration: var(--animation-duration, 24s);
+  animation-duration: var(--animation-duration, 26s);
+  animation-delay: var(--animation-delay, 0s);
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
   animation-direction: alternate;
@@ -135,34 +136,34 @@ body.idle {
 
 @keyframes backdrop-pan {
   from {
-    background-position: 44% 50%;
-    transform: scale(1.04);
+    background-position: 47% 50%;
+    transform: scale(1.015);
   }
   to {
-    background-position: 56% 50%;
-    transform: scale(1.04);
+    background-position: 53% 50%;
+    transform: scale(1.015);
   }
 }
 
 @keyframes backdrop-kenburns {
   from {
-    background-position: 45% 49%;
-    transform: scale(1.08);
+    background-position: 47% 49.5%;
+    transform: scale(1.025);
   }
   to {
-    background-position: 55% 51%;
-    transform: scale(1.16);
+    background-position: 53% 50.5%;
+    transform: scale(1.07);
   }
 }
 
 @keyframes backdrop-drift {
   from {
-    background-position: 44% 54%;
-    transform: scale(1.05);
+    background-position: 47% 52%;
+    transform: scale(1.025);
   }
   to {
-    background-position: 56% 46%;
-    transform: scale(1.05);
+    background-position: 53% 48%;
+    transform: scale(1.025);
   }
 }
 
@@ -175,10 +176,6 @@ body.idle {
     background-position: 51.5% 51%;
     transform: scale(1.055);
   }
-}
-
-.viewport-squareish .backdrop-image {
-  inset: -12%;
 }
 
 .viewport-squareish.animation-pan .backdrop.active .backdrop-image,
@@ -196,36 +193,52 @@ body.idle {
   animation-name: backdrop-drift-squareish;
 }
 
+.viewport-squareish.animation-focus .backdrop.active .backdrop-image,
+.viewport-squareish.animation-focus .backdrop.base .backdrop-image {
+  animation-name: backdrop-focus-squareish;
+}
+
 @keyframes backdrop-pan-squareish {
   from {
-    background-position: 48% 50%;
-    transform: scale(1.08);
+    background-position: 0% 50%;
+    transform: scale(1.01);
   }
   to {
-    background-position: 52% 50%;
-    transform: scale(1.08);
+    background-position: 100% 50%;
+    transform: scale(1.01);
   }
 }
 
 @keyframes backdrop-kenburns-squareish {
   from {
-    background-position: 48% 49.5%;
-    transform: scale(1.12);
+    background-position: 0% 49.5%;
+    transform: scale(1.02);
   }
   to {
-    background-position: 52% 50.5%;
-    transform: scale(1.18);
+    background-position: 100% 50.5%;
+    transform: scale(1.06);
   }
 }
 
 @keyframes backdrop-drift-squareish {
   from {
-    background-position: 48% 52%;
-    transform: scale(1.1);
+    background-position: 0% 52%;
+    transform: scale(1.015);
   }
   to {
-    background-position: 52% 48%;
-    transform: scale(1.1);
+    background-position: 100% 48%;
+    transform: scale(1.015);
+  }
+}
+
+@keyframes backdrop-focus-squareish {
+  from {
+    background-position: 0% 49.5%;
+    transform: scale(1.015);
+  }
+  to {
+    background-position: 100% 50.5%;
+    transform: scale(1.035);
   }
 }
 

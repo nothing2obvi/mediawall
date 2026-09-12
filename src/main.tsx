@@ -156,7 +156,6 @@ type Snapshot = {
         font_size: number;
       };
       mediawall_fallback: {
-        mode: MediaWallFallbackMode;
         modes: Array<MediaWallFallbackMode | "All">;
         background_color: string;
         min_logo_width: number;
@@ -342,6 +341,8 @@ function App() {
   const lastVisibleNowPlayingKey = useRef<string | undefined>(undefined);
   const seenVisibleNowPlayingKeys = useRef(new Set<string>());
   const nowPlayingBackdropIndexes = useRef(new Map<string, number>());
+  const animationProgress = useRef(new Map<string, number>());
+  const activeAnimationRun = useRef<{ key: string; startedAt: number; offset: number; period: number } | undefined>(undefined);
 
   const displayedArtwork = snapshot?.state.mode === "now-playing"
     ? (snapshot.nowPlaying?.playing ? snapshot.nowPlaying?.artwork : undefined) ?? snapshot.state.current
@@ -354,6 +355,12 @@ function App() {
   const activeAnimation = activeBackdropAnimation(snapshot);
   const viewportAspect = viewportSize.width / Math.max(viewportSize.height, 1);
   const viewportClass = viewportAspect < 1.45 ? "viewport-squareish" : viewportAspect < 1.75 ? "viewport-balanced" : "viewport-wide";
+  const animationDurationSeconds = Math.max(
+    1,
+    snapshot?.config.display.animations?.duration_seconds
+      ?? snapshot?.config.display.backdrop_motion?.duration_seconds
+      ?? 26
+  );
   const cycledArtwork = useMemo(
     () => previewArtwork ?? (snapshot?.state.mode === "now-playing" && snapshot.nowPlaying?.playing
       ? cycleNowPlayingBackdrop(displayedArtwork, snapshot, nowPlayingBackdropStep)
@@ -371,6 +378,13 @@ function App() {
     ]
   );
   const [flash, setFlash] = useState<string>();
+  const [animationOffsetSeconds, setAnimationOffsetSeconds] = useState(0);
+  const nowPlayingAnimationKey = snapshot?.state.mode === "now-playing"
+    && snapshot.nowPlaying?.playing
+    && activeAnimation
+    && cycledArtwork?.backdropUrl
+    ? visibleAnimationKey(cycledArtwork, snapshot.nowPlaying, activeAnimation)
+    : undefined;
 
   useEffect(() => {
     const updateViewportAspect = () => {
@@ -387,6 +401,37 @@ function App() {
       window.removeEventListener("resize", updateViewportAspect);
       window.removeEventListener("orientationchange", updateViewportAspect);
       window.visualViewport?.removeEventListener("resize", updateViewportAspect);
+    };
+  }, []);
+
+  useEffect(() => {
+    const now = performance.now();
+    const current = activeAnimationRun.current;
+    if (current && current.key !== nowPlayingAnimationKey) {
+      const elapsed = (now - current.startedAt) / 1000;
+      animationProgress.current.set(current.key, (current.offset + elapsed) % current.period);
+    }
+    if (!nowPlayingAnimationKey) {
+      activeAnimationRun.current = undefined;
+      setAnimationOffsetSeconds(0);
+      return;
+    }
+    if (!current || current.key !== nowPlayingAnimationKey) {
+      const period = animationDurationSeconds * 2;
+      const offset = animationProgress.current.get(nowPlayingAnimationKey) ?? 0;
+      activeAnimationRun.current = { key: nowPlayingAnimationKey, startedAt: now, offset, period };
+      setAnimationOffsetSeconds(offset);
+      return;
+    }
+    activeAnimationRun.current = { ...current, period: animationDurationSeconds * 2 };
+  }, [nowPlayingAnimationKey, animationDurationSeconds]);
+
+  useEffect(() => {
+    return () => {
+      const current = activeAnimationRun.current;
+      if (!current) return;
+      const elapsed = (performance.now() - current.startedAt) / 1000;
+      animationProgress.current.set(current.key, (current.offset + elapsed) % current.period);
     };
   }, []);
 
@@ -1118,7 +1163,8 @@ function App() {
         "--viewport-width": `${viewportSize.width}px`,
         "--viewport-height": `${viewportSize.height}px`,
         "--animation-scale": String(snapshot?.config.display.animations?.scale ?? snapshot?.config.display.backdrop_motion?.scale ?? 1.08),
-        "--animation-duration": `${snapshot?.config.display.animations?.duration_seconds ?? snapshot?.config.display.backdrop_motion?.duration_seconds ?? 24}s`,
+        "--animation-duration": `${animationDurationSeconds}s`,
+        "--animation-delay": nowPlayingAnimationKey ? `-${animationOffsetSeconds}s` : "0s",
         "--fallback-background": snapshot?.config.now_playing.mediawall_fallback.background_color ?? "#565954",
         "--fallback-logo-min": `${snapshot?.config.now_playing.mediawall_fallback.min_logo_width ?? 260}px`,
         "--fallback-logo-max": `${snapshot?.config.now_playing.mediawall_fallback.max_logo_width ?? 760}px`,
@@ -1272,7 +1318,7 @@ function MediaWallIdle({ snapshot }: { snapshot: Snapshot }) {
   const commandMode = activeMediaWallCommandMode(snapshot.controlCommand);
   const mode = commandMode
     ?? snapshot.activeMediaWallFallbackMode
-    ?? snapshot.config.now_playing.mediawall_fallback.mode;
+    ?? firstMediaWallFallbackMode(snapshot.config.now_playing.mediawall_fallback.modes);
   const commandLabel = snapshot.controlCommand?.type === "mediawall" ? mediaWallModeLabel(mode) : undefined;
   const customLogoUrl = spaceApi("/custom-logo");
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -1375,6 +1421,10 @@ function mediaWallModeLabel(mode: MediaWallFallbackMode) {
   return mode.replace(/_/g, " ").toLowerCase();
 }
 
+function firstMediaWallFallbackMode(modes: Array<MediaWallFallbackMode | "All">) {
+  return modes.find((mode): mode is MediaWallFallbackMode => mode !== "All") ?? "dvd";
+}
+
 function activeBackdropAnimation(snapshot?: Snapshot): BackdropAnimation | undefined {
   const command = snapshot?.controlCommand;
   if (command?.type === "animation") return activeAnimationCommand(command)?.animation;
@@ -1384,7 +1434,7 @@ function activeBackdropAnimation(snapshot?: Snapshot): BackdropAnimation | undef
   const style = config?.style ?? "kenburns";
   if (style !== "All") return style;
   const elapsedSeconds = Math.max(0, Date.now() / 1000);
-  const durationSeconds = Math.max(1, config?.duration_seconds ?? legacy?.duration_seconds ?? 24);
+  const durationSeconds = Math.max(1, config?.duration_seconds ?? legacy?.duration_seconds ?? 26);
   return backdropAnimations[Math.floor(elapsedSeconds / durationSeconds) % backdropAnimations.length] ?? "kenburns";
 }
 
@@ -2171,6 +2221,17 @@ function visibleSoundMediaKey(now: Snapshot["nowPlaying"]) {
     now?.publicMediaKey,
     now?.album,
     now?.title
+  ].filter(Boolean).join(":");
+}
+
+function visibleAnimationKey(artwork: ArtworkRef, now: Snapshot["nowPlaying"], animation: BackdropAnimation) {
+  return [
+    now?.publicSessionId,
+    now?.publicMediaKey,
+    artwork.source,
+    artwork.itemId,
+    artwork.imageIndex,
+    animation
   ].filter(Boolean).join(":");
 }
 

@@ -27,6 +27,9 @@ type RecentPlaybackRecord = {
   seenAt: number;
   refreshedAt: number;
   activityAt: number;
+  playbackPositionTicks?: number;
+  progressConfirmed: boolean;
+  stalledSince?: number;
   pausedSince?: number;
   active: boolean;
   state: NowPlayingState;
@@ -629,7 +632,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     })
     : undefined;
   let nowPlaying = playbackDetails?.selected;
-  let activeMediaWallFallbackMode = state.activeMediaWallFallbackMode ?? displayConfig.now_playing.mediawall_fallback.mode;
+  let activeMediaWallFallbackMode = state.activeMediaWallFallbackMode ?? firstMediaWallFallbackMode(displayConfig);
 
   if (!nowPlaying?.playing && state.mode === "now-playing" && displayConfig.now_playing.fallback === "mediawall" && state.current?.source !== "fallback") {
     state = states.update(space, undefined, displayConfig, { current: fallbackArtwork() });
@@ -743,18 +746,25 @@ function mediaWallFallbackForIdleRound(displayConfig: DisplayConfig, state: Disp
   const modes = expandedMediaWallFallbackModes(displayConfig);
   const currentIndex = Math.max(0, state.mediaWallFallbackIndex ?? 0) % modes.length;
   const index = advance ? (currentIndex + 1) % modes.length : currentIndex;
-  return { index, mode: modes[index] ?? displayConfig.now_playing.mediawall_fallback.mode };
+  return { index, mode: modes[index] ?? firstMediaWallFallbackMode(displayConfig) };
 }
 
 function expandedMediaWallFallbackModes(displayConfig: DisplayConfig) {
   const configured = displayConfig.now_playing.mediawall_fallback.modes;
-  const baseMode = displayConfig.now_playing.mediawall_fallback.mode;
+  const baseMode = firstMediaWallFallbackMode(displayConfig);
   const allModes = [baseMode, ...mediaWallFallbackModes.filter((mode) => mode !== baseMode)];
   if (!configured.length || configured.some((mode) => mode.toLowerCase() === "all")) return allModes;
   const modes = configured.filter((mode): mode is typeof mediaWallFallbackModes[number] =>
     mediaWallFallbackModes.includes(mode as typeof mediaWallFallbackModes[number])
   );
   return modes.length ? modes : allModes;
+}
+
+function firstMediaWallFallbackMode(displayConfig: DisplayConfig) {
+  const mode = displayConfig.now_playing.mediawall_fallback.modes.find((candidate) => candidate !== "All");
+  return mediaWallFallbackModes.includes(mode as typeof mediaWallFallbackModes[number])
+    ? mode as typeof mediaWallFallbackModes[number]
+    : "dvd";
 }
 
 async function enabledConnectionIssues(displayConfig: DisplayConfig): Promise<PublicConnectionIssue[]> {
@@ -1784,25 +1794,44 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
     const cacheKey = playbackSessionKey(candidate);
     const previous = records.get(cacheKey);
     const signatureChanged = previous?.state.signature !== candidate.signature;
+    const tracksPlaybackProgress = (candidate.source === "jellyfin" || candidate.source === "navidrome") && candidate.playbackPositionTicks !== undefined;
+    const positionChanged = tracksPlaybackProgress
+      && !signatureChanged
+      && previous?.playbackPositionTicks !== undefined
+      && candidate.playbackPositionTicks !== previous.playbackPositionTicks;
+    const progressConfirmed = !tracksPlaybackProgress
+      || positionChanged
+      || (!signatureChanged && previous?.progressConfirmed === true);
+    const stalledSince = tracksPlaybackProgress && progressConfirmed && !positionChanged && !candidate.paused && !candidate.stale
+      ? previous?.stalledSince ?? now
+      : undefined;
     const activityAt = candidate.activityAt
       ?? (signatureChanged ? now : previous?.activityAt)
       ?? previous?.seenAt
       ?? now;
     const pausedSince = candidate.paused || candidate.stale ? previous?.pausedSince ?? candidate.activityAt ?? now : undefined;
+    const pausedActive = !pausedSince || now - pausedSince < pausedSessionGraceMs;
+    const progressActive = !tracksPlaybackProgress
+      || (progressConfirmed && (!stalledSince || now - stalledSince < pausedSessionGraceMs));
     const state = { ...candidate, sessionKey: candidate.sessionKey ?? cacheKey, activityAt };
     records.set(cacheKey, {
       firstSeenAt: previous?.firstSeenAt ?? now,
       seenAt: signatureChanged ? now : previous?.seenAt ?? now,
       refreshedAt: now,
       activityAt,
+      playbackPositionTicks: candidate.playbackPositionTicks,
+      progressConfirmed,
+      stalledSince,
       pausedSince,
-      active: !pausedSince || now - pausedSince < pausedSessionGraceMs,
+      active: pausedActive && progressActive,
       state
     });
   }
 
   for (const [sessionKey, record] of records.entries()) {
     if (record.pausedSince && now - record.pausedSince >= pausedSessionGraceMs) records.delete(sessionKey);
+    if (record.stalledSince && now - record.stalledSince >= pausedSessionGraceMs) records.delete(sessionKey);
+    if ((record.state.source === "jellyfin" || record.state.source === "navidrome") && record.state.playbackPositionTicks !== undefined && !record.progressConfirmed && now - record.firstSeenAt >= pausedSessionGraceMs) records.delete(sessionKey);
     if (!record.active && now - record.refreshedAt >= idleMs) records.delete(sessionKey);
   }
 
@@ -1814,8 +1843,11 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
 
   recentPlayback.set(displayKey, records);
   const active = [...records.entries()].filter((entry) => entry[1].active);
-  const pool = active.length ? active : [...records.entries()];
-  const sorted = pool.sort((left, right) => comparePlaybackRecords(left[1], right[1]));
+  if (!active.length) {
+    recentPlaybackCycles.delete(displayKey);
+    return undefined;
+  }
+  const sorted = active.sort((left, right) => comparePlaybackRecords(left[1], right[1]));
   const activeChronological = active
     .slice()
     .sort((left, right) =>
@@ -1919,7 +1951,7 @@ function publicSoundSessions(displayKey: string, displayConfig: DisplayConfig): 
   return [...records.values()]
     .filter((record) =>
       record.state.playing
-      && (record.active || now - record.refreshedAt < pausedSessionGraceMs)
+      && record.active
       && (record.state.source === "jellyfin" || record.state.source === "navidrome")
     )
     .map((record) => {

@@ -83,13 +83,12 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `fallback_shuffle_interval_seconds` | Idle fallback shuffle interval. | `45` | No | Used only when fallback is `shuffle`. |
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
 | `cycle_interval_seconds` | Now Playing session cycle interval. | `15` | No | Used for natural session cycling and the timer ring. |
-| `session_cleanup.paused_after_seconds` | Removes paused or stale sessions from current Now Playing after this many seconds. | `60` | No | Applies to Jellyfin and Navidrome sessions. Set lower for faster cleanup, or higher if clients briefly report paused/stale while still resuming. |
+| `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `60` | No | Jellyfin sessions with a reported playhead must show position progress before they count as active. Navidrome sessions must keep refreshing their Now Playing timestamp. Sessions are removed if those signals stop advancing for this long. |
 | `session_timer.enabled` | Shows the countdown ring. | `true` | No | Only meaningful when multiple active sessions are cycling. |
 | `session_timer.size` | Countdown ring diameter. | `42` | No | Pixels. |
 | `session_count.enabled` | Shows `1 of 4` session count. | `true` | No | Independent from the timer ring. |
 | `session_count.font_size` | Session count font size. | `13` | No | Pixels. |
-| `mediawall_fallback.mode` | MediaWall banner fallback animation. | `dvd` | No | Options: `centered`, `breathing`, `float`, `spotlight`, `dvd`, `minimal`. |
-| `mediawall_fallback.modes` | Ordered list of MediaWall banner fallback animations used across separate no-session rounds. | `["All"]` | No | Use `All` to include every mode. If you list specific modes, the next no-session period advances to the next mode in that written order. |
+| `mediawall_fallback.modes` | Ordered list of MediaWall banner fallback animations used across separate no-session rounds. | `["dvd"]` | No | Options: `centered`, `breathing`, `float`, `spotlight`, `dvd`, `minimal`, `All`. Use `All` to include every mode. If you list specific modes, the next no-session period advances to the next mode in that written order. |
 | `mediawall_fallback.background_color` | Background color used behind fallback screens and Now Playing items with no backdrop. | `#565954` | No | Use a hex color such as `#4f524d`. |
 | `mediawall_fallback.min_logo_width` | Minimum logo width for fallback modes where the logo size can change. | `260` | No | Pixels. |
 | `mediawall_fallback.max_logo_width` | Maximum logo width for fallback modes where the logo size can change. | `760` | No | Pixels. |
@@ -142,7 +141,7 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 | `animations.enabled` | Enables ambient backdrop animations. | `true` | No | Applies globally per space. |
 | `animations.style` | Backdrop animation style. | `kenburns` | No | Options: `breathe`, `pan`, `kenburns`, `drift`, `focus`, `zoom`, `All`. |
 | `animations.scale` | Animation scale. | `1.08` | No | Used by zooming animations; MediaWall adds enough overscan for moving animations to avoid blank edges. |
-| `animations.duration_seconds` | Animation duration. | `24` | No | Duration of one animation direction before it alternates. |
+| `animations.duration_seconds` | Animation duration. | `26` | No | Duration of one animation direction before it alternates. |
 | `logo.max_width` | Logo image maximum width. | `520` | No | Pixels. |
 | `album_art.size` | Now Playing album cover size. | `200` | No | Pixels. |
 | `fallback_title.font_size` | Fallback title text size. | `86` | No | Used when title text rendering applies. |
@@ -168,7 +167,7 @@ display:
     enabled: true
     style: kenburns
     scale: 1.08
-    duration_seconds: 24
+    duration_seconds: 26
 ```
 
 ### Now Playing Text

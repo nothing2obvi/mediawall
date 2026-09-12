@@ -63,12 +63,17 @@ const spaceSchema = z.object({
       font_size: z.number().default(13)
     }).default({ enabled: true, font_size: 13 }),
     mediawall_fallback: z.object({
-      mode: z.enum(mediaWallFallbackModes).default("dvd"),
-      modes: z.array(z.enum(mediaWallFallbackModeOptions)).default(["All"]),
+      mode: z.enum(mediaWallFallbackModes).optional(),
+      modes: z.array(z.enum(mediaWallFallbackModeOptions)).default(["dvd"]),
       background_color: z.string().default("#565954"),
       min_logo_width: z.number().default(260),
       max_logo_width: z.number().default(760)
-    }).default({ mode: "dvd", modes: ["All"], background_color: "#565954", min_logo_width: 260, max_logo_width: 760 }),
+    }).transform((fallback) => ({
+      modes: fallback.modes.length ? fallback.modes : [fallback.mode ?? "dvd"],
+      background_color: fallback.background_color,
+      min_logo_width: fallback.min_logo_width,
+      max_logo_width: fallback.max_logo_width
+    })).default({ modes: ["dvd"], background_color: "#565954", min_logo_width: 260, max_logo_width: 760 }),
     custom_logo: z.object({
       directory: z.string().default("/app/custom_logo")
     }).default({ directory: "/app/custom_logo" }),
@@ -122,7 +127,7 @@ const spaceSchema = z.object({
     session_cleanup: { paused_after_seconds: 60 },
     session_timer: { enabled: true, size: 42 },
     session_count: { enabled: true, font_size: 13 },
-    mediawall_fallback: { mode: "dvd", modes: ["All"], background_color: "#565954", min_logo_width: 260, max_logo_width: 760 },
+    mediawall_fallback: { modes: ["dvd"], background_color: "#565954", min_logo_width: 260, max_logo_width: 760 },
     custom_logo: { directory: "/app/custom_logo" },
     multiple_backdrops: { enabled: true, interval_seconds: 10 },
     sounds: {

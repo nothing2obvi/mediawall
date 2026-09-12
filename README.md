@@ -16,7 +16,7 @@
 
 MediaWall is under active development. There may be breaking changes, which will be highlighted in every release.
 
-Like [Pixelfin](https://github.com/nothing2obvi/pixelfin), this project is vibecoded with Codex. It is built with security in mind, but because it is a vibecoded self-hosted app, I can't promise it is hardened for hostile public exposure. Prioritize running it locally or behind access controls you trust.
+Like [Pixelfin](https://github.com/nothing2obvi/pixelfin), this project is vibecoded with Codex. It's built with security in mind, but because it's a vibecoded self-hosted app, I can't promise it's hardened for hostile public exposure. Prioritize running it locally or behind access controls you trust.
 
 ## Intro
 
@@ -36,13 +36,19 @@ Third is Wallpaper mode. If MediaWall lands on something you particularly like, 
 
 So depending on how you use it, MediaWall can be a live window into your Jellyfin and Navidrome servers, a Jellyfin-powered digital art display, or basically a very overengineered way to give an old iPad, Raspberry Pi, or spare screen something useful to do.
 
+Is this necessary? No!
+
+Is it a kind of fun excuse to use more electricity and tinker with something? Yes :)
+
+--
+
 ## Use Cases
 
 ### See What Everyone Is Watching Or Listening To
 
 Put MediaWall on an iPad, tablet, TV, or Raspberry Pi display in a shared room and use it as a live window into your media server.
 
-If someone is watching something on Jellyfin or listening to music through Navidrome, MediaWall can automatically show the latest active session with backdrop artwork, logos, playback information, source icons, and, if you want, the name or avatar of the person using it.
+If someone is watching something on Jellyfin or listening to music through Navidrome, MediaWall can automatically show active sessions with backdrop artwork, logos, playback information, source icons, and, if you want, the name or avatar of the person using it.
 
 So instead of asking, "What are we listening to?" or checking Jellyfin manually, you can just glance at the display.
 
@@ -58,7 +64,7 @@ MediaWall doesn't have to show playback activity at all.
 
 You can put it on a desk, shelf, wall-mounted tablet, or Raspberry Pi-connected display and use it as a rotating screensaver for the artwork in your Jellyfin library. I know that many of you have terabytes of media, but it's all just data. MediaWall allows its viewers to passively browse your libraries.
 
-If you don't want it pulling from everything, open the grid and favorite the artwork you actually want to see. MediaWall can then rotate through only those favorites, essentially turning your media collection into a curated digital art display.
+If you don't want it pulling from everything, open the grid and favorite the artwork you actually want to see, or only allow specific libraries. MediaWall can then rotate through only those favorites or libraries, essentially turning your media collection into a curated digital art display.
 
 And if one image looks especially good, just pause the slideshow and leave it there as a clean static wallpaper.
 
@@ -89,7 +95,7 @@ That's really the idea behind MediaWall: it can be a Now Playing display, a home
 - Can use local artist backdrop and logo files for Navidrome-only artwork.
 - Caches grid/backdrop images with startup and cron-based library scans.
 
-Jellyfin is recommended because MediaWall can use its rich backdrop, logo, user avatar, movie, series, and artist metadata. Navidrome is not strictly required, and Jellyfin is not strictly required for a music-only wall: Navidrome can drive Now Playing and local artist backdrop files can provide artwork. If both Jellyfin and Navidrome are configured, Navidrome playback can match against Jellyfin artist data so the Now Playing and Wallpaper/Screensaver views still benefit from Jellyfin's images.
+Jellyfin is recommended because MediaWall can use its rich backdrop, logo, user avatar, movie, series, and artist metadata. Navidrome isn't strictly required, and Jellyfin isn't strictly required for a music-only wall: Navidrome can drive Now Playing and local artist backdrop files can provide artwork. If both Jellyfin and Navidrome are configured, Navidrome playback can match against Jellyfin artist data so the Now Playing and Wallpaper/Screensaver views still benefit from Jellyfin's images.
 
 ## Quick Start
 
@@ -110,6 +116,8 @@ services:
       - ./data:/app/data
       - ./sounds:/app/sounds:ro
       - ./custom_logo:/app/custom_logo:ro
+      # Only needed when using Navidrome with local artist backdrop/logo files.
+      # - /path/to/your/navidrome/music:/navidrome_music:ro
 ```
 
 Then:
@@ -254,3 +262,11 @@ Run locally:
 ```sh
 npm run dev
 ```
+
+## License
+
+MIT. Fork it, remix it, and make your own builds.
+
+## Contributors
+
+Contributions welcome.

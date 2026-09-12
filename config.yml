@@ -3,7 +3,6 @@ server:
 
 library_scan:
   enabled: true
-  directory: "/app/data/grid-cache"
   ttl_days: 30
   scan_on_startup: true
   cron:
@@ -32,10 +31,12 @@ users:
     jellyfin_user: "${JELLYFIN_USER}"
     navidrome_user: "${NAVIDROME_USER}"
     navidrome_password: "${NAVIDROME_PASSWORD}"
-  all:
+  secondary:
+    jellyfin_user: "${JELLYFIN_SECONDARY_USER}"
+    navidrome_user: "${NAVIDROME_SECONDARY_USER}"
+    navidrome_password: "${NAVIDROME_SECONDARY_PASSWORD}"
+  jellyfin_all:
     jellyfin_user: "All"
-    navidrome_user: "All"
-    navidrome_password: "${NAVIDROME_PASSWORD}"
 
 spaces:
   livingroom:
@@ -64,9 +65,8 @@ spaces:
         enabled: true
         font_size: 13
       mediawall_fallback:
-        mode: dvd
         modes:
-          - All
+          - dvd
         background_color: "#565954"
         min_logo_width: 260
         max_logo_width: 760
@@ -110,7 +110,7 @@ spaces:
         style: kenburns
         enabled: true
         scale: 1.08
-        duration_seconds: 24
+        duration_seconds: 26
       logo:
         max_width: 520
       album_art:
@@ -175,9 +175,8 @@ spaces:
         enabled: true
         font_size: 13
       mediawall_fallback:
-        mode: dvd
         modes:
-          - All
+          - dvd
         background_color: "#565954"
         min_logo_width: 260
         max_logo_width: 760
@@ -221,7 +220,7 @@ spaces:
         style: kenburns
         enabled: true
         scale: 1.08
-        duration_seconds: 24
+        duration_seconds: 26
       logo:
         max_width: 520
       album_art:
@@ -287,9 +286,8 @@ spaces:
         enabled: true
         font_size: 13
       mediawall_fallback:
-        mode: dvd
         modes:
-          - All
+          - dvd
         background_color: "#565954"
         min_logo_width: 260
         max_logo_width: 760
@@ -333,7 +331,7 @@ spaces:
         style: kenburns
         enabled: true
         scale: 1.08
-        duration_seconds: 24
+        duration_seconds: 26
       logo:
         max_width: 520
       album_art:

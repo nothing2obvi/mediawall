@@ -1,4 +1,5 @@
 export type PlaybackSource = "jellyfin" | "navidrome" | "both";
+export type MediaWallFallbackMode = "centered" | "breathing" | "float" | "spotlight" | "dvd" | "minimal";
 
 export interface MediaWallUser {
   name: string;
@@ -34,8 +35,7 @@ export interface DisplayConfig {
       font_size: number;
     };
     mediawall_fallback: {
-      mode: "centered" | "breathing" | "float" | "spotlight" | "dvd" | "minimal";
-      modes: Array<"centered" | "breathing" | "float" | "spotlight" | "dvd" | "minimal" | "All">;
+      modes: Array<MediaWallFallbackMode | "All">;
       background_color: string;
       min_logo_width: number;
       max_logo_width: number;
@@ -226,6 +226,7 @@ export interface NowPlayingState {
   stale?: boolean;
   sessionKey?: string;
   activityAt?: number;
+  playbackPositionTicks?: number;
   title?: string;
   artist?: string;
   album?: string;
@@ -313,8 +314,8 @@ export interface PublicControlCommand {
   type: "sound" | "mediawall" | "animation";
   name: string;
   startedAt: number;
-  mode?: DisplayConfig["now_playing"]["mediawall_fallback"]["mode"];
-  modes?: Array<DisplayConfig["now_playing"]["mediawall_fallback"]["mode"]>;
+  mode?: MediaWallFallbackMode;
+  modes?: MediaWallFallbackMode[];
   modeDurationSeconds?: number;
   animation?: BackdropAnimation;
   animations?: BackdropAnimation[];
@@ -358,7 +359,7 @@ export interface DisplayState {
   lastNowPlayingFallbackAt?: number;
   lastNowPlayingHadSession?: boolean;
   mediaWallFallbackIndex?: number;
-  activeMediaWallFallbackMode?: DisplayConfig["now_playing"]["mediawall_fallback"]["mode"];
+  activeMediaWallFallbackMode?: MediaWallFallbackMode;
   transitionIndex: number;
   transitionStyle?: TransitionStyle;
 }
@@ -379,5 +380,5 @@ export interface DisplaySnapshot {
   libraryScan?: PublicLibraryScanProgress;
   connectionIssues?: PublicConnectionIssue[];
   controlCommand?: PublicControlCommand;
-  activeMediaWallFallbackMode?: DisplayConfig["now_playing"]["mediawall_fallback"]["mode"];
+  activeMediaWallFallbackMode?: MediaWallFallbackMode;
 }

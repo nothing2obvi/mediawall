@@ -107,6 +107,7 @@ export class JellyfinClient {
       item.Id
     ].filter(Boolean).join(":");
     const activityAt = jellyfinTimestamp(session.LastActivityDate ?? session.LastPlaybackCheckIn ?? session.NowPlayingItem?.DateCreated);
+    const playbackPositionTicks = numberOrUndefined(session.PlayState?.PositionTicks);
     const isAudio = item.MediaType === "Audio" || item.Type === "Audio";
     if (!isAudio) {
       const displayItem = await this.displayItemForVideo(item).catch(() => item);
@@ -120,6 +121,7 @@ export class JellyfinClient {
         paused: Boolean(session.PlayState?.IsPaused),
         sessionKey,
         activityAt,
+        playbackPositionTicks,
         title: item.Name,
         year: item.ProductionYear,
         seasonNumber: item.ParentIndexNumber,
@@ -149,6 +151,7 @@ export class JellyfinClient {
       paused: Boolean(session.PlayState?.IsPaused),
       sessionKey,
       activityAt,
+      playbackPositionTicks,
       title: item.Name,
       artist: artistName,
       album: item.Album,
@@ -433,7 +436,8 @@ export class JellyfinClient {
     const backdropTags = item.BackdropImageTags ?? [];
     const hasBackdrop = backdropTags.length > 0;
     const fallbackPrimary = item.ImageTags?.Primary;
-    if (!hasBackdrop && !fallbackPrimary) return undefined;
+    const logoTag = item.ImageTags?.Logo;
+    if (!hasBackdrop && !fallbackPrimary && !logoTag) return undefined;
     const chosenIndex = hasBackdrop ? Math.min(imageIndex, backdropTags.length - 1) : 0;
     return {
       source: "jellyfin",
@@ -444,14 +448,12 @@ export class JellyfinClient {
       imageType: hasBackdrop ? "Backdrop" : "Primary",
       imageIndex: chosenIndex,
       backdropCount: backdropTags.length || 1,
-      backdropUrl: hasBackdrop
-        ? this.imageUrl(item.Id, "Backdrop", chosenIndex, backdropTags[chosenIndex])
-        : this.imageUrl(item.Id, "Primary", 0, fallbackPrimary),
-      logoUrl: item.ImageTags?.Logo ? this.imageUrl(item.Id, "Logo", 0, item.ImageTags.Logo) : undefined,
+      backdropUrl: hasBackdrop ? this.imageUrl(item.Id, "Backdrop", chosenIndex, backdropTags[chosenIndex]) : undefined,
+      logoUrl: logoTag ? this.imageUrl(item.Id, "Logo", 0, logoTag) : undefined,
       thumbUrl: fallbackPrimary ? this.imageUrl(item.Id, "Primary", 0, fallbackPrimary) : undefined,
       backdropTags,
       primaryTag: fallbackPrimary,
-      logoTag: item.ImageTags?.Logo
+      logoTag
     };
   }
 
@@ -552,6 +554,11 @@ function jellyfinTimestamp(value: unknown) {
   if (typeof value !== "string") return undefined;
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function numberOrUndefined(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
 }
 
 function artistIdentityKey(item: JellyfinItem) {
