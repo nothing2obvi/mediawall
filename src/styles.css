@@ -211,12 +211,12 @@ body.idle {
 
 @keyframes backdrop-kenburns-squareish {
   from {
-    background-position: 0% 49.5%;
-    transform: scale(1.02);
+    background-position: 42% 48.5%;
+    transform: scale(1.025);
   }
   to {
-    background-position: 100% 50.5%;
-    transform: scale(1.06);
+    background-position: 58% 51.5%;
+    transform: scale(1.095);
   }
 }
 
