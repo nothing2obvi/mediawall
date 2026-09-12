@@ -40,8 +40,6 @@ Is this necessary? No!
 
 Is it a kind of fun excuse to use more electricity and tinker with something? Yes :)
 
---
-
 ## Use Cases
 
 ### See What Everyone Is Watching or Listening To
