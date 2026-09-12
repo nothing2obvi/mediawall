@@ -44,7 +44,7 @@ Is it a kind of fun excuse to use more electricity and tinker with something? Ye
 
 ## Use Cases
 
-### See What Everyone Is Watching Or Listening To
+### See What Everyone Is Watching or Listening To
 
 Put MediaWall on an iPad, tablet, TV, or Raspberry Pi display in a shared room and use it as a live window into your media server.
 
@@ -52,13 +52,13 @@ If someone is watching something on Jellyfin or listening to music through Navid
 
 So instead of asking, "What are we listening to?" or checking Jellyfin manually, you can just glance at the display.
 
-### Turn It Into A Homelab Playback Dashboard
+### Turn It Into a Homelab Playback Dashboard
 
 If you run Jellyfin for multiple people, MediaWall can also act as a simple visual dashboard for your server. Set it to watch all Jellyfin users, and the display will automatically show all active sessions.
 
 It's an easy way to make activity on your server feel a little more visible and alive without opening an admin dashboard or staring at a list of sessions.
 
-### Use It As An Artwork Display
+### Use It as an Artwork Display
 
 MediaWall doesn't have to show playback activity at all.
 
