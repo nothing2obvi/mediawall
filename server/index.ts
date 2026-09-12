@@ -18,7 +18,6 @@ const navidrome = new NavidromeClient(config, jellyfin);
 const states = new StateStore();
 const app = express();
 const favoritesShuffleLibrary = "Favorites";
-const PAUSED_SESSION_GRACE_MS = 60_000;
 const mediaWallFallbackModes = ["centered", "breathing", "float", "spotlight", "dvd", "minimal"] as const;
 const mediaWallFallbackModeOptions = [...mediaWallFallbackModes, "All"] as const;
 const backdropAnimations = ["breathe", "pan", "kenburns", "drift", "focus", "zoom"] as const;
@@ -1777,6 +1776,7 @@ function dedupePlaybackCandidates(candidates: NowPlayingState[]) {
 function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[], displayConfig: DisplayConfig, state: DisplaySnapshot["state"], manualDirection?: -1 | 1) {
   const now = Date.now();
   const idleMs = displayConfig.idle_timeout * 1000;
+  const pausedSessionGraceMs = Math.max(0, displayConfig.now_playing.session_cleanup.paused_after_seconds) * 1000;
   const records = recentPlayback.get(displayKey) ?? new Map<string, RecentPlaybackRecord>();
   for (const record of records.values()) record.active = false;
 
@@ -1796,13 +1796,13 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
       refreshedAt: now,
       activityAt,
       pausedSince,
-      active: !pausedSince || now - pausedSince < PAUSED_SESSION_GRACE_MS,
+      active: !pausedSince || now - pausedSince < pausedSessionGraceMs,
       state
     });
   }
 
   for (const [sessionKey, record] of records.entries()) {
-    if (record.pausedSince && now - record.pausedSince >= PAUSED_SESSION_GRACE_MS) records.delete(sessionKey);
+    if (record.pausedSince && now - record.pausedSince >= pausedSessionGraceMs) records.delete(sessionKey);
     if (!record.active && now - record.refreshedAt >= idleMs) records.delete(sessionKey);
   }
 
@@ -1915,10 +1915,11 @@ function publicSoundSessions(displayKey: string, displayConfig: DisplayConfig): 
   const records = recentPlayback.get(displayKey);
   if (!records) return [];
   const now = Date.now();
+  const pausedSessionGraceMs = Math.max(0, displayConfig.now_playing.session_cleanup.paused_after_seconds) * 1000;
   return [...records.values()]
     .filter((record) =>
       record.state.playing
-      && (record.active || now - record.refreshedAt < PAUSED_SESSION_GRACE_MS)
+      && (record.active || now - record.refreshedAt < pausedSessionGraceMs)
       && (record.state.source === "jellyfin" || record.state.source === "navidrome")
     )
     .map((record) => {

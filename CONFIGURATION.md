@@ -83,6 +83,7 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `fallback_shuffle_interval_seconds` | Idle fallback shuffle interval. | `45` | No | Used only when fallback is `shuffle`. |
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
 | `cycle_interval_seconds` | Now Playing session cycle interval. | `15` | No | Used for natural session cycling and the timer ring. |
+| `session_cleanup` then `paused_after_seconds` | Removes paused or stale sessions from current Now Playing after this many seconds. | `60` | No | Applies to Jellyfin and Navidrome sessions. Set lower for faster cleanup, or higher if clients briefly report paused/stale while still resuming. |
 | `session_timer` then `enabled` | Shows the countdown ring. | `true` | No | Only meaningful when multiple active sessions are cycling. |
 | `session_timer` then `size` | Countdown ring diameter. | `42` | No | Pixels. |
 | `session_count` then `enabled` | Shows `1 of 4` session count. | `true` | No | Independent from the timer ring. |
@@ -108,7 +109,7 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `quiet_hours` then `end` | Quiet-hours end. | `08:00` | No | Cross-midnight ranges are supported. |
 | `continuous_sessions` then `navidrome` | Treats Navidrome item changes as one sound session. | `true` | No | Track changes do not trigger new start sounds. |
 | `continuous_sessions` then `jellyfin_libraries` | Jellyfin libraries treated as continuous for sounds. | `["Music"]` | No | Exact library names, not hardcoded to music. |
-| `session_start` then `retrigger_after_inactive_seconds` | Inactive cooldown before continuous sessions can start-sound again. | `300` | No | Requires uninterrupted inactivity. |
+| `session_start` then `retrigger_after_inactive_seconds` | Inactive cooldown before continuous sessions can start-sound again. | `30` | No | Requires uninterrupted inactivity. |
 | `session_end` then `enabled` | Enables session-ended sounds. | `false` | No | Item changes in continuous sessions do not count as endings. |
 | `session_end` then `tone` | Default session-ended tone. | `close.mp3` | No | `close.mp3` is bundled and normalized; user-supplied custom sounds are not normalized. |
 | `trigger` | Start sound trigger mode. | `new_session` | No | Options: `new_session`, `new_user_session`. |

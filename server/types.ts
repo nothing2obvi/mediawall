@@ -22,6 +22,9 @@ export interface DisplayConfig {
     fallback_shuffle_interval_seconds: number;
     cycle_users: boolean;
     cycle_interval_seconds: number;
+    session_cleanup: {
+      paused_after_seconds: number;
+    };
     session_timer: {
       enabled: boolean;
       size: number;

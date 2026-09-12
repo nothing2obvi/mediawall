@@ -55,6 +55,8 @@ spaces:
       fallback_shuffle_interval_seconds: 45
       cycle_users: true
       cycle_interval_seconds: 15
+      session_cleanup:
+        paused_after_seconds: 60
       session_timer:
         enabled: true
         size: 42
@@ -86,7 +88,7 @@ spaces:
           jellyfin_libraries:
             - Music
         session_start:
-          retrigger_after_inactive_seconds: 300
+          retrigger_after_inactive_seconds: 30
         session_end:
           enabled: false
           tone: "close.mp3"
@@ -164,6 +166,8 @@ spaces:
       fallback_shuffle_interval_seconds: 45
       cycle_users: false
       cycle_interval_seconds: 15
+      session_cleanup:
+        paused_after_seconds: 60
       session_timer:
         enabled: true
         size: 42
@@ -195,7 +199,7 @@ spaces:
           jellyfin_libraries:
             - Music
         session_start:
-          retrigger_after_inactive_seconds: 300
+          retrigger_after_inactive_seconds: 30
         session_end:
           enabled: false
           tone: "close.mp3"
@@ -274,6 +278,8 @@ spaces:
       fallback_shuffle_interval_seconds: 45
       cycle_users: true
       cycle_interval_seconds: 15
+      session_cleanup:
+        paused_after_seconds: 60
       session_timer:
         enabled: true
         size: 42
@@ -305,7 +311,7 @@ spaces:
           jellyfin_libraries:
             - Music
         session_start:
-          retrigger_after_inactive_seconds: 300
+          retrigger_after_inactive_seconds: 30
         session_end:
           enabled: false
           tone: "close.mp3"

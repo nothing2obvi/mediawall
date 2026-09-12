@@ -51,6 +51,9 @@ const spaceSchema = z.object({
     fallback_shuffle_interval_seconds: z.number().default(45),
     cycle_users: z.boolean().default(false),
     cycle_interval_seconds: z.number().default(15),
+    session_cleanup: z.object({
+      paused_after_seconds: z.number().min(0).default(60)
+    }).default({ paused_after_seconds: 60 }),
     session_timer: z.object({
       enabled: z.boolean().default(true),
       size: z.number().default(42)
@@ -87,8 +90,8 @@ const spaceSchema = z.object({
         jellyfin_libraries: z.array(z.string()).default(["Music"])
       }).default({ navidrome: true, jellyfin_libraries: ["Music"] }),
       session_start: z.object({
-        retrigger_after_inactive_seconds: z.number().min(0).default(300)
-      }).default({ retrigger_after_inactive_seconds: 300 }),
+        retrigger_after_inactive_seconds: z.number().min(0).default(30)
+      }).default({ retrigger_after_inactive_seconds: 30 }),
       session_end: z.object({
         enabled: z.boolean().default(false),
         tone: z.string().default("close.mp3")
@@ -103,7 +106,7 @@ const spaceSchema = z.object({
       navidrome: true,
       quiet_hours: { enabled: false, start: "23:00", end: "08:00" },
       continuous_sessions: { navidrome: true, jellyfin_libraries: ["Music"] },
-      session_start: { retrigger_after_inactive_seconds: 300 },
+      session_start: { retrigger_after_inactive_seconds: 30 },
       session_end: { enabled: false, tone: "close.mp3" },
       trigger: "new_session",
       directory: "/app/sounds",
@@ -116,6 +119,7 @@ const spaceSchema = z.object({
     fallback_shuffle_interval_seconds: 45,
     cycle_users: false,
     cycle_interval_seconds: 15,
+    session_cleanup: { paused_after_seconds: 60 },
     session_timer: { enabled: true, size: 42 },
     session_count: { enabled: true, font_size: 13 },
     mediawall_fallback: { mode: "dvd", modes: ["All"], background_color: "#565954", min_logo_width: 260, max_logo_width: 760 },
@@ -127,7 +131,7 @@ const spaceSchema = z.object({
       navidrome: true,
       quiet_hours: { enabled: false, start: "23:00", end: "08:00" },
       continuous_sessions: { navidrome: true, jellyfin_libraries: ["Music"] },
-      session_start: { retrigger_after_inactive_seconds: 300 },
+      session_start: { retrigger_after_inactive_seconds: 30 },
       session_end: { enabled: false, tone: "close.mp3" },
       trigger: "new_session",
       directory: "/app/sounds",
