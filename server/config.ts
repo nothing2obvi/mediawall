@@ -387,7 +387,9 @@ function normalizeSpaces(input: Record<string, z.infer<typeof spaceSchema>>, use
   for (const [spaceName, raw] of Object.entries(input)) {
     const userNames = raw.users.length ? raw.users : (raw.playback_user ? [raw.playback_user] : Object.keys(users).slice(0, 1));
     const useAllUsers = userNames.some((name) => name.toLowerCase() === "all");
-    const sourceUsers = useAllUsers ? Object.keys(users) : userNames;
+    const configuredUserNames = Object.keys(users);
+    const concreteUserNames = configuredUserNames.filter((name) => name.toLowerCase() !== "all");
+    const sourceUsers = useAllUsers ? (concreteUserNames.length ? concreteUserNames : configuredUserNames) : userNames;
     const resolvedUsers = sourceUsers.map((name) => users[name] ?? {
       name,
       jellyfin_user: name,

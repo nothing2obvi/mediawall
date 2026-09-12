@@ -1715,7 +1715,26 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
       }
     }
   }
-  return candidates;
+  return dedupePlaybackCandidates(candidates);
+}
+
+function dedupePlaybackCandidates(candidates: NowPlayingState[]) {
+  const seen = new Set<string>();
+  const deduped: NowPlayingState[] = [];
+  for (const candidate of candidates) {
+    const key = [
+      candidate.source,
+      candidate.user,
+      candidate.sessionKey,
+      candidate.itemId,
+      candidate.artistId,
+      candidate.signature
+    ].filter(Boolean).join(":");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(candidate);
+  }
+  return deduped;
 }
 
 function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[], displayConfig: DisplayConfig, state: DisplaySnapshot["state"], manualDirection?: -1 | 1) {
