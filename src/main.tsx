@@ -386,6 +386,11 @@ function App() {
     && cycledArtwork?.backdropUrl
     ? visibleAnimationKey(cycledArtwork, snapshot.nowPlaying, activeAnimation)
     : undefined;
+  const scanWithAlbumArt = Boolean(snapshot?.libraryScan
+    && snapshot.state.mode === "now-playing"
+    && snapshot.state.showAlbumArt
+    && snapshot.nowPlaying?.albumArtUrl
+    && isMusicArtwork(snapshot.nowPlaying.artwork ?? snapshot.state.current, snapshot.nowPlaying));
 
   useEffect(() => {
     const updateViewportAspect = () => {
@@ -652,15 +657,14 @@ function App() {
       ? isNewSoundSession || resumeEligible === true
       : isNewSoundSession;
 
+    const initialSoundPass = !soundsInitialized.current;
     continuousResumeEligible.current.delete(visibleSession.key);
     seenSoundSessions.current.add(visibleSession.key);
     seenSoundMedia.current.add(mediaKey);
     seenSoundUsers.current.add(visibleSession.userKey);
 
-    if (!soundsInitialized.current) {
-      soundsInitialized.current = true;
-      return;
-    }
+    if (!soundsInitialized.current) soundsInitialized.current = true;
+    if (initialSoundPass && visibleSession.continuous) return;
     if (!startEligible) return;
     if (wasQuietSuppressed) return;
     if (!continuousCooldownAllowsStart) return;
@@ -960,6 +964,23 @@ function App() {
     setSnapshot((current) => current ? { ...current, state: result.state, mode: result.state.mode, nowPlaying: result.nowPlaying ?? current.nowPlaying } : current);
   }
 
+  function handleWallPointerDown(event: React.PointerEvent<HTMLElement>) {
+    if (!snapshot || shouldIgnoreWallPointer(event.target)) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - bounds.left;
+    const leftEdge = bounds.width * 0.33;
+    const rightEdge = bounds.width * 0.67;
+    if (x <= leftEdge) {
+      void action(snapshot.state.mode === "now-playing" ? "playback-previous" : "previous");
+      return;
+    }
+    if (x >= rightEdge) {
+      void action(snapshot.state.mode === "now-playing" ? "playback-next" : "next");
+      return;
+    }
+    revealControls();
+  }
+
   async function setMode(mode: "now-playing" | "screensaver") {
     flashButton("mode");
     const result = await api<{ state: DisplayState }>(spaceApi("/mode"), {
@@ -1158,7 +1179,7 @@ function App() {
 
   return (
     <main
-      className={`wall ${viewportClass} transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""}`}
+      className={`wall ${viewportClass} transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""} ${scanWithAlbumArt ? "scan-with-album-art" : ""}`}
       style={{
         "--transition-duration": `${snapshot?.config.display.transitions.duration_ms ?? 1200}ms`,
         "--viewport-width": `${viewportSize.width}px`,
@@ -1174,6 +1195,7 @@ function App() {
         "--ui-scale": String(snapshot?.config.display.ui.scale ?? 1)
       } as React.CSSProperties}
       onPointerMove={revealControls}
+      onPointerDown={handleWallPointerDown}
     >
       {showMediaWallIdle && snapshot ? <MediaWallIdle snapshot={snapshot} /> : <Backdrop artwork={cycledArtwork} />}
       {!showMediaWallIdle && <div className="shade" />}
@@ -1266,6 +1288,7 @@ function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
   const [front, setFront] = useState<string>();
   const [back, setBack] = useState<string>();
   const [flipped, setFlipped] = useState(false);
+  const targetUrl = useRef<string | undefined>(undefined);
   const url = mediaUrl(artwork?.backdropUrl);
 
   useEffect(() => {
@@ -1273,6 +1296,8 @@ function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
     let cancelled = false;
     const activeUrl = flipped ? back : front;
     if (url === activeUrl) return;
+    if (url === targetUrl.current) return;
+    targetUrl.current = url;
     if (url === front || url === back) {
       setFlipped(url === back);
       return;
@@ -1291,6 +1316,9 @@ function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
       setFlipped((current) => !current);
     }
     image.onload = () => void swapAfterDecode();
+    image.onerror = () => {
+      if (targetUrl.current === url) targetUrl.current = undefined;
+    };
     image.src = url;
     return () => {
       cancelled = true;
@@ -2208,6 +2236,24 @@ function quietHoursActive(quietHours: Snapshot["config"]["now_playing"]["sounds"
   return start < end
     ? minutes >= start && minutes < end
     : minutes >= start || minutes < end;
+}
+
+function shouldIgnoreWallPointer(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest([
+    "button",
+    "a",
+    "input",
+    "textarea",
+    "select",
+    "[role='dialog']",
+    ".controls",
+    ".browse",
+    ".modal",
+    ".dialog",
+    ".dismiss-layer",
+    ".sound-unlock",
+    ".toast"
+  ].join(",")));
 }
 
 function parseClockMinutes(value: string) {

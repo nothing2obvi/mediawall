@@ -63,6 +63,11 @@ app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   if (req.path.startsWith("/api/")) res.setHeader("Cache-Control", "no-store");
+  else {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
   next();
 });
 app.use(express.json());
@@ -1794,7 +1799,7 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
     const cacheKey = playbackSessionKey(candidate);
     const previous = records.get(cacheKey);
     const signatureChanged = previous?.state.signature !== candidate.signature;
-    const tracksPlaybackProgress = (candidate.source === "jellyfin" || candidate.source === "navidrome") && candidate.playbackPositionTicks !== undefined;
+    const tracksPlaybackProgress = candidate.source === "jellyfin" && candidate.playbackPositionTicks !== undefined;
     const positionChanged = tracksPlaybackProgress
       && !signatureChanged
       && previous?.playbackPositionTicks !== undefined
@@ -1831,7 +1836,7 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
   for (const [sessionKey, record] of records.entries()) {
     if (record.pausedSince && now - record.pausedSince >= pausedSessionGraceMs) records.delete(sessionKey);
     if (record.stalledSince && now - record.stalledSince >= pausedSessionGraceMs) records.delete(sessionKey);
-    if ((record.state.source === "jellyfin" || record.state.source === "navidrome") && record.state.playbackPositionTicks !== undefined && !record.progressConfirmed && now - record.firstSeenAt >= pausedSessionGraceMs) records.delete(sessionKey);
+    if (record.state.source === "jellyfin" && record.state.playbackPositionTicks !== undefined && !record.progressConfirmed && now - record.firstSeenAt >= pausedSessionGraceMs) records.delete(sessionKey);
     if (!record.active && now - record.refreshedAt >= idleMs) records.delete(sessionKey);
   }
 
@@ -1881,13 +1886,14 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
       return withPlaybackPosition(selected?.state ?? newest.state, cycle.selectedKey!, activeChronological, displayConfig);
     }
     if (!cycle || !selectedStillActive) {
-      recentPlaybackCycles.set(displayKey, { selectedKey: newestKey, selectedAt: now, newestSeenAt: newest.seenAt });
-      return withPlaybackPosition(newest.state, newestKey, activeChronological, displayConfig);
+      const [selectedKey, selected] = activeChronological[0]!;
+      recentPlaybackCycles.set(displayKey, { selectedKey, selectedAt: now, newestSeenAt: newestSeenAt(activeChronological) });
+      return withPlaybackPosition(selected.state, selectedKey, activeChronological, displayConfig);
     }
     if (newest.seenAt > cycle.newestSeenAt) {
       const selected = records.get(cycle.selectedKey!);
       recentPlaybackCycles.set(displayKey, { ...cycle, newestSeenAt: newest.seenAt });
-      return withPlaybackPosition(selected?.state ?? newest.state, cycle.selectedKey!, activeChronological, displayConfig);
+      return withPlaybackPosition(selected?.state ?? activeChronological[0]![1].state, cycle.selectedKey!, activeChronological, displayConfig);
     }
     if (now - cycle.selectedAt < intervalMs) {
       const selected = records.get(cycle.selectedKey!);
