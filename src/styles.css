@@ -1,6 +1,6 @@
 :root {
   color: white;
-  background: var(--fallback-background, #565954);
+  background: #050508;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -13,8 +13,19 @@ body,
 #root {
   width: 100%;
   height: 100%;
+  min-height: 100%;
   margin: 0;
   overflow: hidden;
+  background: #050508;
+}
+
+html {
+  height: -webkit-fill-available;
+}
+
+body,
+#root {
+  min-height: -webkit-fill-available;
 }
 
 button {
@@ -28,10 +39,18 @@ body.idle {
 
 .wall {
   --identity-left: max(48px, env(safe-area-inset-left));
-  position: relative;
-  width: 100vw;
+  position: fixed;
+  inset: 0;
+  width: var(--viewport-width, 100vw);
+  height: 100vh;
+  height: 100svh;
   height: 100dvh;
+  height: var(--viewport-height, 100dvh);
   min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+  min-height: var(--viewport-height, 100dvh);
+  min-height: -webkit-fill-available;
   overflow: hidden;
   background: #050508;
   isolation: isolate;
@@ -51,12 +70,12 @@ body.idle {
 
 .backdrop-image {
   position: absolute;
-  inset: -16%;
+  inset: -8%;
   background-position: center;
   background-size: cover;
   transform: scale(1);
   transform-origin: center;
-  will-change: transform;
+  will-change: transform, background-position;
 }
 
 .backdrop.base {
@@ -115,23 +134,99 @@ body.idle {
 }
 
 @keyframes backdrop-pan {
-  from { transform: scale(1.08) translateX(-3.2%); }
-  to { transform: scale(1.08) translateX(3.2%); }
+  from {
+    background-position: 44% 50%;
+    transform: scale(1.04);
+  }
+  to {
+    background-position: 56% 50%;
+    transform: scale(1.04);
+  }
 }
 
 @keyframes backdrop-kenburns {
-  from { transform: scale(1.06) translate(-2.4%, -1.1%); }
-  to { transform: scale(1.12) translate(2.6%, 1.4%); }
+  from {
+    background-position: 45% 49%;
+    transform: scale(1.08);
+  }
+  to {
+    background-position: 55% 51%;
+    transform: scale(1.16);
+  }
 }
 
 @keyframes backdrop-drift {
-  from { transform: scale(1.1) translate(-2.4%, 1.6%); }
-  to { transform: scale(1.1) translate(2.6%, -1.9%); }
+  from {
+    background-position: 44% 54%;
+    transform: scale(1.05);
+  }
+  to {
+    background-position: 56% 46%;
+    transform: scale(1.05);
+  }
 }
 
 @keyframes backdrop-focus {
-  from { transform: scale(1.04) translate(-0.8%, -0.5%); }
-  to { transform: scale(1.07) translate(0.8%, 0.6%); }
+  from {
+    background-position: 48.5% 49%;
+    transform: scale(1.035);
+  }
+  to {
+    background-position: 51.5% 51%;
+    transform: scale(1.055);
+  }
+}
+
+.viewport-squareish .backdrop-image {
+  inset: -12%;
+}
+
+.viewport-squareish.animation-pan .backdrop.active .backdrop-image,
+.viewport-squareish.animation-pan .backdrop.base .backdrop-image {
+  animation-name: backdrop-pan-squareish;
+}
+
+.viewport-squareish.animation-kenburns .backdrop.active .backdrop-image,
+.viewport-squareish.animation-kenburns .backdrop.base .backdrop-image {
+  animation-name: backdrop-kenburns-squareish;
+}
+
+.viewport-squareish.animation-drift .backdrop.active .backdrop-image,
+.viewport-squareish.animation-drift .backdrop.base .backdrop-image {
+  animation-name: backdrop-drift-squareish;
+}
+
+@keyframes backdrop-pan-squareish {
+  from {
+    background-position: 48% 50%;
+    transform: scale(1.08);
+  }
+  to {
+    background-position: 52% 50%;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes backdrop-kenburns-squareish {
+  from {
+    background-position: 48% 49.5%;
+    transform: scale(1.12);
+  }
+  to {
+    background-position: 52% 50.5%;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes backdrop-drift-squareish {
+  from {
+    background-position: 48% 52%;
+    transform: scale(1.1);
+  }
+  to {
+    background-position: 52% 48%;
+    transform: scale(1.1);
+  }
 }
 
 @keyframes backdrop-zoom {

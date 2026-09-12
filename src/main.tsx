@@ -316,6 +316,10 @@ function App() {
   const [error, setError] = useState<string>();
   const [commandTick, setCommandTick] = useState(0);
   const [soundUnlockNeeded, setSoundUnlockNeeded] = useState(false);
+  const [viewportSize, setViewportSize] = useState(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight
+  }));
   const hideTimer = useRef<number | undefined>(undefined);
   const advanceTimer = useRef<number | undefined>(undefined);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -348,6 +352,8 @@ function App() {
     && snapshot.config.now_playing.fallback === "mediawall"
     && !snapshot.nowPlaying?.playing);
   const activeAnimation = activeBackdropAnimation(snapshot);
+  const viewportAspect = viewportSize.width / Math.max(viewportSize.height, 1);
+  const viewportClass = viewportAspect < 1.45 ? "viewport-squareish" : viewportAspect < 1.75 ? "viewport-balanced" : "viewport-wide";
   const cycledArtwork = useMemo(
     () => previewArtwork ?? (snapshot?.state.mode === "now-playing" && snapshot.nowPlaying?.playing
       ? cycleNowPlayingBackdrop(displayedArtwork, snapshot, nowPlayingBackdropStep)
@@ -365,6 +371,24 @@ function App() {
     ]
   );
   const [flash, setFlash] = useState<string>();
+
+  useEffect(() => {
+    const updateViewportAspect = () => {
+      const viewport = window.visualViewport;
+      const width = viewport?.width ?? window.innerWidth;
+      const height = viewport?.height ?? window.innerHeight;
+      setViewportSize({ width, height });
+    };
+    updateViewportAspect();
+    window.addEventListener("resize", updateViewportAspect, { passive: true });
+    window.addEventListener("orientationchange", updateViewportAspect, { passive: true });
+    window.visualViewport?.addEventListener("resize", updateViewportAspect);
+    return () => {
+      window.removeEventListener("resize", updateViewportAspect);
+      window.removeEventListener("orientationchange", updateViewportAspect);
+      window.visualViewport?.removeEventListener("resize", updateViewportAspect);
+    };
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -1088,9 +1112,11 @@ function App() {
 
   return (
     <main
-      className={`wall transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""}`}
+      className={`wall ${viewportClass} transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""}`}
       style={{
         "--transition-duration": `${snapshot?.config.display.transitions.duration_ms ?? 1200}ms`,
+        "--viewport-width": `${viewportSize.width}px`,
+        "--viewport-height": `${viewportSize.height}px`,
         "--animation-scale": String(snapshot?.config.display.animations?.scale ?? snapshot?.config.display.backdrop_motion?.scale ?? 1.08),
         "--animation-duration": `${snapshot?.config.display.animations?.duration_seconds ?? snapshot?.config.display.backdrop_motion?.duration_seconds ?? 24}s`,
         "--fallback-background": snapshot?.config.now_playing.mediawall_fallback.background_color ?? "#565954",
