@@ -29,8 +29,8 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `directory` | Cache directory. | `/app/data/grid-cache` | No | Mount `/app/data` to persist it. |
 | `ttl_days` | Cache freshness window. | `30` | No | Stale cached images are refreshed by scans. |
 | `scan_on_startup` | Runs a scan after startup. | `true` | No | Useful after container restarts. |
-| `cron` then `enabled` | Enables scheduled scans. | `true` | No | Uses a standard five-field cron expression. |
-| `cron` then `expression` | Scan schedule. | `0 3 * * *` | No | Local container/system time. |
+| `cron.enabled` | Enables scheduled scans. | `true` | No | Uses a standard five-field cron expression. |
+| `cron.expression` | Scan schedule. | `0 3 * * *` | No | Local container/system time. |
 
 ### Jellyfin
 
@@ -45,10 +45,10 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | --- | --- | --- | --- | --- |
 | `enabled` | Enables Navidrome support. | `false` | No | Turn on for Navidrome Now Playing. |
 | `url` | Navidrome base URL. | `""` | Required if Navidrome enabled | Use `${NAVIDROME_URL}`. |
-| `artwork` then `jellyfin_fallback` | Lets Navidrome playback use matching Jellyfin artist artwork. | `true` | No | Requires Jellyfin to be configured. |
-| `artwork` then `local_files` | Enables local artist artwork for Navidrome-only setups. | `true` | No | If using Navidrome without Jellyfin, enable this for backdrop/logo-based grids. |
-| `artwork` then `order` | Artwork source priority for Navidrome playback. | `["jellyfin", "local"]` | No | Options are `jellyfin` and `local`. Disabled sources are skipped even if listed. |
-| `artwork` then `path_mappings` | Maps Navidrome paths to paths visible inside the MediaWall container. | `[]` | No | Each entry has `navidrome` and `mediawall`. |
+| `artwork.jellyfin_fallback` | Lets Navidrome playback use matching Jellyfin artist artwork. | `true` | No | Requires Jellyfin to be configured. |
+| `artwork.local_files` | Enables local artist artwork for Navidrome-only setups. | `true` | No | If using Navidrome without Jellyfin, enable this for backdrop/logo-based grids. |
+| `artwork.order` | Artwork source priority for Navidrome playback. | `["jellyfin", "local"]` | No | Options are `jellyfin` and `local`. Disabled sources are skipped even if listed. |
+| `artwork.path_mappings` | Maps Navidrome paths to paths visible inside the MediaWall container. | `[]` | No | Each entry has `navidrome` and `mediawall`. |
 | `path_mappings` entry `navidrome` | Navidrome-side path prefix. | unset | Required per mapping | Example: `/music`. |
 | `path_mappings` entry `mediawall` | MediaWall-container path prefix. | `/navidrome_music` | No | Used for local artist artwork lookup. Older configs using `jellyfin` are still accepted for compatibility. |
 
@@ -83,19 +83,19 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `fallback_shuffle_interval_seconds` | Idle fallback shuffle interval. | `45` | No | Used only when fallback is `shuffle`. |
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
 | `cycle_interval_seconds` | Now Playing session cycle interval. | `15` | No | Used for natural session cycling and the timer ring. |
-| `session_cleanup` then `paused_after_seconds` | Removes paused or stale sessions from current Now Playing after this many seconds. | `60` | No | Applies to Jellyfin and Navidrome sessions. Set lower for faster cleanup, or higher if clients briefly report paused/stale while still resuming. |
-| `session_timer` then `enabled` | Shows the countdown ring. | `true` | No | Only meaningful when multiple active sessions are cycling. |
-| `session_timer` then `size` | Countdown ring diameter. | `42` | No | Pixels. |
-| `session_count` then `enabled` | Shows `1 of 4` session count. | `true` | No | Independent from the timer ring. |
-| `session_count` then `font_size` | Session count font size. | `13` | No | Pixels. |
-| `mediawall_fallback` then `mode` | MediaWall banner fallback animation. | `dvd` | No | Options: `centered`, `breathing`, `float`, `spotlight`, `dvd`, `minimal`. |
-| `mediawall_fallback` then `modes` | Ordered list of MediaWall banner fallback animations used across separate no-session rounds. | `["All"]` | No | Use `All` to include every mode. If you list specific modes, the next no-session period advances to the next mode in that written order. |
-| `mediawall_fallback` then `background_color` | Background color used behind fallback screens and Now Playing items with no backdrop. | `#565954` | No | Use a hex color such as `#4f524d`. |
-| `mediawall_fallback` then `min_logo_width` | Minimum logo width for fallback modes where the logo size can change. | `260` | No | Pixels. |
-| `mediawall_fallback` then `max_logo_width` | Maximum logo width for fallback modes where the logo size can change. | `760` | No | Pixels. |
-| `custom_logo` then `directory` | Directory checked for a custom fallback logo. | `/app/custom_logo` | No | Put one `.png` or `.svg` file here; MediaWall uses the first matching file alphabetically. |
-| `multiple_backdrops` then `enabled` | Enables multiple-backdrop rotation for Now Playing items. | `true` | No | If only one session is active, rotation uses `interval_seconds`; with multiple sessions, the backdrop advances when that session becomes visible again. |
-| `multiple_backdrops` then `interval_seconds` | Single-session Now Playing backdrop interval. | `10` | No | Seconds between backdrop transitions when one active Now Playing item has multiple backdrops. |
+| `session_cleanup.paused_after_seconds` | Removes paused or stale sessions from current Now Playing after this many seconds. | `60` | No | Applies to Jellyfin and Navidrome sessions. Set lower for faster cleanup, or higher if clients briefly report paused/stale while still resuming. |
+| `session_timer.enabled` | Shows the countdown ring. | `true` | No | Only meaningful when multiple active sessions are cycling. |
+| `session_timer.size` | Countdown ring diameter. | `42` | No | Pixels. |
+| `session_count.enabled` | Shows `1 of 4` session count. | `true` | No | Independent from the timer ring. |
+| `session_count.font_size` | Session count font size. | `13` | No | Pixels. |
+| `mediawall_fallback.mode` | MediaWall banner fallback animation. | `dvd` | No | Options: `centered`, `breathing`, `float`, `spotlight`, `dvd`, `minimal`. |
+| `mediawall_fallback.modes` | Ordered list of MediaWall banner fallback animations used across separate no-session rounds. | `["All"]` | No | Use `All` to include every mode. If you list specific modes, the next no-session period advances to the next mode in that written order. |
+| `mediawall_fallback.background_color` | Background color used behind fallback screens and Now Playing items with no backdrop. | `#565954` | No | Use a hex color such as `#4f524d`. |
+| `mediawall_fallback.min_logo_width` | Minimum logo width for fallback modes where the logo size can change. | `260` | No | Pixels. |
+| `mediawall_fallback.max_logo_width` | Maximum logo width for fallback modes where the logo size can change. | `760` | No | Pixels. |
+| `custom_logo.directory` | Directory checked for a custom fallback logo. | `/app/custom_logo` | No | Put one `.png` or `.svg` file here; MediaWall uses the first matching file alphabetically. |
+| `multiple_backdrops.enabled` | Enables multiple-backdrop rotation for Now Playing items. | `true` | No | If only one session is active, rotation uses `interval_seconds`; with multiple sessions, the backdrop advances when that session becomes visible again. |
+| `multiple_backdrops.interval_seconds` | Single-session Now Playing backdrop interval. | `10` | No | Seconds between backdrop transitions when one active Now Playing item has multiple backdrops. |
 
 ### Space Sounds
 
@@ -104,14 +104,14 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `enabled` | Master switch for session sounds. | `true` | No | Does not affect visual behavior. |
 | `jellyfin` | Allows Jellyfin sounds. | `true` | No | Applies to start and end sounds. |
 | `navidrome` | Allows Navidrome sounds. | `true` | No | Applies to start and end sounds. |
-| `quiet_hours` then `enabled` | Suppresses sounds during quiet hours. | `false` | No | Suppresses start and end sounds; no retroactive sounds after quiet hours end. |
-| `quiet_hours` then `start` | Quiet-hours start. | `23:00` | No | `HH:MM`, local system time. |
-| `quiet_hours` then `end` | Quiet-hours end. | `08:00` | No | Cross-midnight ranges are supported. |
-| `continuous_sessions` then `navidrome` | Treats Navidrome item changes as one sound session. | `true` | No | Track changes do not trigger new start sounds. |
-| `continuous_sessions` then `jellyfin_libraries` | Jellyfin libraries treated as continuous for sounds. | `["Music"]` | No | Exact library names, not hardcoded to music. |
-| `session_start` then `retrigger_after_inactive_seconds` | Inactive cooldown before continuous sessions can start-sound again. | `30` | No | Requires uninterrupted inactivity. |
-| `session_end` then `enabled` | Enables session-ended sounds. | `false` | No | Item changes in continuous sessions do not count as endings. |
-| `session_end` then `tone` | Default session-ended tone. | `close.mp3` | No | `close.mp3` is bundled and normalized; user-supplied custom sounds are not normalized. |
+| `quiet_hours.enabled` | Suppresses sounds during quiet hours. | `false` | No | Suppresses start and end sounds; no retroactive sounds after quiet hours end. |
+| `quiet_hours.start` | Quiet-hours start. | `23:00` | No | `HH:MM`, local system time. |
+| `quiet_hours.end` | Quiet-hours end. | `08:00` | No | Cross-midnight ranges are supported. |
+| `continuous_sessions.navidrome` | Treats Navidrome item changes as one sound session. | `true` | No | Track changes do not trigger new start sounds. |
+| `continuous_sessions.jellyfin_libraries` | Jellyfin libraries treated as continuous for sounds. | `["Music"]` | No | Exact library names, not hardcoded to music. |
+| `session_start.retrigger_after_inactive_seconds` | Inactive cooldown before continuous sessions can start-sound again. | `30` | No | Requires uninterrupted inactivity. |
+| `session_end.enabled` | Enables session-ended sounds. | `false` | No | Item changes in continuous sessions do not count as endings. |
+| `session_end.tone` | Default session-ended tone. | `close.mp3` | No | `close.mp3` is bundled and normalized; user-supplied custom sounds are not normalized. |
 | `trigger` | Start sound trigger mode. | `new_session` | No | Options: `new_session`, `new_user_session`. |
 | `directory` | Directory scanned for sound files. | `/app/sounds` | No | Browser-friendly formats: `.mp3`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.flac`. |
 | `tone` | Default session-start tone. | `noted.mp3` | No | Can be overridden per user with `sound`. |
@@ -131,21 +131,21 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 
 | Entry | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `ui` then `scale` | Scales app UI chrome. | `1` | No | Applies to controls, dialogs, grid cards, and toast notifications. |
+| `ui.scale` | Scales app UI chrome. | `1` | No | Applies to controls, dialogs, grid cards, and toast notifications. |
 | `music_artist_images` | Music artist role filter. | `albumartists` | No | Options: `artists`, `albumartists`, `both`. |
 | `cycle_interval_seconds` | Wallpaper/Screensaver cycle interval. | `15` | No | When shuffle is off, items go library-by-library and alphabetically. |
 | `screensaver_interval` | Legacy alias for cycle interval. | `15` | No | Prefer `cycle_interval_seconds`. |
 | `require_logos` | Requires logos for display/grid eligibility. | `true` | No | Navidrome-only items need local logo files. |
-| `multiple_backdrops` then `mode` | Multiple-backdrop behavior. | `single_backdrop` | No | Options: `single_backdrop`, `cycle`. |
-| `multiple_backdrops` then `single_backdrop` | Single-backdrop selection mode. | `random` | No | Options: `first`, `numbered`, `random`. |
-| `multiple_backdrops` then `cycle_order` | Multiple-backdrop cycle order. | `numbered` | No | Options: `numbered`, `shuffle`. |
-| `animations` then `enabled` | Enables ambient backdrop animations. | `true` | No | Applies globally per space. |
-| `animations` then `style` | Backdrop animation style. | `kenburns` | No | Options: `breathe`, `pan`, `kenburns`, `drift`, `focus`, `zoom`, `All`. |
-| `animations` then `scale` | Animation scale. | `1.08` | No | Used by zooming animations; MediaWall adds enough overscan for moving animations to avoid blank edges. |
-| `animations` then `duration_seconds` | Animation duration. | `24` | No | Duration of one animation direction before it alternates. |
-| `logo` then `max_width` | Logo image maximum width. | `520` | No | Pixels. |
-| `album_art` then `size` | Now Playing album cover size. | `200` | No | Pixels. |
-| `fallback_title` then `font_size` | Fallback title text size. | `86` | No | Used when title text rendering applies. |
+| `multiple_backdrops.mode` | Multiple-backdrop behavior. | `single_backdrop` | No | Options: `single_backdrop`, `cycle`. |
+| `multiple_backdrops.single_backdrop` | Single-backdrop selection mode. | `random` | No | Options: `first`, `numbered`, `random`. |
+| `multiple_backdrops.cycle_order` | Multiple-backdrop cycle order. | `numbered` | No | Options: `numbered`, `shuffle`. |
+| `animations.enabled` | Enables ambient backdrop animations. | `true` | No | Applies globally per space. |
+| `animations.style` | Backdrop animation style. | `kenburns` | No | Options: `breathe`, `pan`, `kenburns`, `drift`, `focus`, `zoom`, `All`. |
+| `animations.scale` | Animation scale. | `1.08` | No | Used by zooming animations; MediaWall adds enough overscan for moving animations to avoid blank edges. |
+| `animations.duration_seconds` | Animation duration. | `24` | No | Duration of one animation direction before it alternates. |
+| `logo.max_width` | Logo image maximum width. | `520` | No | Pixels. |
+| `album_art.size` | Now Playing album cover size. | `200` | No | Pixels. |
+| `fallback_title.font_size` | Fallback title text size. | `86` | No | Used when title text rendering applies. |
 
 ### Backdrop Animations
 
@@ -183,8 +183,8 @@ display:
 | `icon_size` | Source icon size. | `24` | No | Pixels. |
 | `show_user_avatar` | Shows Jellyfin avatar. | `false` | No | Navidrome does not provide avatars. |
 | `user_avatar_size` | Jellyfin avatar size. | `24` | No | Pixels. |
-| `user_avatar_resize` then `enabled` | Requests resized Jellyfin avatars. | `true` | No | Helpful for animated GIF avatars and older devices such as older iPads. |
-| `user_avatar_resize` then `size` | Requested Jellyfin avatar image size. | `96` | No | Pixels. This affects the image fetched from Jellyfin, not the rendered UI size. |
+| `user_avatar_resize.enabled` | Requests resized Jellyfin avatars. | `true` | No | Helpful for animated GIF avatars and older devices such as older iPads. |
+| `user_avatar_resize.size` | Requested Jellyfin avatar image size. | `96` | No | Pixels. This affects the image fetched from Jellyfin, not the rendered UI size. |
 | `show_jellyfin_username` | Shows Jellyfin username. | `false` | No | Aligns cleanly if avatar/text/icon are disabled. |
 | `show_navidrome_username` | Shows Navidrome username. | `false` | No | Useful because Navidrome has no avatars. |
 | `user_font_size` | Username font size. | `13` | No | Pixels. |
