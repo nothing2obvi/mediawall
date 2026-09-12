@@ -65,6 +65,8 @@ type DisplayState = {
 };
 
 type MediaWallFallbackMode = "centered" | "breathing" | "float" | "spotlight" | "dvd" | "minimal";
+type BackdropAnimation = "breathe" | "pan" | "kenburns" | "drift" | "focus" | "zoom";
+const backdropAnimations: BackdropAnimation[] = ["breathe", "pan", "kenburns", "drift", "focus", "zoom"];
 
 type Snapshot = {
   profile: string;
@@ -88,12 +90,16 @@ type Snapshot = {
   }>;
   controlCommand?: {
     id: string;
-    type: "sound" | "mediawall";
+    type: "sound" | "mediawall" | "animation";
     name: string;
     startedAt: number;
     mode?: MediaWallFallbackMode;
     modes?: MediaWallFallbackMode[];
     modeDurationSeconds?: number;
+    animation?: BackdropAnimation;
+    animations?: BackdropAnimation[];
+    animationDurationSeconds?: number;
+    artwork?: ArtworkRef;
     tones?: string[];
     toneDurationSeconds?: number;
     expiresAt: number;
@@ -152,7 +158,9 @@ type Snapshot = {
       mediawall_fallback: {
         mode: MediaWallFallbackMode;
         modes: Array<MediaWallFallbackMode | "All">;
-        color_changes: boolean;
+        background_color: string;
+        min_logo_width: number;
+        max_logo_width: number;
       };
       custom_logo: {
         directory: string;
@@ -231,7 +239,13 @@ type Snapshot = {
         single_backdrop: "first" | "numbered" | "random";
         cycle_order: "numbered" | "shuffle";
       };
-      backdrop_motion: {
+      animations: {
+        enabled: boolean;
+        style: BackdropAnimation | "All";
+        scale: number;
+        duration_seconds: number;
+      };
+      backdrop_motion?: {
         enabled: boolean;
         scale: number;
         duration_seconds: number;
@@ -328,15 +342,18 @@ function App() {
   const displayedArtwork = snapshot?.state.mode === "now-playing"
     ? (snapshot.nowPlaying?.playing ? snapshot.nowPlaying?.artwork : undefined) ?? snapshot.state.current
     : snapshot?.state.current;
+  const previewArtwork = snapshot?.controlCommand?.type === "animation" ? snapshot.controlCommand.artwork : undefined;
   const showMediaWallPreview = snapshot?.controlCommand?.type === "mediawall";
   const showMediaWallIdle = showMediaWallPreview || (snapshot?.state.mode === "now-playing"
     && snapshot.config.now_playing.fallback === "mediawall"
     && !snapshot.nowPlaying?.playing);
+  const activeAnimation = activeBackdropAnimation(snapshot);
   const cycledArtwork = useMemo(
-    () => snapshot?.state.mode === "now-playing" && snapshot.nowPlaying?.playing
+    () => previewArtwork ?? (snapshot?.state.mode === "now-playing" && snapshot.nowPlaying?.playing
       ? cycleNowPlayingBackdrop(displayedArtwork, snapshot, nowPlayingBackdropStep)
-      : cycleBackdrop(displayedArtwork, snapshot, backdropStep),
+      : cycleBackdrop(displayedArtwork, snapshot, backdropStep)),
     [
+      previewArtwork,
       displayedArtwork,
       snapshot?.state.mode,
       snapshot?.nowPlaying?.playing,
@@ -1071,11 +1088,14 @@ function App() {
 
   return (
     <main
-      className={`wall transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${snapshot?.config.display.backdrop_motion.enabled ?? true ? "motion-enabled" : ""}`}
+      className={`wall transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""}`}
       style={{
         "--transition-duration": `${snapshot?.config.display.transitions.duration_ms ?? 1200}ms`,
-        "--motion-scale": String(snapshot?.config.display.backdrop_motion.scale ?? 1.08),
-        "--motion-duration": `${snapshot?.config.display.backdrop_motion.duration_seconds ?? 24}s`,
+        "--animation-scale": String(snapshot?.config.display.animations?.scale ?? snapshot?.config.display.backdrop_motion?.scale ?? 1.08),
+        "--animation-duration": `${snapshot?.config.display.animations?.duration_seconds ?? snapshot?.config.display.backdrop_motion?.duration_seconds ?? 24}s`,
+        "--fallback-background": snapshot?.config.now_playing.mediawall_fallback.background_color ?? "#565954",
+        "--fallback-logo-min": `${snapshot?.config.now_playing.mediawall_fallback.min_logo_width ?? 260}px`,
+        "--fallback-logo-max": `${snapshot?.config.now_playing.mediawall_fallback.max_logo_width ?? 760}px`,
         "--album-art-size": `${snapshot?.config.display.album_art.size ?? 200}px`,
         "--ui-scale": String(snapshot?.config.display.ui.scale ?? 1)
       } as React.CSSProperties}
@@ -1228,7 +1248,6 @@ function MediaWallIdle({ snapshot }: { snapshot: Snapshot }) {
     ?? snapshot.activeMediaWallFallbackMode
     ?? snapshot.config.now_playing.mediawall_fallback.mode;
   const commandLabel = snapshot.controlCommand?.type === "mediawall" ? mediaWallModeLabel(mode) : undefined;
-  const colorChanges = snapshot.config.now_playing.mediawall_fallback.color_changes;
   const customLogoUrl = spaceApi("/custom-logo");
   const imageRef = useRef<HTMLImageElement | null>(null);
 
@@ -1242,18 +1261,6 @@ function MediaWallIdle({ snapshot }: { snapshot: Snapshot }) {
     let angle = (Math.PI * 0.18) + Math.random() * (Math.PI * 0.64);
     let vx = Math.cos(angle) * speed;
     let vy = Math.sin(angle) * speed;
-    const hues = [0, 0, 0, 0, 0, 48, 62, 82, 122, 170, 210, 250, 292, 326];
-
-    function setColor() {
-      if (!colorChanges) {
-        imageRef.current?.style.setProperty("--dvd-hue", "0deg");
-        imageRef.current?.style.setProperty("--dvd-saturation", "1");
-        return;
-      }
-      const hue = hues[Math.floor(Math.random() * hues.length)] ?? 0;
-      imageRef.current?.style.setProperty("--dvd-hue", `${hue}deg`);
-      imageRef.current?.style.setProperty("--dvd-saturation", String(hue === 0 ? 1 : 1.16 + Math.random() * 0.2));
-    }
 
     function randomizeDirection(axis: "x" | "y") {
       speed = 190 + Math.random() * 95;
@@ -1286,48 +1293,41 @@ function MediaWallIdle({ snapshot }: { snapshot: Snapshot }) {
       const area = bounds();
       x += vx * elapsed;
       y += vy * elapsed;
-      let bounced = false;
 
       if (x <= area.minX) {
         x = area.minX;
         vx = Math.abs(vx);
         randomizeDirection("x");
-        bounced = true;
       } else if (x >= area.maxX) {
         x = area.maxX;
         vx = -Math.abs(vx);
         randomizeDirection("x");
-        bounced = true;
       }
 
       if (y <= area.minY) {
         y = area.minY;
         vy = Math.abs(vy);
         randomizeDirection("y");
-        bounced = true;
       } else if (y >= area.maxY) {
         y = area.maxY;
         vy = -Math.abs(vy);
         randomizeDirection("y");
-        bounced = true;
       }
 
-      if (bounced) setColor();
       const image = imageRef.current;
       image?.style.setProperty("--dvd-x", `${x}px`);
       image?.style.setProperty("--dvd-y", `${y}px`);
       frame = window.requestAnimationFrame(tick);
     }
 
-    setColor();
     frame = window.requestAnimationFrame(tick);
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [mode, colorChanges]);
+  }, [mode]);
 
   return (
-    <section className={`mediawall-idle mediawall-idle-${mode} ${colorChanges ? "dvd-colors-enabled" : ""}`}>
+    <section className={`mediawall-idle mediawall-idle-${mode}`}>
       <div className="mediawall-idle-spotlight" />
       <img ref={imageRef} src={customLogoUrl} alt="MediaWall" onError={(event) => { event.currentTarget.src = mediaWallBanner; }} />
       {commandLabel && <div className="mediawall-command-label">{commandLabel}</div>}
@@ -1347,6 +1347,30 @@ function activeMediaWallCommandMode(command?: Snapshot["controlCommand"]): Media
 
 function mediaWallModeLabel(mode: MediaWallFallbackMode) {
   return mode.replace(/_/g, " ").toLowerCase();
+}
+
+function activeBackdropAnimation(snapshot?: Snapshot): BackdropAnimation | undefined {
+  const command = snapshot?.controlCommand;
+  if (command?.type === "animation") return activeAnimationCommand(command)?.animation;
+  const config = snapshot?.config.display.animations;
+  const legacy = snapshot?.config.display.backdrop_motion;
+  if (!(config?.enabled ?? legacy?.enabled ?? true)) return undefined;
+  const style = config?.style ?? "kenburns";
+  if (style !== "All") return style;
+  const elapsedSeconds = Math.max(0, Date.now() / 1000);
+  const durationSeconds = Math.max(1, config?.duration_seconds ?? legacy?.duration_seconds ?? 24);
+  return backdropAnimations[Math.floor(elapsedSeconds / durationSeconds) % backdropAnimations.length] ?? "kenburns";
+}
+
+function activeAnimationCommand(command?: Snapshot["controlCommand"]) {
+  if (!command || command.type !== "animation") return undefined;
+  const animations = command.animations?.length ? command.animations : command.animation ? [command.animation] : [];
+  if (!animations.length) return undefined;
+  const elapsedSeconds = Math.max(0, (Date.now() - command.startedAt) / 1000);
+  const durationSeconds = Math.max(1, command.animationDurationSeconds ?? 30);
+  const index = Math.min(animations.length - 1, Math.floor(elapsedSeconds / durationSeconds));
+  const animation = animations[index];
+  return animation ? { animation, index } : undefined;
 }
 
 function activeSoundCommandTone(command?: Snapshot["controlCommand"]) {
@@ -1502,7 +1526,11 @@ function ConnectionWarning({ snapshot }: { snapshot?: Snapshot }) {
 }
 
 function ControlCommandLabel({ command }: { command?: Snapshot["controlCommand"] }) {
-  if (!command || command.type !== "sound") return null;
+  if (!command || (command.type !== "sound" && command.type !== "animation")) return null;
+  if (command.type === "animation") {
+    const active = activeAnimationCommand(command);
+    return active ? <div className="mediawall-command-label">{active.animation.toLowerCase()}</div> : null;
+  }
   const activeTone = activeSoundCommandTone(command);
   if (!activeTone) return null;
   return <div className="mediawall-command-label">{activeTone.tone.toLowerCase()}</div>;
@@ -2071,7 +2099,7 @@ function sourceLabel(source: "jellyfin" | "navidrome" | "sounds" | "custom_image
   if (source === "jellyfin") return "Jellyfin";
   if (source === "navidrome") return "Navidrome";
   if (source === "sounds") return "Sounds";
-  return "Custom Images";
+  return "Custom Logo";
 }
 
 function mediaUrl(url: string | undefined) {

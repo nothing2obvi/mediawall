@@ -1,6 +1,6 @@
 :root {
   color: white;
-  background: #050508;
+  background: var(--fallback-background, #565954);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -71,18 +71,72 @@ body.idle {
   transform: scale(1);
 }
 
-.motion-enabled .backdrop.active .backdrop-image,
-.motion-enabled .backdrop.base .backdrop-image {
-  animation: breathing-zoom var(--motion-duration, 24s) ease-in-out infinite alternate;
+.animation-enabled .backdrop.active .backdrop-image,
+.animation-enabled .backdrop.base .backdrop-image {
+  animation-duration: var(--animation-duration, 24s);
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
 }
 
-@keyframes breathing-zoom {
-  from {
-    transform: scale(1);
-  }
-  to {
-    transform: scale(var(--motion-scale, 1.08));
-  }
+.animation-breathe .backdrop.active .backdrop-image,
+.animation-breathe .backdrop.base .backdrop-image {
+  animation-name: backdrop-breathe;
+}
+
+.animation-pan .backdrop.active .backdrop-image,
+.animation-pan .backdrop.base .backdrop-image {
+  animation-name: backdrop-pan;
+}
+
+.animation-kenburns .backdrop.active .backdrop-image,
+.animation-kenburns .backdrop.base .backdrop-image {
+  animation-name: backdrop-kenburns;
+}
+
+.animation-drift .backdrop.active .backdrop-image,
+.animation-drift .backdrop.base .backdrop-image {
+  animation-name: backdrop-drift;
+}
+
+.animation-focus .backdrop.active .backdrop-image,
+.animation-focus .backdrop.base .backdrop-image {
+  animation-name: backdrop-focus;
+}
+
+.animation-zoom .backdrop.active .backdrop-image,
+.animation-zoom .backdrop.base .backdrop-image {
+  animation-name: backdrop-zoom;
+}
+
+@keyframes backdrop-breathe {
+  from { transform: scale(1.02); }
+  to { transform: scale(var(--animation-scale, 1.08)); }
+}
+
+@keyframes backdrop-pan {
+  from { transform: scale(1.12) translateX(-2.8%); }
+  to { transform: scale(1.12) translateX(2.8%); }
+}
+
+@keyframes backdrop-kenburns {
+  from { transform: scale(1.04) translate(-1.8%, -0.8%); }
+  to { transform: scale(1.12) translate(2.2%, 1.2%); }
+}
+
+@keyframes backdrop-drift {
+  from { transform: scale(1.12) translate(-2.2%, 1.4%); }
+  to { transform: scale(1.12) translate(2.4%, -1.8%); }
+}
+
+@keyframes backdrop-focus {
+  from { transform: scale(1.055) translate(-0.8%, -0.5%); }
+  to { transform: scale(1.085) translate(0.8%, 0.6%); }
+}
+
+@keyframes backdrop-zoom {
+  from { transform: scale(1.02); }
+  to { transform: scale(1.12); }
 }
 
 .mediawall-idle {
@@ -92,11 +146,11 @@ body.idle {
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: #686b66;
+  background: var(--fallback-background, #565954);
 }
 
 .mediawall-idle img {
-  width: min(54vw, 760px);
+  width: clamp(var(--fallback-logo-min, 260px), 54vw, var(--fallback-logo-max, 760px));
   max-height: 34vh;
   object-fit: contain;
   filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.18));
@@ -134,11 +188,6 @@ body.idle {
   filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.18));
 }
 
-.mediawall-idle-dvd.dvd-colors-enabled img {
-  filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.18)) hue-rotate(var(--dvd-hue, 0deg)) saturate(var(--dvd-saturation, 1));
-  transition: filter 260ms ease;
-}
-
 .mediawall-command-label {
   position: absolute;
   right: max(24px, env(safe-area-inset-right));
@@ -155,7 +204,7 @@ body.idle {
 .mediawall-idle-spotlight .mediawall-idle-spotlight {
   position: absolute;
   inset: -20%;
-  background: radial-gradient(circle at 35% 45%, rgba(255, 255, 255, 0.38), transparent 28%);
+  background: radial-gradient(circle at 35% 45%, rgba(255, 255, 255, 0.22), transparent 28%);
   animation: idle-spotlight 16s ease-in-out infinite alternate;
 }
 

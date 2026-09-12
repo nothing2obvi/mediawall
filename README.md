@@ -1,7 +1,7 @@
 <img src="src/logos/banner.png" alt="MediaWall" width="100%">
 
 <p align="center">
-  <a href="https://ko-fi.com/yeahnoforsure_">
+  <a href="https://ko-fi.com/yeahnoforsure_" target="_blank" rel="noopener noreferrer">
     <img src="src/logos/ko-fi.png" alt="Support me on Ko-fi" width="360">
   </a>
 </p>
@@ -12,11 +12,13 @@
 
 # MediaWall
 
-Current version: `v0.1`
+## ⚠️ Disclaimers
 
-⚠️ MediaWall is under active development. There may be breaking changes, which will be highlighted in every release.
+MediaWall is under active development. There may be breaking changes, which will be highlighted in every release.
 
-Like [Pixelfin](https://github.com/nothing2obvi/pixelfin), this project is vibecoded with Codex. It is built with security in mind, but because it is a vibecoded self-hosted app, I cannot promise it is hardened for hostile public exposure. Prioritize running it locally or behind access controls you trust.
+Like [Pixelfin](https://github.com/nothing2obvi/pixelfin), this project is vibecoded with Codex. It is built with security in mind, but because it is a vibecoded self-hosted app, I can't promise it is hardened for hostile public exposure. Prioritize running it locally or behind access controls you trust.
+
+## Intro
 
 In line with my ongoing obsession with the images and artwork in Jellyfin, as seen through my other project, [Pixelfin](https://github.com/nothing2obvi/pixelfin), I wanted to combine my appreciation for the Jellyfin Android TV screensaver with the fact that I also like being able to glance over and see what people are currently watching or listening to on my Jellyfin and Navidrome servers.
 
@@ -24,7 +26,7 @@ Then I realized I had an old iPad laying around doing absolutely nothing. I want
 
 MediaWall is a display app for Jellyfin and Navidrome built around three main features, and it's meant to work well on things like an old iPad, a Raspberry Pi connected to a monitor, or really any device with a browser.
 
-The first, and most prominent, is Now Playing. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers, along with artwork, user information, media details, and optional sound notifications when sessions start or end.
+The first, and most prominent, is Now Playing. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers, along with artwork, user information, media details, and optional sound notifications when sessions start or end. When nothing's playing in Now Playing mode, you can choose to show shuffled artwork, use the MediaWall fallback with the bundled logo, or use the fallback mode with your own custom logo made for your server.
 
 The sound system is customizable too. You can use one global sound, assign custom sounds to individual users, and control when sounds should or shouldn't play. This is especially useful with Navidrome or Jellyfin music libraries, where you probably don't want a notification every time the next song starts.
 
@@ -36,19 +38,31 @@ So depending on how you use it, MediaWall can be a live window into your Jellyfi
 
 ## Use Cases
 
-Here are three examples of how MediaWall can be used.
+### See What Everyone Is Watching Or Listening To
 
-### Now Playing Showcase: "What Are We Listening To?"
+Put MediaWall on an iPad, tablet, TV, or Raspberry Pi display in a shared room and use it as a live window into your media server.
 
-Use the `livingroom` space on a TV or tablet in a shared room. Set `playback_source: both`, map the space to one or more MediaWall users, and enable `nowplaying_text.show_user_avatar`, `nowplaying_text.show_jellyfin_username`, and/or `nowplaying_text.show_navidrome_username`. When someone asks what is playing, the display shows the latest active Jellyfin or Navidrome session with backdrop art, logo, source icon, and optional user identity.
+If someone is watching something on Jellyfin or listening to music through Navidrome, MediaWall can automatically show the latest active session with backdrop artwork, logos, playback information, source icons, and, if you want, the name or avatar of the person using it.
 
-### Now Playing Showcase For A Homelab
+So instead of asking, "What are we listening to?" or checking Jellyfin manually, you can just glance at the display.
 
-Use the `homelab` space with a MediaWall user whose `jellyfin_user` is `All`. This makes the display act like a household playback dashboard: newest active session wins, and concurrent active sessions cycle using `now_playing.cycle_interval_seconds`.
+### Turn It Into A Homelab Playback Dashboard
 
-### Office Favorites Screensaver
+If you run Jellyfin for multiple people, MediaWall can also act as a simple visual dashboard for your server. Set it to watch all Jellyfin users, and the display will automatically show all active sessions.
 
-Use the `office` space for ambient artwork. Open the grid, select a library, favorite specific backdrops, then use the Favorites selection option. With `display.screensaver_text.enabled: true`, the display can show a subtle "Featured on MediaWall" label while it rotates through favorite artwork. If the slideshow is paused, the label hides so the screen works as a clean static wallpaper.
+It's an easy way to make activity on your server feel a little more visible and alive without opening an admin dashboard or staring at a list of sessions.
+
+### Use It As An Artwork Display
+
+MediaWall doesn't have to show playback activity at all.
+
+You can put it on a desk, shelf, wall-mounted tablet, or Raspberry Pi-connected display and use it as a rotating screensaver for the artwork in your Jellyfin library. I know that many of you have terabytes of media, but it's all just data. MediaWall allows its viewers to passively browse your libraries.
+
+If you don't want it pulling from everything, open the grid and favorite the artwork you actually want to see. MediaWall can then rotate through only those favorites, essentially turning your media collection into a curated digital art display.
+
+And if one image looks especially good, just pause the slideshow and leave it there as a clean static wallpaper.
+
+That's really the idea behind MediaWall: it can be a Now Playing display, a homelab dashboard, a screensaver, a wallpaper, or some combination of all of them depending on where you put it.
 
 ## Screenshots
 
@@ -95,7 +109,7 @@ services:
       - ./config.yml:/app/config.yml:ro
       - ./data:/app/data
       - ./sounds:/app/sounds:ro
-      - ./custom:/app/custom:ro
+      - ./custom_logo:/app/custom_logo:ro
 ```
 
 Then:
@@ -123,7 +137,7 @@ If a space has a password, pass it in the URL:
 http://localhost:1221/livingroom?password=your-password
 ```
 
-Interactive state is stored in `data/state.json`. Image cache data is stored under the configured `library_scan.directory`, which defaults to `/app/data/grid-cache` inside the container.
+Interactive state is stored in `data/state.json`. Image cache data is stored under the configured library scan directory, which defaults to `/app/data/grid-cache` inside the container.
 
 ## Display Setup
 
@@ -147,16 +161,18 @@ Use the URL for the space you want to display. If the MediaWall container is run
 
 ## Docker Commands
 
-Once the container is running, you can test sounds and MediaWall fallback animations from inside the container:
+Once the container is running, you can test sounds, MediaWall fallback animations, and backdrop animations from inside the container:
 
 ```sh
 docker exec mediawall npm run mediawall -- play sound noted.mp3 on livingroom
 docker exec mediawall npm run mediawall -- play sounds All on livingroom
 docker exec mediawall npm run mediawall -- play mediawall dvd on livingroom
 docker exec mediawall npm run mediawall -- play screensaver All on livingroom
+docker exec mediawall npm run mediawall -- animation pan on livingroom
+docker exec mediawall npm run mediawall -- animation all --random on livingroom
 ```
 
-The MediaWall fallback test displays the selected animation for 30 seconds. `All` previews each configured MediaWall fallback animation for 30 seconds each and labels the current one in the bottom-right corner. `play sounds All` plays each available sound with two seconds between sounds and labels the current sound in the bottom-right corner. The command reads `config.yml`, so it can target password-protected spaces without putting the password in the command.
+The MediaWall fallback test displays the selected fallback for 30 seconds. `All` previews each configured MediaWall fallback animation for 30 seconds each and labels the current one in the bottom-right corner. Animation previews use the current backdrop by default; add `--random` to pick a random backdrop for the preview. `play sounds All` plays each available sound with two seconds between sounds and labels the current sound in the bottom-right corner. The command reads `config.yml`, so it can target password-protected spaces without putting the password in the command.
 
 ## Configuration
 
@@ -238,12 +254,3 @@ Run locally:
 ```sh
 npm run dev
 ```
-
-## Repository And Test Split
-
-The intended workflow is:
-
-- `mediawall`: sanitized source suitable for publishing.
-- `mediawall-test`: personal test-running copy with private `.env`, personalized `config.yml`, cache, and state.
-
-Code changes should be made in `mediawall`, synced to `mediawall-test`, and the running container should be built from `mediawall-test`.

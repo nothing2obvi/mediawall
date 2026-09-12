@@ -7,7 +7,7 @@ import { loadConfig, findDisplay } from "./config.js";
 import { JellyfinClient, fallbackArtwork } from "./jellyfin.js";
 import { NavidromeClient } from "./navidrome.js";
 import { StateStore } from "./state.js";
-import type { ArtworkRef, DisplayConfig, DisplaySnapshot, NowPlayingState, PublicConnectionIssue, PublicControlCommand, PublicLibraryScanProgress, PublicNowPlayingState, PublicSoundSession } from "./types.js";
+import type { ArtworkRef, BackdropAnimation, DisplayConfig, DisplaySnapshot, NowPlayingState, PublicConnectionIssue, PublicControlCommand, PublicLibraryScanProgress, PublicNowPlayingState, PublicSoundSession } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../public");
@@ -21,6 +21,8 @@ const favoritesShuffleLibrary = "Favorites";
 const PAUSED_SESSION_GRACE_MS = 60_000;
 const mediaWallFallbackModes = ["centered", "breathing", "float", "spotlight", "dvd", "minimal"] as const;
 const mediaWallFallbackModeOptions = [...mediaWallFallbackModes, "All"] as const;
+const backdropAnimations = ["breathe", "pan", "kenburns", "drift", "focus", "zoom"] as const;
+const backdropAnimationOptions = [...backdropAnimations, "All"] as const;
 type RecentPlaybackRecord = {
   firstSeenAt: number;
   seenAt: number;
@@ -201,14 +203,14 @@ app.get("/api/space/:space/custom-logo", (req, res) => {
   res.sendFile(imagePath);
 });
 
-app.post("/api/space/:space/command", (req, res) => {
+app.post("/api/space/:space/command", async (req, res) => {
   const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
   if (!resolved) return;
   if (!isLocalRequest(req)) {
     res.status(403).json({ error: "Display commands are only available from the local container or host." });
     return;
   }
-  const command = controlCommandFromRequest(req.body, resolved.displayConfig);
+  const command = await controlCommandFromRequest(req.body, resolved.displayConfig);
   if (!command.ok) {
     res.status(400).json({ error: command.error });
     return;
@@ -733,8 +735,8 @@ function resolveCustomLogoPath(displayConfig: DisplayConfig) {
 }
 
 function resolveCustomLogoDirectory(displayConfig: DisplayConfig) {
-  const configured = displayConfig.now_playing.custom_logo.directory || "/app/custom";
-  if (configured === "/app/custom") return path.resolve(appRoot, "app/custom");
+  const configured = displayConfig.now_playing.custom_logo.directory || "/app/custom_logo";
+  if (configured === "/app/custom_logo") return path.resolve(appRoot, "app/custom_logo");
   return path.resolve(configured);
 }
 
@@ -1176,14 +1178,15 @@ function safeProxyQuery(req: express.Request) {
   return query ? `?${query}` : "";
 }
 
-function controlCommandFromRequest(body: unknown, displayConfig: DisplayConfig):
+async function controlCommandFromRequest(body: unknown, displayConfig: DisplayConfig): Promise<
   | { ok: true; command: PublicControlCommand }
-  | { ok: false; error: string } {
-  const input = body && typeof body === "object" ? body as { type?: unknown; name?: unknown; durationSeconds?: unknown } : {};
-  const type = input.type === "mediawall" ? "mediawall" : input.type === "sound" ? "sound" : undefined;
+  | { ok: false; error: string }
+> {
+  const input = body && typeof body === "object" ? body as { type?: unknown; name?: unknown; durationSeconds?: unknown; randomBackdrop?: unknown } : {};
+  const type = input.type === "mediawall" ? "mediawall" : input.type === "sound" ? "sound" : input.type === "animation" ? "animation" : undefined;
   const name = typeof input.name === "string" ? input.name.trim() : "";
   if (!type || !name) return { ok: false, error: "Command must include type and name." };
-  const rawDuration = Number(input.durationSeconds ?? (type === "mediawall" ? 30 : 15));
+  const rawDuration = Number(input.durationSeconds ?? (type === "sound" ? 15 : 30));
   const durationSeconds = Math.max(1, Math.min(300, Number.isFinite(rawDuration) ? rawDuration : 30));
   const startedAt = Date.now();
   const expiresAt = Date.now() + durationSeconds * 1000;
@@ -1207,6 +1210,40 @@ function controlCommandFromRequest(body: unknown, displayConfig: DisplayConfig):
     }
     if (!resolveSoundPath(displayConfig, name)) return { ok: false, error: `Unknown sound "${name}".` };
     return { ok: true, command: { id: crypto.randomUUID(), type, name, startedAt, expiresAt } };
+  }
+  if (type === "animation") {
+    const animationOption = backdropAnimationOptions.find((candidate) => candidate.toLowerCase() === name.toLowerCase());
+    if (!animationOption) return { ok: false, error: `Unknown animation "${name}".` };
+    const artwork = input.randomBackdrop ? await jellyfin.randomArtwork(displayConfig).catch(() => undefined) : undefined;
+    if (animationOption === "All") {
+      const animations = [...backdropAnimations] as BackdropAnimation[];
+      return {
+        ok: true,
+        command: {
+          id: crypto.randomUUID(),
+          type,
+          name: "All",
+          startedAt,
+          animation: animations[0],
+          animations,
+          animationDurationSeconds: durationSeconds,
+          artwork,
+          expiresAt: startedAt + animations.length * durationSeconds * 1000
+        }
+      };
+    }
+    return {
+      ok: true,
+      command: {
+        id: crypto.randomUUID(),
+        type,
+        name: animationOption,
+        startedAt,
+        animation: animationOption,
+        artwork,
+        expiresAt
+      }
+    };
   }
   const modeOption = mediaWallFallbackModeOptions.find((candidate) => candidate.toLowerCase() === name.toLowerCase());
   if (!modeOption) return { ok: false, error: `Unknown MediaWall fallback mode "${name}".` };
@@ -1542,7 +1579,7 @@ async function runGridCacheScan(port: number, reason: string) {
 }
 
 async function runLocalAssetScan(space: string, displayConfig: DisplayConfig, source: "sounds" | "custom_images") {
-  const label = source === "sounds" ? "Sounds" : "Custom Images";
+  const label = source === "sounds" ? "Sounds" : "Custom Logo";
   console.log(`Library scan: /${space} source=${source} starting`);
   setLibraryScanProgress(space, {
     active: true,

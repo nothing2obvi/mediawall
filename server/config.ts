@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 import { z } from "zod";
-import type { AppConfig, DisplayConfig, MediaWallUser, TransitionStyle } from "./types.js";
+import type { AppConfig, BackdropAnimation, DisplayConfig, MediaWallUser, TransitionStyle } from "./types.js";
 
 const transitionStyles = [
   "crossfade",
@@ -22,6 +22,7 @@ const transitionStyles = [
 
 const mediaWallFallbackModes = ["centered", "breathing", "float", "spotlight", "dvd", "minimal"] as const;
 const mediaWallFallbackModeOptions = [...mediaWallFallbackModes, "All"] as const;
+const backdropAnimations = ["breathe", "pan", "kenburns", "drift", "focus", "zoom"] as const;
 
 loadDotEnv();
 
@@ -61,11 +62,13 @@ const spaceSchema = z.object({
     mediawall_fallback: z.object({
       mode: z.enum(mediaWallFallbackModes).default("dvd"),
       modes: z.array(z.enum(mediaWallFallbackModeOptions)).default(["All"]),
-      color_changes: z.boolean().default(false)
-    }).default({ mode: "dvd", modes: ["All"], color_changes: false }),
+      background_color: z.string().default("#565954"),
+      min_logo_width: z.number().default(260),
+      max_logo_width: z.number().default(760)
+    }).default({ mode: "dvd", modes: ["All"], background_color: "#565954", min_logo_width: 260, max_logo_width: 760 }),
     custom_logo: z.object({
-      directory: z.string().default("/app/custom")
-    }).default({ directory: "/app/custom" }),
+      directory: z.string().default("/app/custom_logo")
+    }).default({ directory: "/app/custom_logo" }),
     multiple_backdrops: z.object({
       enabled: z.boolean().default(true),
       interval_seconds: z.number().min(1).default(10)
@@ -115,8 +118,8 @@ const spaceSchema = z.object({
     cycle_interval_seconds: 15,
     session_timer: { enabled: true, size: 42 },
     session_count: { enabled: true, font_size: 13 },
-    mediawall_fallback: { mode: "dvd", modes: ["All"], color_changes: false },
-    custom_logo: { directory: "/app/custom" },
+    mediawall_fallback: { mode: "dvd", modes: ["All"], background_color: "#565954", min_logo_width: 260, max_logo_width: 760 },
+    custom_logo: { directory: "/app/custom_logo" },
     multiple_backdrops: { enabled: true, interval_seconds: 10 },
     sounds: {
       enabled: true,
@@ -151,11 +154,17 @@ const spaceSchema = z.object({
         z.enum(["numbered", "shuffle"]).default("numbered")
       )
     }).default({ mode: "single_backdrop", single_backdrop: "random", cycle_order: "numbered" }),
+    animations: z.object({
+      enabled: z.boolean().default(true),
+      style: z.enum([...backdropAnimations, "All"]).default("kenburns"),
+      scale: z.number().default(1.08),
+      duration_seconds: z.number().default(24)
+    }).default({ enabled: true, style: "kenburns", scale: 1.08, duration_seconds: 24 }),
     backdrop_motion: z.object({
       enabled: z.boolean().default(true),
       scale: z.number().default(1.08),
       duration_seconds: z.number().default(24)
-    }).default({ enabled: true, scale: 1.08, duration_seconds: 24 }),
+    }).optional(),
     logo: z.object({
       max_width: z.number().default(520)
     }).default({ max_width: 520 }),
@@ -247,8 +256,15 @@ const spaceSchema = z.object({
     })
   }).transform((display) => {
     const cycleInterval = display.cycle_interval_seconds ?? display.screensaver_interval ?? 15;
+    const animations = display.animations ?? {
+      enabled: display.backdrop_motion?.enabled ?? true,
+      style: "kenburns" as BackdropAnimation,
+      scale: display.backdrop_motion?.scale ?? 1.08,
+      duration_seconds: display.backdrop_motion?.duration_seconds ?? 24
+    };
     return {
       ...display,
+      animations,
       cycle_interval_seconds: cycleInterval,
       screensaver_interval: cycleInterval
     };
@@ -259,7 +275,7 @@ const spaceSchema = z.object({
     screensaver_interval: 15,
     require_logos: true,
     multiple_backdrops: { mode: "single_backdrop", single_backdrop: "random", cycle_order: "numbered" },
-    backdrop_motion: { enabled: true, scale: 1.08, duration_seconds: 24 },
+    animations: { enabled: true, style: "kenburns", scale: 1.08, duration_seconds: 24 },
     logo: { max_width: 520 },
     album_art: { size: 200 },
     fallback_title: { font_size: 86 },

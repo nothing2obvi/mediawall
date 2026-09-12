@@ -33,7 +33,9 @@ export interface DisplayConfig {
     mediawall_fallback: {
       mode: "centered" | "breathing" | "float" | "spotlight" | "dvd" | "minimal";
       modes: Array<"centered" | "breathing" | "float" | "spotlight" | "dvd" | "minimal" | "All">;
-      color_changes: boolean;
+      background_color: string;
+      min_logo_width: number;
+      max_logo_width: number;
     };
     custom_logo: {
       directory: string;
@@ -81,7 +83,13 @@ export interface DisplayConfig {
       single_backdrop: "first" | "numbered" | "random";
       cycle_order: "numbered" | "shuffle";
     };
-    backdrop_motion: {
+    animations: {
+      enabled: boolean;
+      style: BackdropAnimation | "All";
+      scale: number;
+      duration_seconds: number;
+    };
+    backdrop_motion?: {
       enabled: boolean;
       scale: number;
       duration_seconds: number;
@@ -148,6 +156,14 @@ export type TransitionStyle =
   | "blur_fade"
   | "wipe_left"
   | "wipe_right";
+
+export type BackdropAnimation =
+  | "breathe"
+  | "pan"
+  | "kenburns"
+  | "drift"
+  | "focus"
+  | "zoom";
 
 export interface AppConfig {
   server: {
@@ -291,12 +307,16 @@ export interface PublicConnectionIssue {
 
 export interface PublicControlCommand {
   id: string;
-  type: "sound" | "mediawall";
+  type: "sound" | "mediawall" | "animation";
   name: string;
   startedAt: number;
   mode?: DisplayConfig["now_playing"]["mediawall_fallback"]["mode"];
   modes?: Array<DisplayConfig["now_playing"]["mediawall_fallback"]["mode"]>;
   modeDurationSeconds?: number;
+  animation?: BackdropAnimation;
+  animations?: BackdropAnimation[];
+  animationDurationSeconds?: number;
+  artwork?: ArtworkRef;
   tones?: string[];
   toneDurationSeconds?: number;
   expiresAt: number;
