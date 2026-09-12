@@ -81,6 +81,7 @@ export interface DisplayConfig {
     cycle_interval_seconds: number;
     screensaver_interval: number;
     require_logos: boolean;
+    backdrop_background_color: string;
     multiple_backdrops: {
       mode: "single_backdrop" | "cycle";
       single_backdrop: "first" | "numbered" | "random";

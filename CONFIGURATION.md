@@ -89,7 +89,7 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `session_count.enabled` | Shows `1 of 4` session count. | `true` | No | Independent from the timer ring. |
 | `session_count.font_size` | Session count font size. | `13` | No | Pixels. |
 | `mediawall_fallback.modes` | Ordered list of MediaWall banner fallback animations used across separate no-session rounds. | `["dvd"]` | No | Options: `centered`, `breathing`, `float`, `spotlight`, `dvd`, `minimal`, `All`. Use `All` to include every mode. If you list specific modes, the next no-session period advances to the next mode in that written order. |
-| `mediawall_fallback.background_color` | Background color used behind fallback screens and Now Playing items with no backdrop. | `#565954` | No | Use a hex color such as `#4f524d`. |
+| `mediawall_fallback.background_color` | Background color used behind the intentional MediaWall/logo fallback screen. | `#565954` | No | Use a hex color such as `#4f524d`. |
 | `mediawall_fallback.min_logo_width` | Minimum logo width for fallback modes where the logo size can change. | `260` | No | Pixels. |
 | `mediawall_fallback.max_logo_width` | Maximum logo width for fallback modes where the logo size can change. | `760` | No | Pixels. |
 | `custom_logo.directory` | Directory checked for a custom fallback logo. | `/app/custom_logo` | No | Put one `.png` or `.svg` file here; MediaWall uses the first matching file alphabetically. |
@@ -135,6 +135,7 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 | `cycle_interval_seconds` | Wallpaper/Screensaver cycle interval. | `15` | No | When shuffle is off, items go library-by-library and alphabetically. |
 | `screensaver_interval` | Legacy alias for cycle interval. | `15` | No | Prefer `cycle_interval_seconds`. |
 | `require_logos` | Requires logos for display/grid eligibility. | `true` | No | Navidrome-only items need local logo files. |
+| `backdrop_background_color` | Background color behind normal media display when no usable backdrop is available or a backdrop cannot load. | `#050508` | No | Separate from `mediawall_fallback.background_color`, which only controls the intentional MediaWall/logo fallback screen. |
 | `multiple_backdrops.mode` | Multiple-backdrop behavior. | `single_backdrop` | No | Options: `single_backdrop`, `cycle`. |
 | `multiple_backdrops.single_backdrop` | Single-backdrop selection mode. | `random` | No | Options: `first`, `numbered`, `random`. |
 | `multiple_backdrops.cycle_order` | Multiple-backdrop cycle order. | `numbered` | No | Options: `numbered`, `shuffle`. |

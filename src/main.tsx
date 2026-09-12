@@ -199,6 +199,7 @@ type Snapshot = {
       cycle_interval_seconds: number;
       screensaver_interval: number;
       require_logos: boolean;
+      backdrop_background_color: string;
       logo: { max_width: number };
       album_art: { size: number };
       fallback_title: { font_size: number };
@@ -1162,6 +1163,7 @@ function App() {
         "--transition-duration": `${snapshot?.config.display.transitions.duration_ms ?? 1200}ms`,
         "--viewport-width": `${viewportSize.width}px`,
         "--viewport-height": `${viewportSize.height}px`,
+        "--backdrop-background": snapshot?.config.display.backdrop_background_color ?? "#050508",
         "--animation-scale": String(snapshot?.config.display.animations?.scale ?? snapshot?.config.display.backdrop_motion?.scale ?? 1.08),
         "--animation-duration": `${animationDurationSeconds}s`,
         "--animation-delay": nowPlayingAnimationKey ? `-${animationOffsetSeconds}s` : "0s",

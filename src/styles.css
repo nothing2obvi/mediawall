@@ -52,7 +52,7 @@ body.idle {
   min-height: var(--viewport-height, 100dvh);
   min-height: -webkit-fill-available;
   overflow: hidden;
-  background: #050508;
+  background: var(--backdrop-background, #050508);
   isolation: isolate;
 }
 

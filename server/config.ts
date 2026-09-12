@@ -152,6 +152,7 @@ const spaceSchema = z.object({
     cycle_interval_seconds: z.number().optional(),
     screensaver_interval: z.number().optional(),
     require_logos: z.boolean().default(true),
+    backdrop_background_color: z.string().default("#050508"),
     multiple_backdrops: z.object({
       mode: z.enum(["single_backdrop", "cycle"]).default("single_backdrop"),
       single_backdrop: z.preprocess(
@@ -167,12 +168,12 @@ const spaceSchema = z.object({
       enabled: z.boolean().default(true),
       style: z.enum([...backdropAnimations, "All"]).default("kenburns"),
       scale: z.number().default(1.08),
-      duration_seconds: z.number().default(24)
-    }).default({ enabled: true, style: "kenburns", scale: 1.08, duration_seconds: 24 }),
+      duration_seconds: z.number().default(26)
+    }).default({ enabled: true, style: "kenburns", scale: 1.08, duration_seconds: 26 }),
     backdrop_motion: z.object({
       enabled: z.boolean().default(true),
       scale: z.number().default(1.08),
-      duration_seconds: z.number().default(24)
+      duration_seconds: z.number().default(26)
     }).optional(),
     logo: z.object({
       max_width: z.number().default(520)
@@ -269,7 +270,7 @@ const spaceSchema = z.object({
       enabled: display.backdrop_motion?.enabled ?? true,
       style: "kenburns" as BackdropAnimation,
       scale: display.backdrop_motion?.scale ?? 1.08,
-      duration_seconds: display.backdrop_motion?.duration_seconds ?? 24
+      duration_seconds: display.backdrop_motion?.duration_seconds ?? 26
     };
     return {
       ...display,
@@ -283,8 +284,9 @@ const spaceSchema = z.object({
     cycle_interval_seconds: 15,
     screensaver_interval: 15,
     require_logos: true,
+    backdrop_background_color: "#050508",
     multiple_backdrops: { mode: "single_backdrop", single_backdrop: "random", cycle_order: "numbered" },
-    animations: { enabled: true, style: "kenburns", scale: 1.08, duration_seconds: 24 },
+    animations: { enabled: true, style: "kenburns", scale: 1.08, duration_seconds: 26 },
     logo: { max_width: 520 },
     album_art: { size: 200 },
     fallback_title: { font_size: 86 },

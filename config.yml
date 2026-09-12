@@ -102,6 +102,7 @@ spaces:
       music_artist_images: albumartists
       cycle_interval_seconds: 15
       require_logos: true
+      backdrop_background_color: "#050508"
       multiple_backdrops:
         mode: single_backdrop
         single_backdrop: random
@@ -212,6 +213,7 @@ spaces:
       music_artist_images: albumartists
       cycle_interval_seconds: 15
       require_logos: true
+      backdrop_background_color: "#050508"
       multiple_backdrops:
         mode: single_backdrop
         single_backdrop: random
@@ -323,6 +325,7 @@ spaces:
       music_artist_images: albumartists
       cycle_interval_seconds: 15
       require_logos: true
+      backdrop_background_color: "#050508"
       multiple_backdrops:
         mode: single_backdrop
         single_backdrop: random
