@@ -411,11 +411,11 @@ Controls which playback sources are watched for Now Playing.
 
 `spaces.<name>.users`
 
-Default: `["All"]`
+Default: `[]`
 
 MediaWall users allowed in this space.
 
-Use configured MediaWall user names, or use `All` to allow every configured MediaWall user in that space. If omitted, MediaWall uses all configured users.
+Use configured MediaWall user names, or use `All` to allow every configured MediaWall user in that space. If omitted, MediaWall falls back to `playback_user` or the first configured user.
 
 `spaces.<name>.password`
 

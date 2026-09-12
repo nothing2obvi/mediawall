@@ -385,7 +385,7 @@ function normalizeUsers(input: Record<string, z.infer<typeof mediaWallUserSchema
 function normalizeSpaces(input: Record<string, z.infer<typeof spaceSchema>>, users: Record<string, MediaWallUser>) {
   const spaces: Record<string, DisplayConfig> = {};
   for (const [spaceName, raw] of Object.entries(input)) {
-    const userNames = raw.users.length ? raw.users : ["All"];
+    const userNames = raw.users.length ? raw.users : (raw.playback_user ? [raw.playback_user] : Object.keys(users).slice(0, 1));
     const useAllUsers = userNames.some((name) => name.toLowerCase() === "all");
     const sourceUsers = useAllUsers ? Object.keys(users) : userNames;
     const resolvedUsers = sourceUsers.map((name) => users[name] ?? {

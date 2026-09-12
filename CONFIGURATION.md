@@ -68,7 +68,7 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | Entry | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `playback_source` | Sources watched for Now Playing. | `both` | No | Options: `jellyfin`, `navidrome`, `both`. |
-| `users` | MediaWall users allowed in this space. | `["All"]` | No | Use configured MediaWall user names. Use `All` to allow every configured MediaWall user. If omitted, MediaWall uses all configured users. |
+| `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use configured MediaWall user names. Use `All` to allow every configured MediaWall user. If omitted, MediaWall falls back to `playback_user` or the first configured user. |
 | `playback_user` | Legacy single-user selector. | unset | No | Prefer `users`. |
 | `password` | Optional URL password. | unset | No | If omitted or `""`, no `?password=` is required. |
 | `libraries` | Libraries shown in grid, selection, shuffle, and Wallpaper/Screensaver. | `[]` | Recommended | Use Jellyfin library names; `All` allows all Jellyfin libraries. |
