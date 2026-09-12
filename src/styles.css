@@ -51,7 +51,7 @@ body.idle {
 
 .backdrop-image {
   position: absolute;
-  inset: -4%;
+  inset: -16%;
   background-position: center;
   background-size: cover;
   transform: scale(1);
@@ -110,32 +110,32 @@ body.idle {
 }
 
 @keyframes backdrop-breathe {
-  from { transform: scale(1.02); }
+  from { transform: scale(1.01); }
   to { transform: scale(var(--animation-scale, 1.08)); }
 }
 
 @keyframes backdrop-pan {
-  from { transform: scale(1.12) translateX(-2.8%); }
-  to { transform: scale(1.12) translateX(2.8%); }
+  from { transform: scale(1.08) translateX(-3.2%); }
+  to { transform: scale(1.08) translateX(3.2%); }
 }
 
 @keyframes backdrop-kenburns {
-  from { transform: scale(1.04) translate(-1.8%, -0.8%); }
-  to { transform: scale(1.12) translate(2.2%, 1.2%); }
+  from { transform: scale(1.06) translate(-2.4%, -1.1%); }
+  to { transform: scale(1.12) translate(2.6%, 1.4%); }
 }
 
 @keyframes backdrop-drift {
-  from { transform: scale(1.12) translate(-2.2%, 1.4%); }
-  to { transform: scale(1.12) translate(2.4%, -1.8%); }
+  from { transform: scale(1.1) translate(-2.4%, 1.6%); }
+  to { transform: scale(1.1) translate(2.6%, -1.9%); }
 }
 
 @keyframes backdrop-focus {
-  from { transform: scale(1.055) translate(-0.8%, -0.5%); }
-  to { transform: scale(1.085) translate(0.8%, 0.6%); }
+  from { transform: scale(1.04) translate(-0.8%, -0.5%); }
+  to { transform: scale(1.07) translate(0.8%, 0.6%); }
 }
 
 @keyframes backdrop-zoom {
-  from { transform: scale(1.02); }
+  from { transform: scale(1.03); }
   to { transform: scale(1.12); }
 }
 
