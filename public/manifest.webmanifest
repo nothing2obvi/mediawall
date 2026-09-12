@@ -1,0 +1,16 @@
+{
+  "name": "MediaWall",
+  "short_name": "MediaWall",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#050508",
+  "theme_color": "#050508",
+  "icons": [
+    {
+      "src": "/logos/logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

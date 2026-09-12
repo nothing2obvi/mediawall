@@ -1,0 +1,14 @@
+services:
+  mediawall:
+    build: .
+    container_name: mediawall
+    env_file:
+      - .env
+    ports:
+      - "0.0.0.0:1221:1221"
+    volumes:
+      - ./config.yml:/app/config.yml:ro
+      - ./data:/app/data
+      # Optional. Mount local music files when using Navidrome-only artist backdrop lookup.
+      # - /path/to/music:/navidrome_music:ro
+    restart: unless-stopped

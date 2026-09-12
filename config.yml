@@ -1,0 +1,359 @@
+server:
+  port: 1221
+
+library_scan:
+  enabled: true
+  directory: "/app/data/grid-cache"
+  ttl_days: 30
+  scan_on_startup: true
+  cron:
+    enabled: true
+    expression: "0 3 * * *"
+
+jellyfin:
+  url: "${JELLYFIN_URL}"
+  api_key: "${JELLYFIN_API_KEY}"
+
+navidrome:
+  enabled: false
+  url: "${NAVIDROME_URL}"
+  artwork:
+    jellyfin_fallback: true
+    local_files: false
+    order:
+      - jellyfin
+      - local
+    path_mappings:
+      - navidrome: "/music"
+        mediawall: "/navidrome_music"
+
+users:
+  primary:
+    jellyfin_user: "${JELLYFIN_USER}"
+    navidrome_user: "${NAVIDROME_USER}"
+    navidrome_password: "${NAVIDROME_PASSWORD}"
+  all:
+    jellyfin_user: "All"
+    navidrome_user: "All"
+    navidrome_password: "${NAVIDROME_PASSWORD}"
+
+spaces:
+  livingroom:
+    playback_source: both
+    users:
+      - All
+    password: "${LIVINGROOM_PASSWORD}"
+    libraries:
+      - Music
+      - Movies
+      - Shows
+    idle_timeout: 30
+    now_playing:
+      fallback: mediawall
+      ignored_libraries:
+        - "Feature Pre-Rolls"
+      fallback_shuffle_interval_seconds: 45
+      cycle_users: true
+      cycle_interval_seconds: 15
+      session_timer:
+        enabled: true
+        size: 42
+      session_count:
+        enabled: true
+        font_size: 13
+      mediawall_fallback:
+        mode: dvd
+        modes:
+          - All
+        color_changes: false
+      custom_logo:
+        directory: "/app/custom"
+      multiple_backdrops:
+        enabled: true
+        interval_seconds: 10
+      sounds:
+        enabled: true
+        jellyfin: true
+        navidrome: true
+        quiet_hours:
+          enabled: false
+          start: "23:00"
+          end: "08:00"
+        continuous_sessions:
+          navidrome: true
+          jellyfin_libraries:
+            - Music
+        session_start:
+          retrigger_after_inactive_seconds: 300
+        session_end:
+          enabled: false
+          tone: "close.mp3"
+        trigger: new_session
+        directory: "/app/sounds"
+        tone: "noted.mp3"
+        volume: 0.35
+    display:
+      ui:
+        scale: 1
+      music_artist_images: albumartists
+      cycle_interval_seconds: 15
+      require_logos: true
+      multiple_backdrops:
+        mode: single_backdrop
+        single_backdrop: random
+        cycle_order: numbered
+      backdrop_motion:
+        enabled: true
+        scale: 1.08
+        duration_seconds: 24
+      logo:
+        max_width: 520
+      album_art:
+        size: 200
+      fallback_title:
+        font_size: 86
+      nowplaying_text:
+        enabled: true
+        text: "Now playing on"
+        show_text: true
+        font_size: 16
+        show_source_icon: true
+        icon_size: 24
+        show_user_avatar: true
+        user_avatar_size: 24
+        user_avatar_resize:
+          enabled: true
+          size: 96
+        show_jellyfin_username: true
+        show_navidrome_username: true
+        user_font_size: 13
+      screensaver_text:
+        enabled: true
+        text: "Featured on MediaWall"
+        font_size: 16
+        icon_size: 24
+      media_info:
+        font_size: 40
+        release_year_font_size: 40
+        episode_info_font_size: 28
+        episode_title_font_size: 40
+        music_album_font_size: 24
+        music_song_title_font_size: 40
+      transitions:
+        duration_ms: 1200
+        order: written
+        styles:
+          - crossfade
+
+  office:
+    playback_source: both
+    users:
+      - All
+    password: ""
+    libraries:
+      - Music
+      - Movies
+    idle_timeout: 30
+    now_playing:
+      fallback: mediawall
+      ignored_libraries:
+        - "Feature Pre-Rolls"
+      fallback_shuffle_interval_seconds: 45
+      cycle_users: false
+      cycle_interval_seconds: 15
+      session_timer:
+        enabled: true
+        size: 42
+      session_count:
+        enabled: true
+        font_size: 13
+      mediawall_fallback:
+        mode: dvd
+        modes:
+          - All
+        color_changes: false
+      custom_logo:
+        directory: "/app/custom"
+      multiple_backdrops:
+        enabled: true
+        interval_seconds: 10
+      sounds:
+        enabled: true
+        jellyfin: true
+        navidrome: true
+        quiet_hours:
+          enabled: false
+          start: "23:00"
+          end: "08:00"
+        continuous_sessions:
+          navidrome: true
+          jellyfin_libraries:
+            - Music
+        session_start:
+          retrigger_after_inactive_seconds: 300
+        session_end:
+          enabled: false
+          tone: "close.mp3"
+        trigger: new_session
+        directory: "/app/sounds"
+        tone: "noted.mp3"
+        volume: 0.35
+    display:
+      ui:
+        scale: 1
+      music_artist_images: albumartists
+      cycle_interval_seconds: 15
+      require_logos: true
+      multiple_backdrops:
+        mode: single_backdrop
+        single_backdrop: random
+        cycle_order: numbered
+      backdrop_motion:
+        enabled: true
+        scale: 1.08
+        duration_seconds: 24
+      logo:
+        max_width: 520
+      album_art:
+        size: 200
+      fallback_title:
+        font_size: 86
+      nowplaying_text:
+        enabled: true
+        text: "Now playing on"
+        show_text: true
+        font_size: 16
+        show_source_icon: true
+        icon_size: 24
+        show_user_avatar: true
+        user_avatar_size: 24
+        user_avatar_resize:
+          enabled: true
+          size: 96
+        show_jellyfin_username: true
+        show_navidrome_username: true
+        user_font_size: 13
+      screensaver_text:
+        enabled: true
+        text: "Featured on MediaWall"
+        font_size: 16
+        icon_size: 24
+      media_info:
+        font_size: 40
+        release_year_font_size: 40
+        episode_info_font_size: 28
+        episode_title_font_size: 40
+        music_album_font_size: 24
+        music_song_title_font_size: 40
+      transitions:
+        duration_ms: 1200
+        order: written
+        styles:
+          - crossfade
+
+  homelab:
+    playback_source: both
+    users:
+      - All
+    password: "${HOMELAB_PASSWORD}"
+    libraries:
+      - Music
+      - Movies
+      - Shows
+    idle_timeout: 30
+    now_playing:
+      fallback: mediawall
+      ignored_libraries:
+        - "Feature Pre-Rolls"
+      fallback_shuffle_interval_seconds: 45
+      cycle_users: true
+      cycle_interval_seconds: 15
+      session_timer:
+        enabled: true
+        size: 42
+      session_count:
+        enabled: true
+        font_size: 13
+      mediawall_fallback:
+        mode: dvd
+        modes:
+          - All
+        color_changes: false
+      custom_logo:
+        directory: "/app/custom"
+      multiple_backdrops:
+        enabled: true
+        interval_seconds: 10
+      sounds:
+        enabled: true
+        jellyfin: true
+        navidrome: true
+        quiet_hours:
+          enabled: false
+          start: "23:00"
+          end: "08:00"
+        continuous_sessions:
+          navidrome: true
+          jellyfin_libraries:
+            - Music
+        session_start:
+          retrigger_after_inactive_seconds: 300
+        session_end:
+          enabled: false
+          tone: "close.mp3"
+        trigger: new_session
+        directory: "/app/sounds"
+        tone: "noted.mp3"
+        volume: 0.35
+    display:
+      ui:
+        scale: 1
+      music_artist_images: albumartists
+      cycle_interval_seconds: 15
+      require_logos: true
+      multiple_backdrops:
+        mode: single_backdrop
+        single_backdrop: random
+        cycle_order: numbered
+      backdrop_motion:
+        enabled: true
+        scale: 1.08
+        duration_seconds: 24
+      logo:
+        max_width: 520
+      album_art:
+        size: 200
+      fallback_title:
+        font_size: 86
+      nowplaying_text:
+        enabled: true
+        text: "Now playing on"
+        show_text: true
+        font_size: 16
+        show_source_icon: true
+        icon_size: 24
+        show_user_avatar: true
+        user_avatar_size: 24
+        user_avatar_resize:
+          enabled: true
+          size: 96
+        show_jellyfin_username: true
+        show_navidrome_username: true
+        user_font_size: 13
+      screensaver_text:
+        enabled: true
+        text: "Featured on MediaWall"
+        font_size: 16
+        icon_size: 24
+      media_info:
+        font_size: 40
+        release_year_font_size: 40
+        episode_info_font_size: 28
+        episode_title_font_size: 40
+        music_album_font_size: 24
+        music_song_title_font_size: 40
+      transitions:
+        duration_ms: 1200
+        order: written
+        styles:
+          - All
