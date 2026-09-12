@@ -545,6 +545,11 @@ body.idle {
   bottom: max(42px, env(safe-area-inset-bottom));
   z-index: 2;
   width: var(--album-art-size, 200px);
+  transition: bottom 220ms ease;
+}
+
+.wall.scan-with-album-art .album-art-corner {
+  bottom: calc(max(42px, env(safe-area-inset-bottom)) + 68px);
 }
 
 .song {
@@ -903,6 +908,7 @@ body.idle {
 }
 
 .scan-progress.with-album-art {
+  right: max(42px, env(safe-area-inset-right));
   bottom: max(16px, env(safe-area-inset-bottom));
 }
 

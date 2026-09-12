@@ -99,7 +99,7 @@ export class NavidromeClient {
     const navidromeUser = entry.username ?? requestedUser;
     const displayUser = navidromeUser;
     const activityAt = navidromeTimestamp(entry.minutesAgo);
-    const stale = navidromeEntryStale(entry, displayConfig.now_playing.session_cleanup.paused_after_seconds);
+    const stale = navidromeEntryStale(entry);
     const resolvedArtwork = await this.resolveNowPlayingArtwork(entry);
 
     const coverArtUrl = entry.coverArt ? this.coverArtUrl(entry.coverArt) : undefined;
@@ -129,7 +129,6 @@ export class NavidromeClient {
         entry.path
       ].filter(Boolean).join(":"),
       activityAt,
-      playbackPositionTicks: activityAt,
       title: entry.title,
       artist: entry.artist,
       album: entry.album,
@@ -417,11 +416,9 @@ function navidromeTimestamp(minutesAgo: NowPlayingEntry["minutesAgo"]) {
   return Number.isFinite(minutes) ? Date.now() - (minutes * 60_000) : undefined;
 }
 
-function navidromeEntryStale(entry: NowPlayingEntry, inactiveAfterSeconds: number) {
+function navidromeEntryStale(entry: NowPlayingEntry) {
   const minutesAgo = Number(entry.minutesAgo);
   const durationSeconds = Number(entry.duration);
-  const inactiveAfterMs = Math.max(0, inactiveAfterSeconds) * 1000;
-  if (Number.isFinite(minutesAgo) && inactiveAfterMs > 0 && minutesAgo * 60_000 >= inactiveAfterMs) return true;
   if (!Number.isFinite(minutesAgo) || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
   return minutesAgo * 60_000 > (durationSeconds * 1000) + 60_000;
 }

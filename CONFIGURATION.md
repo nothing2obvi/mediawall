@@ -63,6 +63,8 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `sound` | Per-user session-start tone override. | unset | No | Filename from the sounds directory configured for the space. |
 | `end_sound` | Per-user session-ended tone override. | unset | No | Filename from the sounds directory configured for the space. |
 
+Per-user sounds override the global tones for any space where that MediaWall user is allowed. Put the audio file in the configured sounds directory, then set `sound` for that user's session-start tone and `end_sound` for that user's session-ended tone. For example, a user can use `sound: "jon-start.mp3"` and `end_sound: "jon-end.mp3"` while the space still uses the global defaults for everyone else.
+
 ### Spaces
 
 | Entry | Purpose | Default | Required | Notes |

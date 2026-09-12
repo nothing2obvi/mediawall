@@ -158,6 +158,10 @@ Open your MediaWall space in Safari, tap the Share button, then choose **Add to 
 
 Open your MediaWall space in Chrome, open the browser menu, then choose **Add to Home screen** or **Install app** if Chrome offers it. If sounds are enabled, tap the screen once after opening so the browser allows audio playback.
 
+### Touch Controls
+
+Tap or click the left side of the display to go back, the right side to advance, and the center area to show the controls. This works in both Now Playing and Wallpaper/Screensaver mode.
+
 ### Raspberry Pi
 
 One common setup is to launch Chromium in kiosk mode after the desktop starts:
