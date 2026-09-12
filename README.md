@@ -86,7 +86,7 @@ That's really the idea behind MediaWall: it can be a Now Playing display, a home
 
 ## What It Does
 
-- Shows the newest active playback from Jellyfin, Navidrome, or both.
+- Shows active playback sessions from Jellyfin, Navidrome, or both.
 - Supports multiple MediaWall users per space, including Jellyfin `All` users.
 - Falls back to a default MediaWall screen or shuffled artwork when nothing is playing.
 - Provides a full-screen Wallpaper/Screensaver mode with library browsing, favorites, shuffle, logos, media info, transitions, and subtle backdrop motion.
