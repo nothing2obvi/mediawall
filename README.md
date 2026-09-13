@@ -154,15 +154,39 @@ Interactive state is stored in `data/state.json`. Image cache data is stored und
 
 Open your MediaWall space in Safari, tap the Share button, then choose **Add to Home Screen**. Launching from the Home Screen runs it like a PWA. If sounds are enabled, tap the MediaWall screen once after opening so Safari allows audio playback.
 
+On a regular computer, you can also open the space in a browser and make MediaWall fullscreen with the shortcuts listed below.
+
 If animation changes seem to stick in the Home Screen app even though Safari shows the new behavior, delete the Home Screen app, go to **Settings -> Safari -> Clear History and Website Data**, open the MediaWall URL in Safari, refresh it, then add it to the Home Screen again.
 
 ### Android Devices
 
 Open your MediaWall space in Chrome, open the browser menu, then choose **Add to Home screen** or **Install app** if Chrome offers it. If sounds are enabled, tap the screen once after opening so the browser allows audio playback.
 
-### Touch Controls
+On devices with a keyboard, use the shortcuts below. On touch displays, use the tapping behavior below.
 
-Tap or click the left side of the display to go back, the right side to advance, and the center area to show the controls. This works in both Now Playing and Wallpaper/Screensaver mode.
+### Keyboard Shortcuts
+
+These work in both Now Playing and Wallpaper/Screensaver mode unless noted.
+
+| Key | Action |
+| --- | --- |
+| `f` | Enter or exit fullscreen. |
+| `Escape` | Exit fullscreen. |
+| `ArrowLeft` | Previous session or previous artwork. |
+| `ArrowRight` | Next session or next artwork. |
+| `Space` | Pause or resume the current mode. |
+| `m` | Switch between Now Playing and Wallpaper/Screensaver. |
+| `l` | Toggle logo display. |
+| `i` | Toggle the media-info option for the current media type. |
+| `a` | Toggle album art when available. |
+| `s` | Toggle shuffle in Wallpaper/Screensaver mode. |
+| `g` | Toggle the grid in Wallpaper/Screensaver mode. |
+| `c` | Toggle the selection dialog in Wallpaper/Screensaver mode. |
+| `ArrowUp` / `ArrowDown` | Switch libraries in Wallpaper/Screensaver mode when shuffle is off. |
+
+### Tapping and Clicking
+
+Tap or click the left side of the display to go back, the right side to advance, and the center area to show the controls. Quickly tapping or clicking the center three times requests fullscreen. This works in both Now Playing and Wallpaper/Screensaver mode.
 
 ### Raspberry Pi
 
@@ -173,6 +197,8 @@ chromium-browser --kiosk --app=http://localhost:1221/livingroom
 ```
 
 Use the URL for the space you want to display. If the MediaWall container is running on another machine, replace `localhost` with that machine's IP address.
+
+If you're not using kiosk mode, open the space in a regular browser and press `f` for fullscreen.
 
 ## Docker Commands
 

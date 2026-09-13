@@ -1799,6 +1799,9 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
     const cacheKey = playbackSessionKey(candidate);
     const previous = records.get(cacheKey);
     const signatureChanged = previous?.state.signature !== candidate.signature;
+    if (previous?.state.source === "jellyfin" && candidate.source === "jellyfin") {
+      logNowPlayingArtworkRefresh(displayKey, previous.state, candidate);
+    }
     const tracksPlaybackProgress = candidate.source === "jellyfin" && candidate.playbackPositionTicks !== undefined;
     const positionChanged = tracksPlaybackProgress
       && !signatureChanged
@@ -1910,6 +1913,31 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
   return first ? withPlaybackPosition(first[1].state, first[0], activeChronological, displayConfig) : undefined;
 }
 
+function logNowPlayingArtworkRefresh(displayKey: string, previous: NowPlayingState, next: NowPlayingState) {
+  const previousArtwork = previous.artwork;
+  const nextArtwork = next.artwork;
+  if (!previousArtwork || !nextArtwork) return;
+  if (previousArtwork.source !== "jellyfin" || nextArtwork.source !== "jellyfin") return;
+  if (previousArtwork.itemId !== nextArtwork.itemId) return;
+  const previousSignature = artworkImageSignature(previousArtwork);
+  const nextSignature = artworkImageSignature(nextArtwork);
+  if (previousSignature === nextSignature) return;
+  const title = nextArtwork.title ?? next.title ?? "Unknown";
+  console.log(`Now Playing artwork refreshed: /${displayKey} "${title}" backdrops ${previousArtwork.backdropCount ?? 0} -> ${nextArtwork.backdropCount ?? 0}`);
+}
+
+function artworkImageSignature(artwork: ArtworkRef) {
+  return [
+    artwork.itemId,
+    artwork.imageType,
+    artwork.imageIndex,
+    artwork.backdropCount ?? 0,
+    ...(artwork.backdropTags ?? []),
+    artwork.logoTag ?? "",
+    artwork.primaryTag ?? ""
+  ].join(":");
+}
+
 function withPlaybackPosition(
   state: NowPlayingState,
   selectedKey: string,
@@ -1996,20 +2024,34 @@ function soundSessionIdentity(state: NowPlayingState, displayConfig: DisplayConf
   if (state.source === "navidrome" && displayConfig.now_playing.sounds.continuous_sessions.navidrome) {
     return `${user}:continuous:navidrome`;
   }
-  if (
-    state.source === "jellyfin"
-    && state.libraryName
-    && normalizedNameSet(displayConfig.now_playing.sounds.continuous_sessions.jellyfin_libraries).has(state.libraryName.toLowerCase())
-  ) {
-    return `${user}:continuous:jellyfin:${state.libraryName.toLowerCase()}`;
+  if (state.source === "jellyfin" && jellyfinContinuousSessionName(state, displayConfig)) {
+    return `${user}:continuous:jellyfin:${jellyfinContinuousSessionName(state, displayConfig)}`;
   }
   return `${user}:session:${playbackSessionKey(state)}`;
 }
 
 function soundSessionContinuous(state: NowPlayingState, displayConfig: DisplayConfig) {
   if (state.source === "navidrome") return displayConfig.now_playing.sounds.continuous_sessions.navidrome;
-  if (state.source !== "jellyfin" || !state.libraryName) return false;
-  return normalizedNameSet(displayConfig.now_playing.sounds.continuous_sessions.jellyfin_libraries).has(state.libraryName.toLowerCase());
+  return Boolean(jellyfinContinuousSessionName(state, displayConfig));
+}
+
+function jellyfinContinuousSessionName(state: NowPlayingState, displayConfig: DisplayConfig) {
+  if (state.source !== "jellyfin") return undefined;
+  const continuousLibraries = normalizedNameSet(displayConfig.now_playing.sounds.continuous_sessions.jellyfin_libraries);
+  if (state.libraryName && continuousLibraries.has(state.libraryName.toLowerCase())) return state.libraryName.toLowerCase();
+  if (jellyfinMusicLike(state) && continuousLibraries.has("music")) return "music";
+  return undefined;
+}
+
+function jellyfinMusicLike(state: NowPlayingState) {
+  const mediaType = state.artwork?.mediaType?.toLowerCase() ?? "";
+  return Boolean(
+    state.album
+    || state.artist
+    || state.albumArtUrl
+    || mediaType === "audio"
+    || mediaType === "musicartist"
+  );
 }
 
 function soundUserIdentity(state: NowPlayingState) {

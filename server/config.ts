@@ -79,8 +79,8 @@ const spaceSchema = z.object({
     }).default({ directory: "/app/custom_logo" }),
     multiple_backdrops: z.object({
       enabled: z.boolean().default(true),
-      interval_seconds: z.number().min(1).default(10)
-    }).default({ enabled: true, interval_seconds: 10 }),
+      interval_seconds: z.number().min(1).default(15)
+    }).default({ enabled: true, interval_seconds: 15 }),
     sounds: z.object({
       enabled: z.boolean().default(true),
       jellyfin: z.boolean().default(true),
@@ -129,7 +129,7 @@ const spaceSchema = z.object({
     session_count: { enabled: true, font_size: 13 },
     mediawall_fallback: { modes: ["dvd"], background_color: "#565954", min_logo_width: 260, max_logo_width: 760 },
     custom_logo: { directory: "/app/custom_logo" },
-    multiple_backdrops: { enabled: true, interval_seconds: 10 },
+    multiple_backdrops: { enabled: true, interval_seconds: 15 },
     sounds: {
       enabled: true,
       jellyfin: true,

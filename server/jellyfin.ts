@@ -5,6 +5,8 @@ type JellyfinItem = Record<string, any>;
 export class JellyfinClient {
   private workingBaseUrl?: string;
   private userIds = new Map<string, string>();
+  private libraryNames = new Map<string, string>();
+  private missingMusicBackdropWarnings = new Set<string>();
 
   constructor(private config: AppConfig) {}
 
@@ -135,12 +137,20 @@ export class JellyfinClient {
       };
     }
 
-    const artistName = this.artistName(item, displayConfig.display.music_artist_images);
-    const artistId = this.artistId(item, displayConfig.display.music_artist_images);
-    const artist = artistId ? await this.getItem(artistId).catch(() => undefined) : await this.findArtist(artistName).catch(() => undefined);
-    const artwork = artist
-      ? this.artworkFromItem(artist, artist.Name ?? artistName ?? "Artist", "MusicArtist")
-      : this.artworkFromItem(item, artistName ?? item.Album ?? item.Name ?? "Music", "Audio");
+    const artistRefs = this.artistRefs(item, displayConfig.display.music_artist_images);
+    const artistArtworks = await Promise.all(artistRefs.map(async (ref) => {
+      const artist = ref.id ? await this.getItem(ref.id).catch(() => undefined) : await this.findArtist(ref.name).catch(() => undefined);
+      const artwork = artist ? this.artworkFromItem(artist, artist.Name ?? ref.name ?? "Artist", "MusicArtist") : undefined;
+      return { artist, artwork, name: artist?.Name ?? ref.name };
+    }));
+    const selectedArtist = artistArtworks.find((candidate) => candidate.artwork?.backdropUrl)
+      ?? artistArtworks.find((candidate) => candidate.artwork)
+      ?? { artist: undefined, artwork: undefined, name: this.artistName(item, displayConfig.display.music_artist_images) };
+    const artistName = selectedArtist.name ?? this.artistName(item, displayConfig.display.music_artist_images);
+    const artistId = selectedArtist.artist?.Id ?? this.artistId(item, displayConfig.display.music_artist_images);
+    const rawArtwork = selectedArtist.artwork
+      ?? this.artworkFromItem(item, artistName ?? item.Album ?? item.Name ?? "Music", "Audio");
+    const artwork = this.ensureNowPlayingBackdrop(rawArtwork, artistName ?? item.Album ?? item.Name ?? "Music");
 
     return {
       source: "jellyfin",
@@ -155,14 +165,14 @@ export class JellyfinClient {
       title: item.Name,
       artist: artistName,
       album: item.Album,
-      logoText: artist?.Name ?? artistName,
+      logoText: selectedArtist.artist?.Name ?? artistName,
       itemId: item.Id,
-      artistId: artist?.Id ?? artistId,
-      artistName: artist?.Name ?? artistName,
+      artistId: selectedArtist.artist?.Id ?? artistId,
+      artistName: selectedArtist.artist?.Name ?? artistName,
       libraryName,
       albumArtUrl: item.Id ? this.imageUrl(item.Id, "Primary", 0, item.ImageTags?.Primary) : undefined,
       artwork,
-      signature: artist?.Id ?? artistId ?? artistName ?? item.Id
+      signature: selectedArtist.artist?.Id ?? artistId ?? artistName ?? item.Id
     };
   }
 
@@ -330,18 +340,24 @@ export class JellyfinClient {
       Fields: "ImageTags,BackdropImageTags"
     });
     const response = await this.getJson<{ Items?: JellyfinItem[] }>(`/Items?${params}`);
-    return response.Items?.[0];
+    return (response.Items ?? []).find((entry) => String(entry.Name ?? "").toLowerCase() === name.toLowerCase())
+      ?? response.Items?.[0];
   }
 
   private async nowPlayingLibraryName(item: JellyfinItem) {
     if (!item.Id) return undefined;
+    const cached = this.libraryNames.get(item.Id);
+    if (cached) return cached;
     const ancestors = await this.getJson<JellyfinItem[]>(`/Items/${encodeURIComponent(item.Id)}/Ancestors`)
       .catch(() => [] as JellyfinItem[]);
     const library = ancestors.find((ancestor) => {
       const type = String(ancestor.Type ?? "");
       return type === "CollectionFolder" || Boolean(ancestor.CollectionType);
     }) ?? ancestors[0];
-    return library?.Name ? String(library.Name) : undefined;
+    if (!library?.Name) return undefined;
+    const name = String(library.Name);
+    this.libraryNames.set(item.Id, name);
+    return name;
   }
 
   private async randomMediaItems(userId: string, parentId?: string) {
@@ -491,6 +507,58 @@ export class JellyfinClient {
     return item.ArtistItems?.[0]?.Id;
   }
 
+  private artistRefs(item: JellyfinItem, role: DisplayConfig["display"]["music_artist_images"]) {
+    const refs: Array<{ id?: string; name?: string }> = [];
+    const seen = new Set<string>();
+    const add = (id?: string, name?: string) => {
+      const cleanName = typeof name === "string" ? name.trim() : undefined;
+      const key = id ? `id:${id}` : cleanName ? `name:${cleanName.toLowerCase()}` : undefined;
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      refs.push({ id, name: cleanName });
+    };
+    const addArtists = () => {
+      for (const artist of item.ArtistItems ?? []) add(artist.Id, artist.Name);
+      for (const name of item.Artists ?? []) add(undefined, name);
+    };
+    const addAlbumArtists = () => {
+      for (const artist of item.AlbumArtists ?? []) add(artist.Id, artist.Name);
+      add(undefined, item.AlbumArtist);
+    };
+
+    if (role === "artists") addArtists();
+    else if (role === "albumartists") addAlbumArtists();
+    else {
+      addArtists();
+      addAlbumArtists();
+    }
+
+    return refs;
+  }
+
+  private ensureNowPlayingBackdrop(artwork: ArtworkRef | undefined, title: string): ArtworkRef {
+    if (!artwork) {
+      this.warnMissingMusicBackdrop(`fallback:${title}`, title);
+      return fallbackArtworkForTitle(title, "MusicArtist");
+    }
+    if (artwork.backdropUrl) return artwork;
+    this.warnMissingMusicBackdrop(`${artwork.itemId}:${artwork.primaryTag ?? ""}:${artwork.logoTag ?? ""}`, title);
+    return {
+      ...artwork,
+      imageType: "Backdrop",
+      imageIndex: 0,
+      backdropUrl: "/fallback.svg",
+      backdropCount: 1,
+      backdropTags: []
+    };
+  }
+
+  private warnMissingMusicBackdrop(key: string, title: string) {
+    if (this.missingMusicBackdropWarnings.has(key)) return;
+    this.missingMusicBackdropWarnings.add(key);
+    console.warn(`Jellyfin music artwork for "${title}" has no artist backdrop; using MediaWall fallback backdrop.`);
+  }
+
   private async getJson<T>(path: string): Promise<T> {
     const response = await this.fetchWithFallback(path);
     if (!response.ok) throw new Error(`Jellyfin ${response.status} for ${path}`);
@@ -605,11 +673,15 @@ function normalizeMovieTitle(name: string) {
 }
 
 export function fallbackArtwork(): ArtworkRef {
+  return fallbackArtworkForTitle("MediaWall", "Fallback");
+}
+
+function fallbackArtworkForTitle(title: string, mediaType: string): ArtworkRef {
   return {
     source: "fallback",
     itemId: "fallback",
-    title: "MediaWall",
-    mediaType: "Fallback",
+    title,
+    mediaType,
     imageType: "Backdrop",
     imageIndex: 0,
     backdropCount: 1,
