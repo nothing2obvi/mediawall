@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, findDisplay } from "./config.js";
 import { JellyfinClient, fallbackArtwork } from "./jellyfin.js";
 import { NavidromeClient } from "./navidrome.js";
+import { logger } from "./logger.js";
 import { StateStore } from "./state.js";
 import type { ArtworkRef, BackdropAnimation, DisplayConfig, DisplaySnapshot, NowPlayingState, PublicConnectionIssue, PublicControlCommand, PublicLibraryScanProgress, PublicNowPlayingState, PublicSoundSession } from "./types.js";
 
@@ -44,6 +45,7 @@ const libraryScanClearTimers = new Map<string, NodeJS.Timeout>();
 const connectionIssueCache = new Map<string, { checkedAt: number; issues: PublicConnectionIssue[] }>();
 const connectionIssueFailures = new Map<string, number>();
 const controlCommands = new Map<string, PublicControlCommand>();
+const lastLoggedPlaybackBySpace = new Map<string, string>();
 type CachedImageResult = {
   status: number;
   buffer?: Buffer;
@@ -110,7 +112,7 @@ app.get("/api/jellyfin/user-image/:userId/Primary", async (req, res) => {
     }
     sendImageResult(res, result);
   } catch (error) {
-    console.error("User image proxy failed", error);
+    logger.error("User image proxy failed", error);
     res.sendStatus(502);
   }
 });
@@ -125,7 +127,7 @@ app.get("/api/navidrome/cover/:coverArtId", async (req, res) => {
     }
     sendImageResult(res, result);
   } catch (error) {
-    console.error("Navidrome cover proxy failed", error);
+    logger.error("Navidrome cover proxy failed", error);
     res.sendStatus(502);
   }
 });
@@ -145,7 +147,7 @@ app.get("/api/navidrome/artist-image", async (req, res) => {
     }
     sendImageResult(res, result);
   } catch (error) {
-    console.error("Navidrome artist image proxy failed", error);
+    logger.error("Navidrome artist image proxy failed", error);
     sendLocalArtistImage(artistName, res, 502);
   }
 });
@@ -183,7 +185,7 @@ async function handleImageProxy(req: express.Request, res: express.Response) {
     }
     sendImageResult(res, result);
   } catch (error) {
-    console.error("Image proxy failed", error);
+    logger.error("Image proxy failed", error);
     res.sendStatus(502);
   }
 }
@@ -529,7 +531,7 @@ app.post("/api/space/:space/select", async (req, res) => {
   const exactBackdrop = req.body.exactBackdrop === true;
   const displaySelected = resolveBackdropPolicy(selected, resolved.displayConfig, currentState, exactBackdrop);
   const index = sequenceArtworkIndex(sequence.items, displaySelected.artwork);
-  console.log(`Grid selection on /${req.params.space}: ${displaySelected.artwork.source} ${displaySelected.artwork.mediaType} "${displaySelected.artwork.title}"`);
+  logger.info(`Grid selection on /${req.params.space}: ${displaySelected.artwork.source} ${displaySelected.artwork.mediaType} "${displaySelected.artwork.title}"`);
   res.json({
     state: states.pushCurrent(req.params.space, undefined, resolved.displayConfig, displaySelected.artwork, {
       mode: "screensaver",
@@ -594,7 +596,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     const refreshedFavorites = await normalizeFavoriteArtworks(state.favorites);
     if (favoritesChanged(state.favorites, refreshedFavorites)) {
       state = states.update(space, undefined, displayConfig, { favorites: refreshedFavorites });
-      console.log(`Startup favorite refresh: /${space} normalized ${refreshedFavorites.length} favorites`);
+      logger.info(`Startup favorite refresh: /${space} normalized ${refreshedFavorites.length} favorites`);
     }
   }
   const useMediaWallFallback = state.mode === "now-playing" && displayConfig.now_playing.fallback === "mediawall";
@@ -608,7 +610,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     let refreshFailed = false;
     const refreshed = await refreshArtwork(state.current).catch((error) => {
       refreshFailed = true;
-      console.warn(`Startup artwork refresh unavailable for /${space}: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(`Startup artwork refresh unavailable for /${space}: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
     });
     if (refreshed) {
@@ -618,7 +620,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
         currentSequence: undefined,
         ...selected.patch
       });
-      console.log(`Startup artwork refresh: /${space} refreshed "${selected.artwork.title}"`);
+      logger.info(`Startup artwork refresh: /${space} refreshed "${selected.artwork.title}"`);
     } else if (refreshFailed) {
       state = states.update(space, undefined, displayConfig, {
         current: fallbackArtwork(),
@@ -629,12 +631,12 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
   if (!useMediaWallFallback && (!state.current || state.current.source === "fallback")) {
     const initial = state.mode === "screensaver" && !state.shuffle
       ? await orderedWallpaperSelection(displayConfig, state).catch((error) => {
-        console.error("Initial ordered artwork lookup failed", error);
+        logger.error("Initial ordered artwork lookup failed", error);
         return undefined;
       })
       : undefined;
     const random = initial ? undefined : await jellyfin.randomArtwork(shuffleDisplayConfig(displayConfig, state)).catch((error) => {
-      console.error("Initial artwork lookup failed", error);
+      logger.error("Initial artwork lookup failed", error);
       return undefined;
     });
     if (initial) {
@@ -650,11 +652,11 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
   if (!useMediaWallFallback && state.mode === "screensaver" && state.current && !artworkAllowedForWallpaper(state.current, displayConfig)) {
     const selected = state.shuffle
       ? await shuffleSelection(displayConfig, state).catch((error) => {
-        console.error(`Logo-required shuffle lookup failed for /${space}`, error);
+        logger.error(`Logo-required shuffle lookup failed for /${space}`, error);
         return undefined;
       })
       : await orderedWallpaperSelection(displayConfig, state).catch((error) => {
-        console.error(`Logo-required ordered lookup failed for /${space}`, error);
+        logger.error(`Logo-required ordered lookup failed for /${space}`, error);
         return undefined;
       });
     state = states.update(space, undefined, displayConfig, {
@@ -666,7 +668,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
 
   const playbackDetails = state.mode === "now-playing"
     ? await activePlaybackDetails(space, displayConfig, state).catch((error) => {
-      console.error("Playback poll failed", error);
+      logger.error("Playback poll failed", error);
       return undefined;
     })
     : undefined;
@@ -705,7 +707,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     const due = !state.current || !state.lastNowPlayingFallbackAt || Date.now() - state.lastNowPlayingFallbackAt >= intervalMs;
     if (state.playing && due) {
       const selected = await shuffleSelection(fallbackConfig, state).catch((error) => {
-        console.error(`Now playing fallback shuffle failed for /${space}`, error);
+        logger.error(`Now playing fallback shuffle failed for /${space}`, error);
         return undefined;
       });
       if (selected && artworkKey(selected.artwork) !== (state.current ? artworkKey(state.current) : "")) {
@@ -1613,7 +1615,7 @@ function startGridCacheScans(port: number) {
   if (!config.library_scan.enabled) return;
   if (config.library_scan.scan_on_startup) {
     setTimeout(() => {
-      void runGridCacheScan(port, "startup").catch((error) => console.error("Library scan startup failed", error));
+      void runGridCacheScan(port, "startup").catch((error) => logger.error("Library scan startup failed", error));
     }, 1000);
   }
   if (config.library_scan.cron.enabled) {
@@ -1625,7 +1627,7 @@ async function runGridCacheScan(port: number, reason: string) {
   const startedAt = Date.now();
   let scanned = 0;
   let warmed = 0;
-  console.log(`Library scan ${reason} starting`);
+  logger.info(`Library scan ${reason} starting`);
 
   for (const [space, displayConfig] of Object.entries(config.spaces)) {
     for (const source of scanSources(displayConfig)) {
@@ -1652,20 +1654,20 @@ async function runGridCacheScan(port: number, reason: string) {
       let sourceScanned = 0;
       let sourceWarmed = 0;
       for (const { library, items } of batches) {
-      let libraryScanned = 0;
-      let libraryWarmed = 0;
-        console.log(`Library scan ${reason}: /${space} source=${source} library="${library.name}" grid backdrops starting`);
-      for (const item of items) {
-        const imageUrl = item.artwork?.backdropUrl ?? item.thumbUrl;
-        if (!imageUrl) continue;
-        scanned += 1;
+        let libraryScanned = 0;
+        let libraryWarmed = 0;
+        logger.info(`Library scan ${reason}: /${space} source=${source} library="${library.name}" grid backdrops starting`);
+        for (const item of items) {
+          const imageUrl = item.artwork?.backdropUrl ?? item.thumbUrl;
+          if (!imageUrl) continue;
+          scanned += 1;
           sourceScanned += 1;
-        libraryScanned += 1;
-        if (await warmGridImage(port, imageUrl)) {
-          warmed += 1;
+          libraryScanned += 1;
+          if (await warmGridImage(port, imageUrl)) {
+            warmed += 1;
             sourceWarmed += 1;
-          libraryWarmed += 1;
-        }
+            libraryWarmed += 1;
+          }
           setLibraryScanProgress(space, {
             active: true,
             completed: false,
@@ -1677,9 +1679,9 @@ async function runGridCacheScan(port: number, reason: string) {
             warmed: sourceWarmed,
             updatedAt: Date.now()
           });
+        }
+        logger.info(`Library scan ${reason}: /${space} source=${source} library="${library.name}" grid backdrops complete ${libraryWarmed}/${libraryScanned}`);
       }
-        console.log(`Library scan ${reason}: /${space} source=${source} library="${library.name}" grid backdrops complete ${libraryWarmed}/${libraryScanned}`);
-    }
       setLibraryScanProgress(space, {
         active: false,
         completed: true,
@@ -1697,12 +1699,12 @@ async function runGridCacheScan(port: number, reason: string) {
     scheduleLibraryScanProgressClear(space);
   }
 
-  console.log(`Library scan ${reason} complete: ${warmed}/${scanned} grid backdrop images available in ${Date.now() - startedAt}ms`);
+  logger.info(`Library scan ${reason} complete: ${warmed}/${scanned} grid backdrop images available in ${Date.now() - startedAt}ms`);
 }
 
 async function runLocalAssetScan(space: string, displayConfig: DisplayConfig, source: "sounds" | "custom_images") {
   const label = source === "sounds" ? "Sounds" : "Custom Logo";
-  console.log(`Library scan: /${space} source=${source} starting`);
+  logger.info(`Library scan: /${space} source=${source} starting`);
   setLibraryScanProgress(space, {
     active: true,
     completed: false,
@@ -1725,7 +1727,7 @@ async function runLocalAssetScan(space: string, displayConfig: DisplayConfig, so
     warmed: count,
     updatedAt: Date.now()
   });
-  console.log(`Library scan: /${space} source=${source} complete ${count} available`);
+  logger.info(`Library scan: /${space} source=${source} complete ${count} available`);
   await delay(2000);
 }
 
@@ -1765,10 +1767,10 @@ function delay(ms: number) {
 
 function scheduleNextLibraryScan(port: number) {
   const delay = nextCronDelay(config.library_scan.cron.expression);
-  console.log(`Library scan scheduled next run in ${Math.round(delay / 1000)}s using cron "${config.library_scan.cron.expression}"`);
+  logger.info(`Library scan scheduled next run in ${Math.round(delay / 1000)}s using cron "${config.library_scan.cron.expression}"`);
   setTimeout(() => {
     void runGridCacheScan(port, "cron")
-      .catch((error) => console.error("Library scan cron failed", error))
+      .catch((error) => logger.error("Library scan cron failed", error))
       .finally(() => scheduleNextLibraryScan(port));
   }, delay);
 }
@@ -1840,12 +1842,32 @@ async function activePlayback(space: string, displayConfig: DisplayConfig, state
 
 async function activePlaybackDetails(space: string, displayConfig: DisplayConfig, state: DisplaySnapshot["state"], manualDirection?: -1 | 1) {
   const candidates = await activePlaybackCandidates(displayConfig);
+  logger.debug(`Playback poll on /${space}: candidates=${candidates.length}`);
   const selected = updateRecentPlayback(space, candidates, displayConfig, state, manualDirection);
-  if (selected) console.log(`Playback active on /${space}: ${selected.source} user=${selected.displayUser ?? selected.user} title=${selected.title ?? selected.artwork?.title ?? "unknown"}`);
+  logPlaybackSelection(space, selected);
   return {
     selected,
     soundSessions: publicSoundSessions(space, displayConfig)
   };
+}
+
+function logPlaybackSelection(space: string, selected: NowPlayingState | undefined) {
+  const previous = lastLoggedPlaybackBySpace.get(space);
+  if (!selected) {
+    if (previous) {
+      logger.info(`Playback idle on /${space}`);
+      lastLoggedPlaybackBySpace.delete(space);
+    }
+    return;
+  }
+  const key = selected.publicSessionId ?? selected.publicMediaKey ?? selected.signature ?? `${selected.source}:${selected.user}:${selected.title}`;
+  const message = `Playback active on /${space}: source=${selected.source} user="${selected.displayUser ?? selected.user}" title="${selected.title ?? selected.artwork?.title ?? "unknown"}" session=${selected.sessionPosition ?? 1}/${selected.sessionCount ?? 1}`;
+  if (previous !== key) {
+    logger.info(message);
+    lastLoggedPlaybackBySpace.set(space, key);
+  } else {
+    logger.debug(message);
+  }
 }
 
 async function activePlaybackCandidates(displayConfig: DisplayConfig) {
@@ -1859,7 +1881,7 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
           users: [user]
         })).map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound)));
       } catch (error) {
-        console.warn("Jellyfin playback source poll failed", error);
+        logger.warn("Jellyfin playback source poll failed", error);
       }
     }
     if (displayConfig.playback_source === "navidrome" || displayConfig.playback_source === "both") {
@@ -1870,7 +1892,7 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
           users: [user]
         })).map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound)));
       } catch (error) {
-        console.warn("Navidrome playback source poll failed", error);
+        logger.warn("Navidrome playback source poll failed", error);
       }
     }
   }
@@ -1960,14 +1982,18 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
     const freshActiveCount = [...records.entries()].filter(([sessionKey, record]) => seenThisPoll.has(sessionKey) && record.active).length;
     for (const [sessionKey, record] of records.entries()) {
       if (seenThisPoll.has(sessionKey) || !previouslyActive.get(sessionKey)) continue;
-      if (replacementKeys.has(playbackContinuityKey(record.state))) continue;
       const finishVisibleCycle = freshActiveCount > 0
         && cycle?.selectedKey === sessionKey
         && !state.nowPlayingCyclePaused
         && now - cycle.selectedAt < intervalMs;
+      if (replacementKeys.has(playbackContinuityKey(record.state))) {
+        logger.debug(`Playback superseded held session on /${displayKey}: source=${record.state.source} user="${record.state.displayUser ?? record.state.user}" title="${record.state.title ?? record.state.artwork?.title ?? "unknown"}"`);
+        continue;
+      }
       if (now - record.refreshedAt < missingSessionGraceMs || finishVisibleCycle) {
         record.active = true;
         record.heldForCycle = finishVisibleCycle && now - record.refreshedAt >= missingSessionGraceMs;
+        logger.debug(`Playback holding missing session on /${displayKey}: source=${record.state.source} user="${record.state.displayUser ?? record.state.user}" title="${record.state.title ?? record.state.artwork?.title ?? "unknown"}" heldForCycle=${record.heldForCycle === true}`);
       }
     }
   }
@@ -2059,7 +2085,7 @@ function logNowPlayingArtworkRefresh(displayKey: string, previous: NowPlayingSta
   const nextSignature = artworkImageSignature(nextArtwork);
   if (previousSignature === nextSignature) return;
   const title = nextArtwork.title ?? next.title ?? "Unknown";
-  console.log(`Now Playing artwork refreshed: /${displayKey} "${title}" backdrops ${previousArtwork.backdropCount ?? 0} -> ${nextArtwork.backdropCount ?? 0}`);
+  logger.info(`Now Playing artwork refreshed: /${displayKey} "${title}" backdrops ${previousArtwork.backdropCount ?? 0} -> ${nextArtwork.backdropCount ?? 0}`);
 }
 
 function artworkImageSignature(artwork: ArtworkRef) {
@@ -2284,6 +2310,6 @@ function sameWallpaperItem(left: ArtworkRef, right: ArtworkRef) {
 
 const port = Number(process.env.PORT ?? config.server.port ?? 1221);
 app.listen(port, "0.0.0.0", () => {
-  console.log(`MediaWall listening on http://0.0.0.0:${port}`);
+  logger.info(`MediaWall listening on http://0.0.0.0:${port} logLevel=${logger.level}`);
   startGridCacheScans(port);
 });

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { AppConfig, ArtworkRef, DisplayConfig, NowPlayingState } from "./types.js";
+import { logger } from "./logger.js";
 import { JellyfinClient } from "./jellyfin.js";
 
 type SubsonicResponse<T> = {
@@ -377,7 +378,7 @@ export class NavidromeClient {
       } catch (error) {
         lastError = error;
         if (base === this.baseUrl) {
-          console.warn(`Navidrome request to configured URL failed; trying Docker host gateway for ${path}`);
+          logger.warn(`Navidrome request to configured URL failed; trying Docker host gateway for ${path}`);
         }
       }
     }

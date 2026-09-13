@@ -7,6 +7,7 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | Section | Purpose |
 | --- | --- |
 | `server` | HTTP listener settings. |
+| Environment variables | Runtime values such as credentials, passwords, and log level. |
 | `library_scan` | Startup and scheduled image-cache warming for grid/backdrop artwork. |
 | `jellyfin` | Jellyfin connection used for playback sessions, users, libraries, and artwork. |
 | `navidrome` | Navidrome connection and artwork fallback/local-file behavior. |
@@ -14,6 +15,12 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `spaces` | Display routes such as `/livingroom`, each with its own users, libraries, Now Playing behavior, and display settings. |
 
 ## Reference
+
+### Environment Variables
+
+| Setting | Purpose | Default | Required | Notes |
+| --- | --- | --- | --- | --- |
+| `LOG_LEVEL` | Controls server log verbosity. | `info` | No | Options: `debug`, `info`, `warn`, `error`, `silent`. Use `debug` when troubleshooting playback/session/artwork behavior. |
 
 ### Server
 

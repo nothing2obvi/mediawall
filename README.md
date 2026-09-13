@@ -150,23 +150,7 @@ http://localhost:1221/livingroom?password=your-password
 
 Interactive state is stored in `data/state.json`. Image cache data is stored under the configured library scan directory, which defaults to `/app/data/grid-cache` inside the container.
 
-## Display Setup
-
-### Apple Devices
-
-Open your MediaWall space in Safari, tap the Share button, then choose **Add to Home Screen**. Launching from the Home Screen runs it like a PWA. If sounds are enabled, tap the MediaWall screen once after opening so Safari allows audio playback.
-
-On a regular computer, you can also open the space in a browser and make MediaWall fullscreen with the shortcuts listed below.
-
-If animation changes seem to stick in the Home Screen app even though Safari shows the new behavior, delete the Home Screen app, go to **Settings -> Safari -> Clear History and Website Data**, open the MediaWall URL in Safari, refresh it, then add it to the Home Screen again.
-
-Different devices handle motion differently. On older devices such as a 2017 iPad, start with simpler transitions like `crossfade` or `fade`, and gentler animations like `breathe`, `pan`, or `focus`. `kenburns`, `drift`, and the directional slide/push transitions can look great on faster displays, but they may feel heavier on older tablets.
-
-### Android Devices
-
-Open your MediaWall space in Chrome, open the browser menu, then choose **Add to Home screen** or **Install app** if Chrome offers it. If sounds are enabled, tap the screen once after opening so the browser allows audio playback.
-
-On devices with a keyboard, use the shortcuts below. On touch displays, use the tapping behavior below.
+## Controls
 
 ### Keyboard Shortcuts
 
@@ -191,7 +175,33 @@ These work in both Now Playing and Wallpaper/Screensaver mode unless noted.
 
 ### Tapping and Clicking
 
-Tap or click the left side of the display to go back, the right side to advance, and the center area to show the controls. Quickly tapping or clicking the center three times enters fullscreen; doing it again exits fullscreen. If sounds are enabled for the space, quickly tapping or clicking the center five times toggles local sound mute. This works in both Now Playing and Wallpaper/Screensaver mode.
+These work in both Now Playing and Wallpaper/Screensaver mode.
+
+| Gesture | Action |
+| --- | --- |
+| Tap or click left side | Previous session or previous artwork. |
+| Tap or click right side | Next session or next artwork. |
+| Tap or click center | Show the controls. |
+| Triple-tap or triple-click center | Enter fullscreen, or exit fullscreen if already fullscreen. |
+| Five quick center taps or clicks | Toggle local sound mute when sounds are enabled for the space. |
+
+## Display Setup
+
+### Apple Devices
+
+Open your MediaWall space in Safari, tap the Share button, then choose **Add to Home Screen**. Launching from the Home Screen runs it like a PWA. If sounds are enabled, tap the MediaWall screen once after opening so Safari allows audio playback.
+
+On a regular computer, you can also open the space in a browser and make MediaWall fullscreen with the shortcuts listed below.
+
+If animation changes seem to stick in the Home Screen app even though Safari shows the new behavior, delete the Home Screen app, go to **Settings -> Safari -> Clear History and Website Data**, open the MediaWall URL in Safari, refresh it, then add it to the Home Screen again.
+
+Different devices handle motion differently. On older devices such as a 2017 iPad, start with simpler transitions like `crossfade` or `fade`, and gentler animations like `breathe`, `pan`, or `focus`. `kenburns`, `drift`, and the directional slide/push transitions can look great on faster displays, but they may feel heavier on older tablets.
+
+### Android Devices
+
+Open your MediaWall space in Chrome, open the browser menu, then choose **Add to Home screen** or **Install app** if Chrome offers it. If sounds are enabled, tap the screen once after opening so the browser allows audio playback.
+
+On devices with a keyboard or touch display, use the shortcuts in the Controls section above.
 
 ### Raspberry Pi
 
@@ -239,6 +249,8 @@ NAVIDROME_PASSWORD=replace-with-a-navidrome-password
 
 LIVINGROOM_PASSWORD=
 HOMELAB_PASSWORD=
+
+LOG_LEVEL=info
 ```
 
 The Jellyfin API key should belong to a Jellyfin admin user. MediaWall uses it to read sessions, users, libraries, and artwork. Individual Jellyfin display users can still be selected per MediaWall user in `config.yml`, including `All`.
@@ -246,6 +258,8 @@ The Jellyfin API key should belong to a Jellyfin admin user. MediaWall uses it t
 For Navidrome, configure each Navidrome account you want MediaWall to distinguish as its own MediaWall user. Navidrome users are what let MediaWall show unique sessions and user names when more than one person is listening. For example, you can add `NAVIDROME_JON_USER`, `NAVIDROME_JON_PASSWORD`, `NAVIDROME_GUEST_USER`, and `NAVIDROME_GUEST_PASSWORD`, then reference those from separate `users` entries in `config.yml`.
 
 Password environment variables are per space by convention. In addition to `LIVINGROOM_PASSWORD=` and `HOMELAB_PASSWORD=`, you can create any others you need, such as `OFFICE_PASSWORD=` or `KITCHEN_PASSWORD=`, then reference them from the matching space.
+
+Use `LOG_LEVEL=debug` when troubleshooting playback, session cycling, scans, or artwork behavior. Supported values are `debug`, `info`, `warn`, `error`, and `silent`; the default is `info`.
 
 ## Jellyfin And Navidrome Notes
 
