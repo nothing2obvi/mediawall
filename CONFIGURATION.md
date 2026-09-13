@@ -142,6 +142,7 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 | --- | --- | --- | --- | --- |
 | `ui.scale` | Scales app UI chrome. | `1` | No | Applies to controls, dialogs, grid cards, and toast notifications. |
 | `music_artist_images` | Music artist role filter. | `albumartists` | No | Options: `artists`, `albumartists`, `both`. |
+| `music_logo_artist` | Music logo and fallback text artist credit. | `artists` | No | Options: `artists`, `albumartist`. `music_artist_images` controls which artist artwork/backdrops are selected; this setting controls whether the visible logo/text follows the track's credited artists or the album artist. |
 | `cycle_interval_seconds` | Wallpaper/Screensaver cycle interval. | `15` | No | When shuffle is off, items go library-by-library and alphabetically. |
 | `screensaver_interval` | Legacy alias for cycle interval. | `15` | No | Prefer `cycle_interval_seconds`. |
 | `require_logos` | Requires logos for display/grid eligibility. | `true` | No | Navidrome-only items need local logo files. |

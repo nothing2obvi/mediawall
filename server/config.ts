@@ -150,6 +150,7 @@ const spaceSchema = z.object({
       scale: z.number().min(0.6).max(1.8).default(1)
     }).default({ scale: 1 }),
     music_artist_images: z.enum(["artists", "albumartists", "both"]).default("albumartists"),
+    music_logo_artist: z.enum(["artists", "albumartist"]).default("artists"),
     cycle_interval_seconds: z.number().optional(),
     screensaver_interval: z.number().optional(),
     require_logos: z.boolean().default(true),
@@ -282,6 +283,7 @@ const spaceSchema = z.object({
   }).default({
     ui: { scale: 1 },
     music_artist_images: "albumartists",
+    music_logo_artist: "artists",
     cycle_interval_seconds: 15,
     screensaver_interval: 15,
     require_logos: true,
