@@ -32,6 +32,7 @@ type RecentPlaybackRecord = {
   stalledSince?: number;
   pausedSince?: number;
   active: boolean;
+  heldForCycle?: boolean;
   state: NowPlayingState;
 };
 const recentPlayback = new Map<string, Map<string, RecentPlaybackRecord>>();
@@ -48,6 +49,7 @@ type CachedImageResult = {
   buffer?: Buffer;
   contentType?: string;
   cacheControl?: string;
+  createdAt?: number;
 };
 type WallpaperLibraryGroup = {
   id: string;
@@ -97,7 +99,11 @@ app.get("/api/jellyfin/user-image/:userId/Primary", async (req, res) => {
   try {
     const userId = String(req.params.userId);
     const query = safeProxyQuery(req);
-    const result = await cachedImage(`jellyfin-user:${userId}:Primary:${query}`, () => jellyfin.proxyUserImage(userId, query));
+    const result = await cachedImage(
+      `jellyfin-user:${userId}:Primary:${query}`,
+      () => jellyfin.proxyUserImage(userId, query),
+      { revalidateAfterMs: 60_000, cacheControl: "no-store", allowStaleOnError: false }
+    );
     if (!result.buffer) {
       res.sendStatus(result.status);
       return;
@@ -128,7 +134,11 @@ app.get("/api/navidrome/artist-image", async (req, res) => {
   const artistName = typeof req.query.artist === "string" ? req.query.artist : undefined;
   try {
     const imageUrl = String(req.query.url ?? "");
-    const result = await cachedImage(`navidrome-artist:${imageUrl}`, () => navidrome.proxyArtistImage(imageUrl));
+    const result = await cachedImage(
+      `navidrome-artist:${imageUrl}`,
+      () => navidrome.proxyArtistImage(imageUrl),
+      { revalidateAfterMs: 60_000, cacheControl: "no-store", allowStaleOnError: false }
+    );
     if (!result.buffer) {
       sendLocalArtistImage(artistName, res, result.status);
       return;
@@ -158,8 +168,14 @@ async function handleImageProxy(req: express.Request, res: express.Response) {
     const imageType = String(req.params.type);
     const imageIndex = req.params.imageIndex ? String(req.params.imageIndex) : undefined;
     const query = safeProxyQuery(req);
-    const result = await cachedImage(`jellyfin:${itemId}:${imageType}:${imageIndex ?? 0}:${query}`, () =>
-      jellyfin.proxyImage(itemId, imageType, imageIndex, query)
+    const result = await cachedImage(
+      `jellyfin:${itemId}:${imageType}:${imageIndex ?? 0}:${query}`,
+      () => jellyfin.proxyImage(itemId, imageType, imageIndex, query),
+      {
+        revalidateAfterMs: imageType === "Backdrop" || imageType === "Logo" ? 0 : 60_000,
+        cacheControl: "no-store",
+        allowStaleOnError: imageType !== "Backdrop" && imageType !== "Logo"
+      }
     );
     if (!result.buffer) {
       res.sendStatus(result.status);
@@ -231,15 +247,16 @@ app.post("/api/space/:space/next", async (req, res) => {
   if (!resolved) return;
   const currentState = states.get(req.params.space, undefined, resolved.displayConfig);
   const sequenced = !currentState.shuffle ? nextSequenceArtwork(currentState) : undefined;
+  const sequencedSelected = sequenced
+    ? await resolveFreshBackdropPolicy(sequenced.artwork, resolved.displayConfig, currentState, false)
+    : undefined;
   const shuffled = currentState.shuffle ? await shuffleSelection(resolved.displayConfig, currentState) : undefined;
-  const ordered = !currentState.shuffle && !sequenced ? await orderedWallpaperSelection(resolved.displayConfig, currentState) : undefined;
+  const ordered = !currentState.shuffle && !sequencedSelected ? await orderedWallpaperSelection(resolved.displayConfig, currentState) : undefined;
   const random = currentState.shuffle && !shuffled ? await jellyfin.randomArtwork(shuffleDisplayConfig(resolved.displayConfig, currentState)) : undefined;
-  const selected = sequenced
-    ? resolveBackdropPolicy(sequenced.artwork, resolved.displayConfig, currentState, false)
+  const selected = sequencedSelected
+    ? { ...sequencedSelected, patch: { ...sequenced?.patch, ...sequencePatchWithArtwork(sequenced?.patch, sequencedSelected.artwork), ...sequencedSelected.patch } }
     : ordered ?? shuffled ?? resolveBackdropPolicy(random ?? fallbackArtwork(), resolved.displayConfig, currentState, false);
   const updatedState = states.pushCurrent(req.params.space, undefined, resolved.displayConfig, selected.artwork, {
-    ...sequenced?.patch,
-    ...ordered?.patch,
     ...selected.patch
   });
   res.json({ state: updatedState });
@@ -251,14 +268,17 @@ app.post("/api/space/:space/previous", async (req, res) => {
   const state = states.get(req.params.space, undefined, resolved.displayConfig);
   const shuffled = state.shuffle ? await previousShuffleSelection(resolved.displayConfig, state) : undefined;
   const sequenced = !state.shuffle ? previousSequenceArtwork(state) : undefined;
-  const ordered = !state.shuffle && !sequenced ? await previousWallpaperSelection(resolved.displayConfig, state) : undefined;
-  const navigation = shuffled ?? sequenced ?? ordered;
+  const sequencedSelected = sequenced
+    ? await resolveFreshBackdropPolicy(sequenced.artwork, resolved.displayConfig, state, false)
+    : undefined;
+  const ordered = !state.shuffle && !sequencedSelected ? await previousWallpaperSelection(resolved.displayConfig, state) : undefined;
+  const navigation = shuffled ?? (sequencedSelected ? {
+    ...sequencedSelected,
+    patch: { ...sequenced?.patch, ...sequencePatchWithArtwork(sequenced?.patch, sequencedSelected.artwork), ...sequencedSelected.patch }
+  } : undefined) ?? ordered;
   if (navigation) {
-    const selected = sequenced
-      ? resolveBackdropPolicy(navigation.artwork, resolved.displayConfig, state, false)
-      : navigation;
+    const selected = navigation;
     const updatedState = states.pushCurrent(req.params.space, undefined, resolved.displayConfig, selected.artwork, {
-      ...navigation.patch,
       ...selected.patch
     });
     res.json({ state: updatedState });
@@ -269,7 +289,11 @@ app.post("/api/space/:space/previous", async (req, res) => {
     res.json({ state });
     return;
   }
-  const selected = resolveBackdropPolicy(previous, resolved.displayConfig, state, false);
+  const selected = await resolveFreshBackdropPolicy(previous, resolved.displayConfig, state, false);
+  if (!selected) {
+    res.json({ state: states.update(req.params.space, undefined, resolved.displayConfig, { history: rest }) });
+    return;
+  }
   const next = states.update(req.params.space, undefined, resolved.displayConfig, {
     current: selected.artwork,
     history: state.current ? [state.current, ...rest].slice(0, 30) : rest,
@@ -476,6 +500,10 @@ app.post("/api/space/:space/favorite", async (req, res) => {
     return;
   }
   const normalized = await normalizeFavoriteArtwork(artwork);
+  if (!normalized?.backdropUrl) {
+    res.status(400).json({ error: "Selected artwork no longer has an available backdrop" });
+    return;
+  }
   const id = artworkKey(normalized);
   const exists = state.favorites.some((favorite) => artworkKey(favorite) === id);
   const favorites = exists
@@ -490,8 +518,9 @@ app.post("/api/space/:space/select", async (req, res) => {
   const artwork = req.body.artwork as ArtworkRef | undefined;
   const itemId = req.body.itemId as string | undefined;
   const imageIndex = Number(req.body.imageIndex ?? 0);
-  const selected = artwork ?? (itemId ? await jellyfin.artworkForItem(itemId, imageIndex) : undefined);
-  if (!selected) {
+  const rawSelected = artwork ?? (itemId ? await jellyfin.artworkForItem(itemId, imageIndex) : undefined);
+  const selected = rawSelected ? await refreshArtwork(rawSelected).catch(() => undefined) : undefined;
+  if (!selected?.backdropUrl || !artworkAllowedForWallpaper(selected, resolved.displayConfig)) {
     res.status(400).json({ error: "Unable to resolve selected artwork" });
     return;
   }
@@ -569,10 +598,15 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     }
   }
   const useMediaWallFallback = state.mode === "now-playing" && displayConfig.now_playing.fallback === "mediawall";
-  if (!useMediaWallFallback && state.mode === "screensaver" && state.current?.source === "jellyfin" && !startupArtworkRefreshes.has(space)) {
+  if (
+    !useMediaWallFallback
+    && state.mode === "screensaver"
+    && (state.current?.source === "jellyfin" || state.current?.source === "navidrome")
+    && !startupArtworkRefreshes.has(space)
+  ) {
     startupArtworkRefreshes.add(space);
     let refreshFailed = false;
-    const refreshed = await refreshJellyfinArtwork(state.current).catch((error) => {
+    const refreshed = await refreshArtwork(state.current).catch((error) => {
       refreshFailed = true;
       console.warn(`Startup artwork refresh unavailable for /${space}: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
@@ -979,14 +1013,19 @@ function currentLibraryGroupIndex(groups: WallpaperLibraryGroup[], state: Displa
 
 async function shuffleSelection(displayConfig: DisplayConfig, state: DisplaySnapshot["state"]) {
   const existingQueue = uniqueArtworkRefs(state.shuffleQueue);
-  const queue = existingQueue.length && state.shuffleQueueIndex < existingQueue.length
+  let queue = existingQueue.length && state.shuffleQueueIndex < existingQueue.length
     ? existingQueue
     : shuffleItems(uniqueArtworkRefs((await wallpaperLibraryGroups(displayConfig, state)).flatMap((group) => group.items)));
   if (!queue.length) return undefined;
-  const index = state.shuffleQueue.length && state.shuffleQueueIndex < state.shuffleQueue.length
+  let index = state.shuffleQueue.length && state.shuffleQueueIndex < state.shuffleQueue.length
     ? state.shuffleQueueIndex
     : 0;
-  const artwork = queue[index] ?? queue[0];
+  let artwork = queue[index] ? await refreshArtwork(queue[index]!).catch(() => undefined) : undefined;
+  if (!artwork?.backdropUrl || !artworkAllowedForWallpaper(artwork, displayConfig)) {
+    queue = shuffleItems(uniqueArtworkRefs((await wallpaperLibraryGroups(displayConfig, state)).flatMap((group) => group.items)));
+    index = 0;
+    artwork = queue[0];
+  }
   if (!artwork) return undefined;
   const selected = resolveBackdropPolicy(artwork, displayConfig, state, false);
   return {
@@ -1001,7 +1040,7 @@ async function shuffleSelection(displayConfig: DisplayConfig, state: DisplaySnap
 
 async function previousShuffleSelection(displayConfig: DisplayConfig, state: DisplaySnapshot["state"]) {
   const existingQueue = uniqueArtworkRefs(state.shuffleQueue);
-  const queue = existingQueue.length
+  let queue = existingQueue.length
     ? existingQueue
     : shuffleItems(uniqueArtworkRefs((await wallpaperLibraryGroups(displayConfig, state)).flatMap((group) => group.items)));
   if (!queue.length) return undefined;
@@ -1009,8 +1048,13 @@ async function previousShuffleSelection(displayConfig: DisplayConfig, state: Dis
   const baseIndex = currentIndex >= 0
     ? currentIndex
     : Math.max(0, Math.min(queue.length - 1, state.shuffleQueueIndex - 1));
-  const previousIndex = (baseIndex - 1 + queue.length) % queue.length;
-  const artwork = queue[previousIndex] ?? queue[0];
+  let previousIndex = (baseIndex - 1 + queue.length) % queue.length;
+  let artwork = queue[previousIndex] ? await refreshArtwork(queue[previousIndex]!).catch(() => undefined) : undefined;
+  if (!artwork?.backdropUrl || !artworkAllowedForWallpaper(artwork, displayConfig)) {
+    queue = shuffleItems(uniqueArtworkRefs((await wallpaperLibraryGroups(displayConfig, state)).flatMap((group) => group.items)));
+    previousIndex = queue.length - 1;
+    artwork = queue[previousIndex] ?? queue[0];
+  }
   if (!artwork) return undefined;
   const selected = resolveBackdropPolicy(artwork, displayConfig, state, false);
   return {
@@ -1099,6 +1143,12 @@ function resolveBackdropPolicy(artwork: ArtworkRef, displayConfig: DisplayConfig
   };
 }
 
+async function resolveFreshBackdropPolicy(artwork: ArtworkRef, displayConfig: DisplayConfig, state: DisplaySnapshot["state"], explicit: boolean) {
+  const refreshed = await refreshArtwork(artwork).catch(() => undefined);
+  if (!refreshed || !refreshed.backdropUrl || !artworkAllowedForWallpaper(refreshed, displayConfig)) return undefined;
+  return resolveBackdropPolicy(refreshed, displayConfig, state, explicit);
+}
+
 function artworkWithBackdropIndex(artwork: ArtworkRef, imageIndex: number): ArtworkRef {
   if (artwork.source !== "jellyfin" || artwork.imageType !== "Backdrop") return { ...artwork, imageIndex };
   const tag = artwork.backdropTags?.[imageIndex];
@@ -1110,13 +1160,34 @@ function artworkWithBackdropIndex(artwork: ArtworkRef, imageIndex: number): Artw
   };
 }
 
-async function refreshJellyfinArtwork(artwork: ArtworkRef) {
-  if (artwork.source !== "jellyfin" || artwork.itemId === "fallback") return undefined;
-  return jellyfin.artworkForItem(artwork.itemId, artwork.imageIndex);
+function sequencePatchWithArtwork(patch: Partial<DisplaySnapshot["state"]> | undefined, artwork: ArtworkRef) {
+  const sequence = patch?.currentSequence;
+  if (!sequence?.items.length) return {};
+  const items = [...sequence.items];
+  const index = Math.max(0, Math.min(items.length - 1, sequence.index));
+  items[index] = artwork;
+  return {
+    currentSequence: {
+      ...sequence,
+      items
+    }
+  } as Partial<DisplaySnapshot["state"]>;
+}
+
+async function refreshArtwork(artwork: ArtworkRef) {
+  if (artwork.source === "fallback" || artwork.itemId === "fallback") return artwork;
+  if (artwork.source === "jellyfin") {
+    return jellyfin.artworkForItem(artwork.itemId, artwork.imageIndex);
+  }
+  if (artwork.source === "navidrome") {
+    const local = navidrome.localArtistArtworks(artwork.itemId);
+    return local[artwork.imageIndex] ?? local[0];
+  }
+  return artwork;
 }
 
 async function normalizeFavoriteArtwork(artwork: ArtworkRef) {
-  if (artwork.source !== "jellyfin") return artwork;
+  if (artwork.source !== "jellyfin") return refreshArtwork(artwork).catch(() => undefined);
   const byId = await jellyfin.artworkForItem(artwork.itemId, artwork.imageIndex).catch(() => undefined);
   if (byId && (byId.itemId !== artwork.itemId || byId.mediaType !== "Video")) return byId;
   if (artwork.mediaType.toLowerCase() === "video") {
@@ -1129,7 +1200,10 @@ async function normalizeFavoriteArtwork(artwork: ArtworkRef) {
 async function normalizeFavoriteArtworks(artworks: ArtworkRef[]) {
   const normalized = await Promise.all(artworks.map(normalizeFavoriteArtwork));
   const favoriteMap = new Map<string, ArtworkRef>();
-  for (const artwork of normalized) favoriteMap.set(artworkKey(artwork), artwork);
+  for (const artwork of normalized) {
+    if (!artwork?.backdropUrl) continue;
+    favoriteMap.set(artworkKey(artwork), artwork);
+  }
   return [...favoriteMap.values()].slice(0, 200);
 }
 
@@ -1181,7 +1255,7 @@ function isLocalRequest(req: express.Request) {
 function safeProxyQuery(req: express.Request) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(req.query)) {
-    if (key === "password") continue;
+    if (key === "password" || key === "_mwcb") continue;
     if (Array.isArray(value)) {
       for (const entry of value) if (typeof entry === "string") params.append(key, entry);
     } else if (typeof value === "string") {
@@ -1401,7 +1475,7 @@ function sendLocalArtistImage(artistName: string | undefined, res: express.Respo
     res.sendStatus(fallbackStatus);
     return;
   }
-  res.setHeader("cache-control", "public, max-age=86400");
+  res.setHeader("cache-control", "no-store");
   res.sendFile(imagePath);
 }
 
@@ -1411,25 +1485,50 @@ function sendLocalArtistLogo(artistName: string | undefined, res: express.Respon
     res.sendStatus(fallbackStatus);
     return;
   }
-  res.setHeader("cache-control", "public, max-age=86400");
+  res.setHeader("cache-control", "no-store");
   res.sendFile(imagePath);
 }
 
-async function cachedImage(cacheKey: string, fetcher: () => Promise<Response>): Promise<CachedImageResult> {
+async function cachedImage(
+  cacheKey: string,
+  fetcher: () => Promise<Response>,
+  options: { revalidateAfterMs?: number; cacheControl?: string; allowStaleOnError?: boolean } = {}
+): Promise<CachedImageResult> {
   const cached = await readCachedImage(cacheKey);
-  if (cached) return cached;
+  if (cached && !cacheNeedsRevalidation(cached, options.revalidateAfterMs)) {
+    return options.cacheControl ? { ...cached, cacheControl: options.cacheControl } : cached;
+  }
 
-  const response = await fetcher();
-  if (!response.ok || !response.body) return { status: response.status };
+  let response: Response;
+  try {
+    response = await fetcher();
+  } catch (error) {
+    if (cached && options.allowStaleOnError !== false) {
+      return options.cacheControl ? { ...cached, cacheControl: options.cacheControl } : cached;
+    }
+    if (cached) await deleteCachedImage(cacheKey);
+    throw error;
+  }
+  if (!response.ok || !response.body) {
+    if (response.status >= 400) await deleteCachedImage(cacheKey);
+    return { status: response.status };
+  }
 
   const result: CachedImageResult = {
     status: response.status,
     buffer: Buffer.from(await response.arrayBuffer()),
     contentType: response.headers.get("content-type") ?? undefined,
-    cacheControl: response.headers.get("cache-control") ?? "public, max-age=86400"
+    cacheControl: options.cacheControl ?? response.headers.get("cache-control") ?? "public, max-age=86400",
+    createdAt: Date.now()
   };
   await writeCachedImage(cacheKey, result);
   return result;
+}
+
+function cacheNeedsRevalidation(cached: CachedImageResult, revalidateAfterMs: number | undefined) {
+  if (revalidateAfterMs === undefined) return false;
+  if (!cached.createdAt) return true;
+  return Date.now() - cached.createdAt >= revalidateAfterMs;
 }
 
 async function readCachedImage(cacheKey: string): Promise<CachedImageResult | undefined> {
@@ -1442,6 +1541,7 @@ async function readCachedImage(cacheKey: string): Promise<CachedImageResult | un
       status: meta.status,
       contentType: meta.contentType,
       cacheControl: meta.cacheControl,
+      createdAt: meta.createdAt,
       buffer: await fs.promises.readFile(paths.image)
     };
   } catch {
@@ -1458,8 +1558,16 @@ async function writeCachedImage(cacheKey: string, result: CachedImageResult) {
     status: result.status,
     contentType: result.contentType,
     cacheControl: result.cacheControl,
-    createdAt: Date.now()
+    createdAt: result.createdAt ?? Date.now()
   }));
+}
+
+async function deleteCachedImage(cacheKey: string) {
+  const paths = cachePaths(cacheKey);
+  await Promise.all([
+    fs.promises.rm(paths.image, { force: true }),
+    fs.promises.rm(paths.meta, { force: true })
+  ]).catch(() => undefined);
 }
 
 function cachePaths(cacheKey: string) {
@@ -1792,11 +1900,19 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
   const now = Date.now();
   const idleMs = displayConfig.idle_timeout * 1000;
   const pausedSessionGraceMs = Math.max(0, displayConfig.now_playing.session_cleanup.paused_after_seconds) * 1000;
+  const missingSessionGraceMs = Math.max(0, displayConfig.now_playing.session_cleanup.missing_after_seconds) * 1000;
   const records = recentPlayback.get(displayKey) ?? new Map<string, RecentPlaybackRecord>();
-  for (const record of records.values()) record.active = false;
+  const previouslyActive = new Map([...records.entries()].map(([sessionKey, record]) => [sessionKey, record.active]));
+  const seenThisPoll = new Set<string>();
+  const replacementKeys = new Set<string>();
+  for (const record of records.values()) {
+    record.active = false;
+    record.heldForCycle = false;
+  }
 
   for (const candidate of candidates.filter((entry) => entry.playing)) {
     const cacheKey = playbackSessionKey(candidate);
+    seenThisPoll.add(cacheKey);
     const previous = records.get(cacheKey);
     const signatureChanged = previous?.state.signature !== candidate.signature;
     if (previous?.state.source === "jellyfin" && candidate.source === "jellyfin") {
@@ -1822,6 +1938,7 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
     const progressActive = !tracksPlaybackProgress
       || (progressConfirmed && (!stalledSince || now - stalledSince < pausedSessionGraceMs));
     const state = { ...candidate, sessionKey: candidate.sessionKey ?? cacheKey, activityAt };
+    replacementKeys.add(playbackContinuityKey(state));
     records.set(cacheKey, {
       firstSeenAt: previous?.firstSeenAt ?? now,
       seenAt: signatureChanged ? now : previous?.seenAt ?? now,
@@ -1832,8 +1949,27 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
       stalledSince,
       pausedSince,
       active: pausedActive && progressActive,
+      heldForCycle: false,
       state
     });
+  }
+
+  if (missingSessionGraceMs > 0) {
+    const cycle = recentPlaybackCycles.get(displayKey);
+    const intervalMs = Math.max(1, displayConfig.now_playing.cycle_interval_seconds) * 1000;
+    const freshActiveCount = [...records.entries()].filter(([sessionKey, record]) => seenThisPoll.has(sessionKey) && record.active).length;
+    for (const [sessionKey, record] of records.entries()) {
+      if (seenThisPoll.has(sessionKey) || !previouslyActive.get(sessionKey)) continue;
+      if (replacementKeys.has(playbackContinuityKey(record.state))) continue;
+      const finishVisibleCycle = freshActiveCount > 0
+        && cycle?.selectedKey === sessionKey
+        && !state.nowPlayingCyclePaused
+        && now - cycle.selectedAt < intervalMs;
+      if (now - record.refreshedAt < missingSessionGraceMs || finishVisibleCycle) {
+        record.active = true;
+        record.heldForCycle = finishVisibleCycle && now - record.refreshedAt >= missingSessionGraceMs;
+      }
+    }
   }
 
   for (const [sessionKey, record] of records.entries()) {
@@ -1971,6 +2107,17 @@ function newestSeenAt(records: Array<[string, RecentPlaybackRecord]>) {
 
 function comparePlaybackRecords(left: RecentPlaybackRecord, right: RecentPlaybackRecord) {
   return right.seenAt - left.seenAt || right.activityAt - left.activityAt || right.refreshedAt - left.refreshedAt;
+}
+
+function playbackContinuityKey(state: NowPlayingState) {
+  const parts = state.sessionKey?.split(":") ?? [];
+  if (state.source === "jellyfin" && parts[0] === "jellyfin") {
+    return [state.source, state.user, ...parts.slice(1, 5)].filter(Boolean).join(":");
+  }
+  if (state.source === "navidrome" && parts[0] === "navidrome") {
+    return [state.source, state.user, ...parts.slice(2, 4)].filter(Boolean).join(":");
+  }
+  return [state.source, state.user, state.displayUser].filter(Boolean).join(":");
 }
 
 function publicSessionId(sessionKey: string) {

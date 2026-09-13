@@ -14,12 +14,16 @@ import {
   Pause,
   Play,
   Sparkles,
-  Shuffle
+  Shuffle,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 import jellyfinLogo from "./logos/jellyfin.svg";
 import navidromeLogo from "./logos/navidrome.svg";
 import mediaWallBanner from "./logos/banner.png";
 import "./styles.css";
+
+const mediaAssetCacheToken = Date.now().toString(36);
 
 type ArtworkRef = {
   source: "jellyfin" | "navidrome" | "fallback";
@@ -301,6 +305,14 @@ function rememberedPasswordParam(space: string) {
   }
 }
 
+function rememberedSoundMuted(space: string) {
+  try {
+    return window.localStorage.getItem(`mediawall:${space}:sound-muted`) === "true";
+  } catch {
+    return false;
+  }
+}
+
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [visible, setVisible] = useState(true);
@@ -319,6 +331,8 @@ function App() {
   const [error, setError] = useState<string>();
   const [commandTick, setCommandTick] = useState(0);
   const [soundUnlockNeeded, setSoundUnlockNeeded] = useState(false);
+  const [soundMuted, setSoundMuted] = useState(() => rememberedSoundMuted(route.space));
+  const [soundIndicator, setSoundIndicator] = useState<"on" | "muted">();
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
     height: window.innerHeight
@@ -329,6 +343,7 @@ function App() {
   const toastExitTimer = useRef<number | undefined>(undefined);
   const soundsInitialized = useRef(false);
   const soundsUnlocked = useRef(false);
+  const soundMutedRef = useRef(soundMuted);
   const pendingSound = useRef<{ tone: string; volume: number } | undefined>(undefined);
   const audioContext = useRef<AudioContext | undefined>(undefined);
   const audioBuffers = useRef(new Map<string, AudioBuffer>());
@@ -347,6 +362,8 @@ function App() {
   const seenVisibleNowPlayingKeys = useRef(new Set<string>());
   const nowPlayingBackdropIndexes = useRef(new Map<string, number>());
   const centerTapTimes = useRef<number[]>([]);
+  const centerTapActionTimer = useRef<number | undefined>(undefined);
+  const soundIndicatorTimer = useRef<number | undefined>(undefined);
   const animationProgress = useRef(new Map<string, number>());
   const activeAnimationRun = useRef<{ key: string; startedAt: number; offset: number; period: number } | undefined>(undefined);
 
@@ -367,20 +384,23 @@ function App() {
       ?? snapshot?.config.display.backdrop_motion?.duration_seconds
       ?? 26
   );
+  const resolvedNowPlayingBackdropStep = resolveNowPlayingBackdropStep();
   const cycledArtwork = useMemo(
     () => previewArtwork ?? (snapshot?.state.mode === "now-playing" && snapshot.nowPlaying?.playing
-      ? cycleNowPlayingBackdrop(displayedArtwork, snapshot, nowPlayingBackdropStep)
+      ? cycleNowPlayingBackdrop(displayedArtwork, snapshot, resolvedNowPlayingBackdropStep)
       : cycleBackdrop(displayedArtwork, snapshot, backdropStep)),
     [
       previewArtwork,
       displayedArtwork,
       snapshot?.state.mode,
       snapshot?.nowPlaying?.playing,
+      snapshot?.nowPlaying?.publicSessionId,
+      snapshot?.nowPlaying?.publicMediaKey,
       snapshot?.config.now_playing.multiple_backdrops.enabled,
       snapshot?.config.display.multiple_backdrops.mode,
       snapshot?.config.display.multiple_backdrops.cycle_order,
       backdropStep,
-      nowPlayingBackdropStep
+      resolvedNowPlayingBackdropStep
     ]
   );
   const [flash, setFlash] = useState<string>();
@@ -453,6 +473,21 @@ function App() {
   }, []);
 
   useEffect(() => {
+    soundMutedRef.current = soundMuted;
+    if (soundMuted) {
+      pendingSound.current = undefined;
+      setSoundUnlockNeeded(false);
+    }
+  }, [soundMuted]);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(centerTapActionTimer.current);
+      window.clearTimeout(soundIndicatorTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!snapshot?.libraryScan) return;
     const timer = window.setInterval(refresh, 1000);
     return () => window.clearInterval(timer);
@@ -482,12 +517,12 @@ function App() {
   }, [snapshot?.config.now_playing.sounds.tone, snapshot?.config.now_playing.sounds.available]);
 
   useEffect(() => {
-    if (!snapshot?.config.now_playing.sounds.enabled) {
+    if (!snapshot?.config.now_playing.sounds.enabled || soundMuted) {
       setSoundUnlockNeeded(false);
       return;
     }
     if (!soundsUnlocked.current) setSoundUnlockNeeded(true);
-  }, [snapshot?.config.now_playing.sounds.enabled]);
+  }, [snapshot?.config.now_playing.sounds.enabled, soundMuted]);
 
   useEffect(() => {
     window.clearTimeout(advanceTimer.current);
@@ -518,47 +553,6 @@ function App() {
     const config = snapshot?.config.now_playing.multiple_backdrops;
     const key = now?.publicSessionId ?? now?.publicMediaKey;
     const count = displayedArtwork?.backdropCount ?? 0;
-    const backdropSignature = nowPlayingBackdropSignature(displayedArtwork);
-    if (!snapshot || snapshot.state.mode !== "now-playing" || !now?.playing || !config?.enabled || !key || count < 2) {
-      lastVisibleNowPlayingKey.current = undefined;
-      setNowPlayingBackdropStep(0);
-      return;
-    }
-    const sameVisibleSession = lastVisibleNowPlayingKey.current === key;
-    const previousBackdropSignature = nowPlayingBackdropSignatures.current.get(key);
-    if (sameVisibleSession && previousBackdropSignature === backdropSignature) return;
-    nowPlayingBackdropSignatures.current.set(key, backdropSignature);
-    const multipleSessions = (now.sessionCount ?? 0) > 1;
-    if (!multipleSessions) {
-      lastVisibleNowPlayingKey.current = key;
-      nowPlayingBackdropIndexes.current.set(key, 0);
-      seenVisibleNowPlayingKeys.current.add(key);
-      setNowPlayingBackdropStep(0);
-      return;
-    }
-    const previous = nowPlayingBackdropIndexes.current.get(key) ?? 0;
-    const next = sameVisibleSession ? previous : seenVisibleNowPlayingKeys.current.has(key) ? previous + 1 : previous;
-    lastVisibleNowPlayingKey.current = key;
-    seenVisibleNowPlayingKeys.current.add(key);
-    nowPlayingBackdropIndexes.current.set(key, next);
-    setNowPlayingBackdropStep(next);
-  }, [
-    snapshot?.state.mode,
-    snapshot?.nowPlaying?.playing,
-    snapshot?.nowPlaying?.publicSessionId,
-    snapshot?.nowPlaying?.publicMediaKey,
-    snapshot?.nowPlaying?.sessionCount,
-    snapshot?.config.now_playing.multiple_backdrops.enabled,
-    displayedArtwork?.itemId,
-    displayedArtwork?.backdropCount,
-    displayedArtwork?.backdropTags?.join("|")
-  ]);
-
-  useEffect(() => {
-    const now = snapshot?.nowPlaying;
-    const config = snapshot?.config.now_playing.multiple_backdrops;
-    const key = now?.publicSessionId ?? now?.publicMediaKey;
-    const count = displayedArtwork?.backdropCount ?? 0;
     if (
       !snapshot
       || snapshot.state.mode !== "now-playing"
@@ -570,10 +564,10 @@ function App() {
     ) return;
     const intervalMs = Math.max(1, config.interval_seconds) * 1000;
     const timer = window.setInterval(() => {
-      setNowPlayingBackdropStep((current) => {
-        const next = current + 1;
+      setNowPlayingBackdropStep((tick) => {
+        const next = (nowPlayingBackdropIndexes.current.get(key) ?? 0) + 1;
         nowPlayingBackdropIndexes.current.set(key, next);
-        return next;
+        return tick + 1;
       });
     }, intervalMs);
     return () => window.clearInterval(timer);
@@ -588,6 +582,38 @@ function App() {
     displayedArtwork?.itemId,
     displayedArtwork?.backdropCount
   ]);
+
+  function resolveNowPlayingBackdropStep() {
+    const now = snapshot?.nowPlaying;
+    const config = snapshot?.config.now_playing.multiple_backdrops;
+    const key = now?.publicSessionId ?? now?.publicMediaKey;
+    const count = displayedArtwork?.backdropCount ?? 0;
+    if (!snapshot || snapshot.state.mode !== "now-playing" || !now?.playing || !config?.enabled || !key || count < 2) {
+      lastVisibleNowPlayingKey.current = undefined;
+      return 0;
+    }
+
+    const backdropSignature = nowPlayingBackdropSignature(displayedArtwork);
+    const sameVisibleSession = lastVisibleNowPlayingKey.current === key;
+    const previousBackdropSignature = nowPlayingBackdropSignatures.current.get(key);
+    if (sameVisibleSession && previousBackdropSignature === backdropSignature) {
+      return nowPlayingBackdropIndexes.current.get(key) ?? 0;
+    }
+
+    nowPlayingBackdropSignatures.current.set(key, backdropSignature);
+    const multipleSessions = (now.sessionCount ?? 0) > 1;
+    const previous = nowPlayingBackdropIndexes.current.get(key) ?? 0;
+    const next = multipleSessions && !sameVisibleSession && seenVisibleNowPlayingKeys.current.has(key)
+      ? previous + 1
+      : multipleSessions
+        ? previous
+        : 0;
+
+    lastVisibleNowPlayingKey.current = key;
+    seenVisibleNowPlayingKeys.current.add(key);
+    nowPlayingBackdropIndexes.current.set(key, next);
+    return next;
+  }
 
   useEffect(() => {
     if (panel === "browse") void loadLibraries();
@@ -728,6 +754,11 @@ function App() {
   }, [snapshot?.nowPlaying?.displayUserAvatarUrl]);
 
   async function playSound(tone: string, volume: number) {
+    if (soundMutedRef.current) {
+      pendingSound.current = undefined;
+      setSoundUnlockNeeded(false);
+      return;
+    }
     const safeVolume = Math.max(0, Math.min(1, volume));
     if (soundsUnlocked.current) {
       try {
@@ -789,6 +820,11 @@ function App() {
   }
 
   async function requestSoundUnlock() {
+    if (soundMutedRef.current) {
+      pendingSound.current = undefined;
+      setSoundUnlockNeeded(false);
+      return;
+    }
     if (soundsUnlocked.current) return;
     const unlocked = await unlockAudioContext();
     soundsUnlocked.current = unlocked;
@@ -858,6 +894,12 @@ function App() {
       if (event.key.toLowerCase() === "m") {
         event.preventDefault();
         void setMode(snapshot.state.mode === "screensaver" ? "now-playing" : "screensaver");
+        return;
+      }
+
+      if (event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        toggleSoundMuted();
         return;
       }
 
@@ -999,19 +1041,58 @@ function App() {
       void action(snapshot.state.mode === "now-playing" ? "playback-next" : "next");
       return;
     }
-    if (recordCenterTap()) {
+    const centerAction = recordCenterTapAction();
+    if (centerAction === "sound") {
+      toggleSoundMuted();
+      return;
+    }
+    if (centerAction === "fullscreen") {
       void toggleFullscreen();
       return;
     }
     revealControls();
   }
 
-  function recordCenterTap() {
+  function recordCenterTapAction() {
     const now = Date.now();
     centerTapTimes.current = [...centerTapTimes.current, now].filter((time) => now - time <= 650);
-    if (centerTapTimes.current.length < 3) return false;
-    centerTapTimes.current = [];
-    return true;
+    if (snapshot?.config.now_playing.sounds.enabled && centerTapTimes.current.length >= 5) {
+      window.clearTimeout(centerTapActionTimer.current);
+      centerTapTimes.current = [];
+      return "sound";
+    }
+    if (centerTapTimes.current.length >= 3 && centerTapActionTimer.current === undefined) {
+      centerTapActionTimer.current = window.setTimeout(() => {
+        centerTapActionTimer.current = undefined;
+        centerTapTimes.current = [];
+        void toggleFullscreen();
+      }, 520);
+    }
+    return undefined;
+  }
+
+  function toggleSoundMuted() {
+    if (!snapshot?.config.now_playing.sounds.enabled) return;
+    setSoundMuted((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(`mediawall:${route.space}:sound-muted`, next ? "true" : "false");
+      } catch {
+        // Local storage can be unavailable in private or locked-down browser modes.
+      }
+      if (next) {
+        pendingSound.current = undefined;
+        setSoundUnlockNeeded(false);
+      }
+      showSoundIndicator(next ? "muted" : "on");
+      return next;
+    });
+  }
+
+  function showSoundIndicator(next: "on" | "muted") {
+    setSoundIndicator(next);
+    window.clearTimeout(soundIndicatorTimer.current);
+    soundIndicatorTimer.current = window.setTimeout(() => setSoundIndicator(undefined), 850);
   }
 
   async function toggleFullscreen() {
@@ -1265,10 +1346,15 @@ function App() {
       <SessionTimer snapshot={snapshot} />
       <TopRightBadge snapshot={snapshot} />
       <ConnectionWarning snapshot={snapshot} />
-      {soundUnlockNeeded && snapshot?.config.now_playing.sounds.enabled && (
+      {soundUnlockNeeded && snapshot?.config.now_playing.sounds.enabled && !soundMuted && (
         <button className="sound-unlock" type="button" onClick={requestSoundUnlock}>
           Tap or click here once to enable sound
         </button>
+      )}
+      {soundIndicator && (
+        <div className="sound-toggle-indicator" aria-live="polite">
+          {soundIndicator === "muted" ? <VolumeX /> : <Volume2 />}
+        </div>
       )}
       <ControlCommandLabel command={snapshot?.controlCommand} />
       <LibraryScanProgress snapshot={snapshot} />
@@ -2282,10 +2368,11 @@ function sourceLabel(source: "jellyfin" | "navidrome" | "sounds" | "custom_image
 }
 
 function mediaUrl(url: string | undefined) {
-  if (!url || !passwordParam || !url.startsWith("/api/")) return url;
+  if (!url || !url.startsWith("/api/")) return url;
   const [path, query = ""] = url.split("?");
   const params = new URLSearchParams(query);
-  params.set("password", passwordParam);
+  params.set("_mwcb", mediaAssetCacheToken);
+  if (passwordParam) params.set("password", passwordParam);
   return `${path}?${params.toString()}`;
 }
 

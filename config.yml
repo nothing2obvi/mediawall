@@ -58,6 +58,7 @@ spaces:
       cycle_interval_seconds: 15
       session_cleanup:
         paused_after_seconds: 60
+        missing_after_seconds: 5
       session_timer:
         enabled: true
         size: 42
@@ -169,6 +170,7 @@ spaces:
       cycle_interval_seconds: 15
       session_cleanup:
         paused_after_seconds: 60
+        missing_after_seconds: 5
       session_timer:
         enabled: true
         size: 42
@@ -281,6 +283,7 @@ spaces:
       cycle_interval_seconds: 15
       session_cleanup:
         paused_after_seconds: 60
+        missing_after_seconds: 5
       session_timer:
         enabled: true
         size: 42

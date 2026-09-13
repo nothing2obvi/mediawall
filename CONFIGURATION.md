@@ -17,13 +17,13 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 
 ### Server
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `port` | Port MediaWall listens on. | `1221` | No | Docker compose should publish the same port. |
 
 ### Library Scan
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `enabled` | Enables image-cache warming. | `true` | No | Applies to Jellyfin and Navidrome/local artwork used by the grid, plus local sound/custom logo discovery progress. |
 | `directory` | Cache directory. | `/app/data/grid-cache` | No | Mount `/app/data` to persist it. |
@@ -34,27 +34,27 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 
 ### Jellyfin
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `url` | Jellyfin base URL. | `""` | Required for Jellyfin | Use `${JELLYFIN_URL}`. Jellyfin is recommended for rich artwork. |
 | `api_key` | Jellyfin API key. | `""` | Required for Jellyfin | Only one Jellyfin API key is needed, and it must belong to an admin user. Per-user Jellyfin API keys are not required; the configured Jellyfin username matches sessions by username. |
 
 ### Navidrome
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `enabled` | Enables Navidrome support. | `false` | No | Turn on for Navidrome Now Playing. |
 | `url` | Navidrome base URL. | `""` | Required if Navidrome enabled | Use `${NAVIDROME_URL}`. |
 | `artwork.jellyfin_fallback` | Lets Navidrome playback use matching Jellyfin artist artwork. | `true` | No | Requires Jellyfin to be configured. |
 | `artwork.local_files` | Enables local artist artwork for Navidrome-only setups. | `true` | No | If using Navidrome without Jellyfin, enable this for backdrop/logo-based grids. |
 | `artwork.order` | Artwork source priority for Navidrome playback. | `["jellyfin", "local"]` | No | Options are `jellyfin` and `local`. Disabled sources are skipped even if listed. |
-| `artwork.path_mappings` | Maps Navidrome paths to paths visible inside the MediaWall container. | `[]` | No | Each entry has `navidrome` and `mediawall`. |
-| `path_mappings` entry `navidrome` | Navidrome-side path prefix. | unset | Required per mapping | Example: `/music`. |
-| `path_mappings` entry `mediawall` | MediaWall-container path prefix. | `/navidrome_music` | No | Used for local artist artwork lookup. Older configs using `jellyfin` are still accepted for compatibility. |
+| `artwork.path_mappings` | Maps Navidrome paths to paths visible inside the MediaWall container. | `[]` | No | Each mapping has `navidrome` and `mediawall`. |
+| `path_mappings.navidrome` | Navidrome-side path prefix. | unset | Required per mapping | Example: `/music`. |
+| `path_mappings.mediawall` | MediaWall-container path prefix. | `/navidrome_music` | No | Used for local artist artwork lookup. Older configs using `jellyfin` are still accepted for compatibility. |
 
 ### MediaWall Users
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `name` | Optional display name override for a MediaWall user. | map key | No | Usually omit this and use the map key. |
 | `jellyfin_user` | Jellyfin username mapped to this MediaWall user. | unset | Required for Jellyfin user matching | Use `All` to watch all active Jellyfin users. Can reference `${JELLYFIN_USER}`. |
@@ -67,7 +67,7 @@ Per-user sounds override the global tones for any space where that MediaWall use
 
 ### Spaces
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `playback_source` | Sources watched for Now Playing. | `both` | No | Options: `jellyfin`, `navidrome`, `both`. |
 | `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use configured MediaWall user names. Use `All` to allow every configured MediaWall user. If omitted, MediaWall falls back to `playback_user` or the first configured user. |
@@ -78,7 +78,7 @@ Per-user sounds override the global tones for any space where that MediaWall use
 
 ### Space Now Playing
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `fallback` | What Now Playing shows when nothing is playing. | `mediawall` | No | Options: `mediawall`, `shuffle`. |
 | `ignored_libraries` | Jellyfin libraries ignored for Now Playing. | `["Feature Pre-Rolls"]` | No | Exact names, case-insensitive. Good for Cinema Mode intro/trailer/pre-roll libraries. |
@@ -86,6 +86,7 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
 | `cycle_interval_seconds` | Now Playing session cycle interval. | `15` | No | Used for natural session cycling and the timer ring. |
 | `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `60` | No | Jellyfin sessions with a reported playhead must show position progress before they count as active. Navidrome sessions must keep refreshing their Now Playing timestamp. Sessions are removed if those signals stop advancing for this long. |
+| `session_cleanup.missing_after_seconds` | Keeps a recently active session visible across brief empty API polls. | `5` | No | Prevents flicker to the fallback screen between tracks or episodes. Set to `0` to disable. |
 | `session_timer.enabled` | Shows the countdown ring. | `true` | No | Only meaningful when multiple active sessions are cycling. |
 | `session_timer.size` | Countdown ring diameter. | `42` | No | Pixels. |
 | `session_count.enabled` | Shows `1 of 4` session count. | `true` | No | Independent from the timer ring. |
@@ -100,7 +101,7 @@ Per-user sounds override the global tones for any space where that MediaWall use
 
 ### Space Sounds
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `enabled` | Master switch for session sounds. | `true` | No | Does not affect visual behavior. |
 | `jellyfin` | Allows Jellyfin sounds. | `true` | No | Applies to start and end sounds. |
@@ -130,7 +131,7 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 
 ### Space Display
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `ui.scale` | Scales app UI chrome. | `1` | No | Applies to controls, dialogs, grid cards, and toast notifications. |
 | `music_artist_images` | Music artist role filter. | `albumartists` | No | Options: `artists`, `albumartists`, `both`. |
@@ -151,7 +152,7 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 
 ### Backdrop Animations
 
-These entries live inside Space Display, under `animations`. The old breathing effect is now called `breathe` and is one option in the broader animations system.
+These settings live inside Space Display, under `animations`. The old breathing effect is now called `breathe` and is one option in the broader animations system.
 
 | Animation | What It Does | Good Fit |
 | --- | --- | --- |
@@ -161,6 +162,8 @@ These entries live inside Space Display, under `animations`. The old breathing e
 | `drift` | Moves slowly in a diagonal direction. | Ambient screens where a little more movement is welcome. |
 | `focus` | Gently wanders around the starting point. | Very subtle movement, especially for desks or bedroom displays. |
 | `zoom` | Makes one long zoom movement before reversing. | When you want motion without much side-to-side travel. |
+
+Older devices may handle motion less smoothly. On something like a 2017 iPad, start with `breathe`, `pan`, or `focus`, and use a longer `duration_seconds`. More active styles such as `kenburns` and `drift` can look better on faster tablets, TVs, and desktop browsers.
 
 Example:
 
@@ -175,7 +178,7 @@ display:
 
 ### Now Playing Text
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `enabled` | Shows the upper-right Now Playing badge. | `false` | No | Master switch for this badge. |
 | `text` | Now Playing badge label. | `Now playing on` | No | Text can be customized. |
@@ -193,7 +196,7 @@ display:
 
 ### Screensaver Text
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `enabled` | Shows Wallpaper/Screensaver badge. | `true` | No | Hidden when paused as wallpaper. |
 | `text` | Wallpaper/Screensaver badge text. | `Featured on MediaWall` | No | Custom display label. |
@@ -202,7 +205,7 @@ display:
 
 ### Media Info
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `font_size` | General media info font size. | `40` | No | Used as fallback for specific media info sizes. |
 | `release_year_font_size` | Movie release year size. | `40` | No | Applies only to movie-type items. |
@@ -213,8 +216,10 @@ display:
 
 ### Transitions
 
-| Entry | Purpose | Default | Required | Notes |
+| Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `duration_ms` | Transition duration. | `1200` | No | Milliseconds. |
 | `order` | Transition order mode. | `written` | No | Options: `written`, `shuffle`. |
 | `styles` | Transition styles to use. | `["crossfade"]` | No | Options: `crossfade`, `fade`, `slide_left`, `slide_right`, `slide_up`, `slide_down`, `push_left`, `push_right`, `zoom_fade`, `soft_zoom`, `blur_fade`, `wipe_left`, `wipe_right`, `All`. |
+
+For older tablets, `crossfade`, `fade`, and `blur_fade` are usually the safest choices. Directional slide, push, wipe, and zoom transitions can look more dynamic, but may feel heavier on older iPads or low-power kiosk devices.

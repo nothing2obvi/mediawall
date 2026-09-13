@@ -25,6 +25,7 @@ export interface DisplayConfig {
     cycle_interval_seconds: number;
     session_cleanup: {
       paused_after_seconds: number;
+      missing_after_seconds: number;
     };
     session_timer: {
       enabled: boolean;
