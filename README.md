@@ -15,6 +15,10 @@
 
 # MediaWall
 
+## TL;DR
+
+MediaWall is a way to take advantage of an old iPad, a Raspberry Pi with a display, or any spare screen by turning it into a live window into your Jellyfin and Navidrome servers. It can show what you and your users are currently watching or listening to, cycle through artwork from your libraries as a screensaver, or display favorite media as wallpapers. It also supports custom sounds, layouts, and fallback screens. Basically, it's a fun little project that's an overengineered way to view active sessions and make your media library visible instead of leaving all that artwork buried in storage.
+
 ## ⚠️ Disclaimers
 
 MediaWall is under active development. There may be breaking changes, which will be highlighted in every release.
