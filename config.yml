@@ -101,6 +101,7 @@ spaces:
       ui:
         scale: 1
       music_artist_images: albumartists
+      music_logo_artist: artists
       cycle_interval_seconds: 15
       require_logos: true
       backdrop_background_color: "#050508"
@@ -213,6 +214,7 @@ spaces:
       ui:
         scale: 1
       music_artist_images: albumartists
+      music_logo_artist: artists
       cycle_interval_seconds: 15
       require_logos: true
       backdrop_background_color: "#050508"
@@ -326,6 +328,7 @@ spaces:
       ui:
         scale: 1
       music_artist_images: albumartists
+      music_logo_artist: artists
       cycle_interval_seconds: 15
       require_logos: true
       backdrop_background_color: "#050508"

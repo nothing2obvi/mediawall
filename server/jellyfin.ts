@@ -138,7 +138,8 @@ export class JellyfinClient {
       };
     }
 
-    const artistRefs = this.artistRefs(item, displayConfig.display.music_artist_images);
+    const musicItem = await this.musicDisplayItem(item, displayConfig.display.music_artist_images);
+    const artistRefs = this.artistRefs(musicItem, displayConfig.display.music_artist_images);
     const artistArtworks = await Promise.all(artistRefs.map(async (ref) => {
       const artist = ref.id ? await this.getItem(ref.id).catch(() => undefined) : await this.findArtist(ref.name).catch(() => undefined);
       const artwork = artist ? this.artworkFromItem(artist, artist.Name ?? ref.name ?? "Artist", "MusicArtist") : undefined;
@@ -146,12 +147,18 @@ export class JellyfinClient {
     }));
     const selectedArtist = artistArtworks.find((candidate) => candidate.artwork?.backdropUrl)
       ?? artistArtworks.find((candidate) => candidate.artwork)
-      ?? { artist: undefined, artwork: undefined, name: this.artistName(item, displayConfig.display.music_artist_images) };
-    const artistName = selectedArtist.name ?? this.artistName(item, displayConfig.display.music_artist_images);
-    const artistId = selectedArtist.artist?.Id ?? this.artistId(item, displayConfig.display.music_artist_images);
+      ?? { artist: undefined, artwork: undefined, name: this.artistName(musicItem, displayConfig.display.music_artist_images) };
+    const artistName = selectedArtist.name ?? this.artistName(musicItem, displayConfig.display.music_artist_images);
+    const artistId = selectedArtist.artist?.Id ?? this.artistId(musicItem, displayConfig.display.music_artist_images);
     const rawArtwork = selectedArtist.artwork
-      ?? this.artworkFromItem(item, artistName ?? item.Album ?? item.Name ?? "Music", "Audio");
-    const artwork = this.ensureNowPlayingBackdrop(rawArtwork, artistName ?? item.Album ?? item.Name ?? "Music");
+      ?? this.artworkFromItem(musicItem, artistName ?? musicItem.Album ?? musicItem.Name ?? "Music", "Audio");
+    const artwork = this.ensureNowPlayingBackdrop(rawArtwork, artistName ?? musicItem.Album ?? musicItem.Name ?? "Music");
+    const logo = await this.musicLogoPresentation(item, musicItem, selectedArtist, displayConfig.display.music_logo_artist);
+    const displayArtwork = {
+      ...artwork,
+      logoUrl: logo.logoUrl,
+      logoTag: logo.logoTag
+    };
 
     return {
       source: "jellyfin",
@@ -163,16 +170,16 @@ export class JellyfinClient {
       sessionKey,
       activityAt,
       playbackPositionTicks,
-      title: item.Name,
+      title: musicItem.Name ?? item.Name,
       artist: artistName,
-      album: item.Album,
-      logoText: selectedArtist.artist?.Name ?? artistName,
-      itemId: item.Id,
+      album: musicItem.Album ?? item.Album,
+      logoText: logo.text,
+      itemId: musicItem.Id ?? item.Id,
       artistId: selectedArtist.artist?.Id ?? artistId,
       artistName: selectedArtist.artist?.Name ?? artistName,
       libraryName,
-      albumArtUrl: item.Id ? this.imageUrl(item.Id, "Primary", 0, item.ImageTags?.Primary) : undefined,
-      artwork,
+      albumArtUrl: musicItem.Id ? this.imageUrl(musicItem.Id, "Primary", 0, musicItem.ImageTags?.Primary) : undefined,
+      artwork: displayArtwork,
       signature: selectedArtist.artist?.Id ?? artistId ?? artistName ?? item.Id
     };
   }
@@ -343,6 +350,70 @@ export class JellyfinClient {
     const response = await this.getJson<{ Items?: JellyfinItem[] }>(`/Items?${params}`);
     return (response.Items ?? []).find((entry) => String(entry.Name ?? "").toLowerCase() === name.toLowerCase())
       ?? response.Items?.[0];
+  }
+
+  private async musicDisplayItem(item: JellyfinItem, role: DisplayConfig["display"]["music_artist_images"]) {
+    const enriched = item.Id
+      ? await this.getItem(String(item.Id)).catch(() => item)
+      : item;
+    if (role === "artists") return enriched;
+
+    const album = await this.albumForMusicItem(enriched);
+    const albumArtistRefs = album ? this.albumArtistRefs(album) : [];
+    if (!album || albumArtistRefs.length === 0) return enriched;
+
+    const albumArtistName = albumArtistRefs[0]?.name;
+    logger.debug(
+      `Jellyfin album artist metadata supplied by album "${album.Name ?? enriched.Album ?? "unknown"}" for track "${enriched.Name ?? item.Name}": ${albumArtistName ?? "unknown"}`
+    );
+    return {
+      ...enriched,
+      AlbumArtist: albumArtistName ?? enriched.AlbumArtist,
+      AlbumArtists: albumArtistRefs.map((ref) => ({ Id: ref.id, Name: ref.name })).filter((ref) => ref.Id || ref.Name),
+      AlbumId: enriched.AlbumId ?? album.Id,
+      Album: enriched.Album ?? album.Name
+    };
+  }
+
+  private albumArtistRefs(album: JellyfinItem) {
+    const refs: Array<{ id?: string; name?: string }> = [];
+    const seen = new Set<string>();
+    const add = (id?: string, name?: string) => {
+      const cleanName = typeof name === "string" ? name.trim() : undefined;
+      const key = id ? `id:${id}` : cleanName ? `name:${cleanName.toLowerCase()}` : undefined;
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      refs.push({ id, name: cleanName });
+    };
+
+    for (const artist of album.AlbumArtists ?? []) add(artist.Id, artist.Name);
+    add(undefined, album.AlbumArtist);
+
+    // On MusicAlbum items, Jellyfin may expose album artists as Artists/ArtistItems.
+    for (const artist of album.ArtistItems ?? []) add(artist.Id, artist.Name);
+    for (const name of album.Artists ?? []) add(undefined, name);
+
+    return refs;
+  }
+
+  private async albumForMusicItem(item: JellyfinItem) {
+    const albumId = item.AlbumId ?? item.ParentId;
+    if (albumId) {
+      const album = await this.getItem(String(albumId)).catch(() => undefined);
+      if (album) return album;
+    }
+    if (!item.Album) return undefined;
+    const params = new URLSearchParams({
+      SearchTerm: String(item.Album),
+      IncludeItemTypes: "MusicAlbum",
+      Recursive: "true",
+      Limit: "5",
+      Fields: "ImageTags,BackdropImageTags,AlbumArtist,AlbumArtists"
+    });
+    const response = await this.getJson<{ Items?: JellyfinItem[] }>(`/Items?${params}`).catch(() => undefined);
+    const normalizedAlbum = String(item.Album).toLowerCase();
+    return (response?.Items ?? []).find((entry) => String(entry.Name ?? "").toLowerCase() === normalizedAlbum)
+      ?? response?.Items?.[0];
   }
 
   private async nowPlayingLibraryName(item: JellyfinItem) {
@@ -523,8 +594,11 @@ export class JellyfinClient {
       for (const name of item.Artists ?? []) add(undefined, name);
     };
     const addAlbumArtists = () => {
-      for (const artist of item.AlbumArtists ?? []) add(artist.Id, artist.Name);
-      add(undefined, item.AlbumArtist);
+      const albumArtists = item.AlbumArtists ?? [];
+      for (const artist of albumArtists) add(artist.Id, artist.Name);
+      if (albumArtists.length > 0) return;
+      const split = splitArtistCredit(item.AlbumArtist);
+      add(undefined, split[0] ?? item.AlbumArtist);
     };
 
     if (role === "artists") addArtists();
@@ -535,6 +609,63 @@ export class JellyfinClient {
     }
 
     return refs;
+  }
+
+  private async musicLogoPresentation(
+    rawItem: JellyfinItem,
+    musicItem: JellyfinItem,
+    selectedArtist: { artist?: JellyfinItem; artwork?: ArtworkRef; name?: string },
+    mode: DisplayConfig["display"]["music_logo_artist"]
+  ) {
+    if (mode === "albumartist") {
+      return {
+        text: selectedArtist.artist?.Name ?? selectedArtist.name ?? this.artistName(musicItem, "albumartists"),
+        logoUrl: selectedArtist.artwork?.logoUrl,
+        logoTag: selectedArtist.artwork?.logoTag
+      };
+    }
+
+    const text = this.trackArtistCredit(rawItem, musicItem)
+      ?? selectedArtist.artist?.Name
+      ?? selectedArtist.name
+      ?? this.artistName(musicItem, "albumartists");
+    const trackRefs = this.artistRefs(rawItem, "artists");
+    const combinedArtist = text && splitArtistCredit(text).length > 1
+      ? await this.findArtist(text).catch(() => undefined)
+      : undefined;
+    const singleArtist = trackRefs.length === 1
+      ? await this.artistFromRef(trackRefs[0]).catch(() => undefined)
+      : undefined;
+    const logoArtist = combinedArtist ?? singleArtist;
+    const logoArtwork = logoArtist ? this.artworkFromItem(logoArtist, logoArtist.Name ?? text ?? "Artist", "MusicArtist") : undefined;
+    return {
+      text,
+      logoUrl: logoArtwork?.logoUrl,
+      logoTag: logoArtist?.ImageTags?.Logo
+    };
+  }
+
+  private async artistFromRef(ref: { id?: string; name?: string }) {
+    if (ref.id) return this.getItem(ref.id);
+    return this.findArtist(ref.name);
+  }
+
+  private trackArtistCredit(rawItem: JellyfinItem, musicItem: JellyfinItem) {
+    const artists = [
+      ...this.cleanStringArray(rawItem.Artists),
+      ...this.cleanStringArray(rawItem.ArtistItems?.map((artist: JellyfinItem) => artist.Name))
+    ].flatMap((artist) => splitArtistCredit(artist));
+    if (artists.length > 0) return [...new Set(artists)].join(" • ");
+    return formatArtistCredit(rawItem.Artist ?? musicItem.Artist);
+  }
+
+  private cleanStringArray(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return value.map((entry) => String(entry ?? "").trim()).filter(Boolean);
+  }
+
+  private nonEmptyArray(value: unknown): value is unknown[] {
+    return Array.isArray(value) && value.length > 0;
   }
 
   private ensureNowPlayingBackdrop(artwork: ArtworkRef | undefined, title: string): ArtworkRef {
@@ -671,6 +802,19 @@ function moviePartSearchTitle(name: string) {
 
 function normalizeMovieTitle(name: string) {
   return moviePartSearchTitle(name).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function splitArtistCredit(value: unknown) {
+  if (typeof value !== "string") return [];
+  return value
+    .split(/\s*(?:;|,|\/|\+|&|\u2022|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)\s*/i)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function formatArtistCredit(value: unknown) {
+  const artists = splitArtistCredit(value);
+  return artists.length > 1 ? artists.join(" • ") : artists[0];
 }
 
 export function fallbackArtwork(): ArtworkRef {

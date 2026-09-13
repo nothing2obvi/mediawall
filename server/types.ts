@@ -79,6 +79,7 @@ export interface DisplayConfig {
       scale: number;
     };
     music_artist_images: "artists" | "albumartists" | "both";
+    music_logo_artist: "artists" | "albumartist";
     cycle_interval_seconds: number;
     screensaver_interval: number;
     require_logos: boolean;
