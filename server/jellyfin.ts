@@ -386,12 +386,28 @@ export class JellyfinClient {
       refs.push({ id, name: cleanName });
     };
 
-    for (const artist of album.AlbumArtists ?? []) add(artist.Id, artist.Name);
-    add(undefined, album.AlbumArtist);
+    for (const artist of album.AlbumArtists ?? []) {
+      const names = splitArtistCredit(artist.Name);
+      if (names.length > 1) {
+        for (const name of names) add(undefined, name);
+      } else {
+        add(artist.Id, artist.Name);
+      }
+    }
+    for (const name of splitArtistCredit(album.AlbumArtist)) add(undefined, name);
 
     // On MusicAlbum items, Jellyfin may expose album artists as Artists/ArtistItems.
-    for (const artist of album.ArtistItems ?? []) add(artist.Id, artist.Name);
-    for (const name of album.Artists ?? []) add(undefined, name);
+    for (const artist of album.ArtistItems ?? []) {
+      const names = splitArtistCredit(artist.Name);
+      if (names.length > 1) {
+        for (const name of names) add(undefined, name);
+      } else {
+        add(artist.Id, artist.Name);
+      }
+    }
+    for (const artist of album.Artists ?? []) {
+      for (const name of splitArtistCredit(artist)) add(undefined, name);
+    }
 
     return refs;
   }
@@ -568,8 +584,8 @@ export class JellyfinClient {
   }
 
   private artistName(item: JellyfinItem, role: DisplayConfig["display"]["music_artist_images"]) {
-    if (role === "albumartists") return item.AlbumArtist ?? item.AlbumArtists?.[0]?.Name;
-    if (role === "both") return item.Artists?.[0] ?? item.AlbumArtist ?? item.AlbumArtists?.[0]?.Name;
+    if (role === "albumartists") return this.albumArtistName(item);
+    if (role === "both") return item.Artists?.[0] ?? this.albumArtistName(item);
     return item.Artists?.[0];
   }
 
@@ -595,7 +611,14 @@ export class JellyfinClient {
     };
     const addAlbumArtists = () => {
       const albumArtists = item.AlbumArtists ?? [];
-      for (const artist of albumArtists) add(artist.Id, artist.Name);
+      for (const artist of albumArtists) {
+        const names = splitArtistCredit(artist.Name);
+        if (names.length > 1) {
+          for (const name of names) add(undefined, name);
+        } else {
+          add(artist.Id, artist.Name);
+        }
+      }
       if (albumArtists.length > 0) return;
       const split = splitArtistCredit(item.AlbumArtist);
       add(undefined, split[0] ?? item.AlbumArtist);
@@ -609,6 +632,14 @@ export class JellyfinClient {
     }
 
     return refs;
+  }
+
+  private albumArtistName(item: JellyfinItem) {
+    const splitAlbumArtist = splitArtistCredit(item.AlbumArtist);
+    if (splitAlbumArtist[0]) return splitAlbumArtist[0];
+    const first = item.AlbumArtists?.[0];
+    const splitFirst = splitArtistCredit(first?.Name);
+    return splitFirst[0] ?? first?.Name;
   }
 
   private async musicLogoPresentation(
@@ -630,13 +661,11 @@ export class JellyfinClient {
       ?? selectedArtist.name
       ?? this.artistName(musicItem, "albumartists");
     const trackRefs = this.artistRefs(rawItem, "artists");
-    const combinedArtist = text && splitArtistCredit(text).length > 1
-      ? await this.findArtist(text).catch(() => undefined)
-      : undefined;
-    const singleArtist = trackRefs.length === 1
+    const hasMultipleArtistCredit = splitArtistCredit(text).length > 1;
+    const singleArtist = !hasMultipleArtistCredit && trackRefs.length === 1
       ? await this.artistFromRef(trackRefs[0]).catch(() => undefined)
       : undefined;
-    const logoArtist = combinedArtist ?? singleArtist;
+    const logoArtist = singleArtist;
     const logoArtwork = logoArtist ? this.artworkFromItem(logoArtist, logoArtist.Name ?? text ?? "Artist", "MusicArtist") : undefined;
     return {
       text,

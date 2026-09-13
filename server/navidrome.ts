@@ -15,6 +15,7 @@ type NowPlayingEntry = {
   id?: string;
   title?: string;
   album?: string;
+  albumArtist?: string;
   artist?: string;
   artistId?: string;
   coverArt?: string;
@@ -101,13 +102,24 @@ export class NavidromeClient {
     const displayUser = navidromeUser;
     const activityAt = navidromeTimestamp(entry.minutesAgo);
     const stale = navidromeEntryStale(entry);
-    const resolvedArtwork = await this.resolveNowPlayingArtwork(entry);
+    const artworkArtist = this.artworkArtistName(entry, displayConfig);
+    const logoText = this.logoArtistCredit(entry, displayConfig);
+    const resolvedArtwork = await this.resolveNowPlayingArtwork(entry, artworkArtist);
+    const useResolvedLogo = displayConfig.display.music_logo_artist === "albumartist"
+      || splitArtistCredit(logoText).length <= 1;
+    const displayArtwork = resolvedArtwork
+      ? {
+        ...resolvedArtwork,
+        logoUrl: useResolvedLogo ? resolvedArtwork.logoUrl : undefined,
+        logoTag: useResolvedLogo ? resolvedArtwork.logoTag : undefined
+      }
+      : undefined;
 
     const coverArtUrl = entry.coverArt ? this.coverArtUrl(entry.coverArt) : undefined;
-    const artwork: ArtworkRef = resolvedArtwork ?? {
+    const artwork: ArtworkRef = displayArtwork ?? {
       source: "navidrome",
-      itemId: entry.artistId ?? entry.id ?? entry.coverArt ?? entry.artist ?? entry.title ?? "navidrome",
-      title: entry.artist ?? entry.album ?? entry.title ?? "Navidrome",
+      itemId: entry.artistId ?? entry.id ?? entry.coverArt ?? artworkArtist ?? entry.artist ?? entry.title ?? "navidrome",
+      title: artworkArtist ?? entry.artist ?? entry.album ?? entry.title ?? "Navidrome",
       mediaType: "MusicArtist",
       imageType: "Primary",
       imageIndex: 0,
@@ -131,33 +143,48 @@ export class NavidromeClient {
       ].filter(Boolean).join(":"),
       activityAt,
       title: entry.title,
-      artist: entry.artist,
+      artist: artworkArtist ?? entry.artist,
       album: entry.album,
-      logoText: entry.artist,
+      logoText,
       itemId: entry.id,
-      artistId: entry.artistId,
-      artistName: entry.artist,
+      artistId: resolvedArtwork?.itemId === artworkArtist ? undefined : entry.artistId,
+      artistName: artworkArtist ?? entry.artist,
       albumArtUrl: coverArtUrl,
       artwork,
-      signature: resolvedArtwork?.itemId ?? entry.artistId ?? entry.artist ?? entry.id
+      signature: resolvedArtwork?.itemId ?? artworkArtist ?? entry.artistId ?? entry.artist ?? entry.id
     };
   }
 
-  private async resolveNowPlayingArtwork(entry: NowPlayingEntry) {
+  private async resolveNowPlayingArtwork(entry: NowPlayingEntry, artistName?: string) {
     const order = this.config.navidrome.artwork.order.length
       ? this.config.navidrome.artwork.order
       : ["jellyfin", "local"] as const;
     for (const source of order) {
-      if (source === "jellyfin" && this.config.navidrome.artwork.jellyfin_fallback) {
-        const artwork = await this.jellyfin.artworkForArtistName(entry.artist).catch(() => undefined);
+      if (source === "jellyfin" && this.config.navidrome.artwork.jellyfin_fallback && artistName) {
+        const artwork = await this.jellyfin.artworkForArtistName(artistName).catch(() => undefined);
         if (artwork) return artwork;
       }
-      if (source === "local" && this.config.navidrome.artwork.local_files && entry.artist) {
-        const artwork = this.localArtistArtworks(entry.artist)[0];
+      if (source === "local" && this.config.navidrome.artwork.local_files && artistName) {
+        const artwork = this.localArtistArtworks(artistName)[0];
         if (artwork) return artwork;
       }
     }
     return undefined;
+  }
+
+  private artworkArtistName(entry: NowPlayingEntry, displayConfig: DisplayConfig) {
+    const albumArtist = firstArtistCredit(entry.albumArtist);
+    const trackArtist = firstArtistCredit(entry.artist);
+    if (displayConfig.display.music_artist_images === "albumartists") return albumArtist ?? trackArtist;
+    if (displayConfig.display.music_artist_images === "both") return trackArtist ?? albumArtist;
+    return trackArtist;
+  }
+
+  private logoArtistCredit(entry: NowPlayingEntry, displayConfig: DisplayConfig) {
+    if (displayConfig.display.music_logo_artist === "albumartist") {
+      return firstArtistCredit(entry.albumArtist) ?? firstArtistCredit(entry.artist);
+    }
+    return formatArtistCredit(entry.artist) ?? firstArtistCredit(entry.albumArtist);
   }
 
   coverArtUrl(id: string) {
@@ -225,6 +252,7 @@ export class NavidromeClient {
       imageIndex: index,
       backdropUrl: `/api/navidrome/local-artist/${encodeURIComponent(artistName)}/${index}`,
       logoUrl,
+      logoTag: undefined,
       thumbUrl: `/api/navidrome/local-artist/${encodeURIComponent(artistName)}/${index}`,
       backdropCount: paths.length
     } satisfies ArtworkRef));
@@ -422,6 +450,23 @@ function navidromeEntryStale(entry: NowPlayingEntry) {
   const durationSeconds = Number(entry.duration);
   if (!Number.isFinite(minutesAgo) || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
   return minutesAgo * 60_000 > (durationSeconds * 1000) + 60_000;
+}
+
+function firstArtistCredit(value: unknown) {
+  return splitArtistCredit(value)[0];
+}
+
+function formatArtistCredit(value: unknown) {
+  const artists = splitArtistCredit(value);
+  return artists.length > 1 ? artists.join(" • ") : artists[0];
+}
+
+function splitArtistCredit(value: unknown) {
+  if (typeof value !== "string") return [];
+  return value
+    .split(/\s*(?:;|,|\/|\+|&|\u2022|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)\s*/i)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function firstNavidromeUser(config: AppConfig) {
