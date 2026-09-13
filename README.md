@@ -85,6 +85,8 @@ That's really the idea behind MediaWall: it can be a Now Playing display, a home
 
 ![MediaWall on iPad](src/screenshots/ipad_1.jpg)
 
+![MediaWall on iPad, alternate setup](src/screenshots/ipad_2.jpg)
+
 ## What It Does
 
 - Shows active playback sessions from Jellyfin, Navidrome, or both.
@@ -158,6 +160,8 @@ On a regular computer, you can also open the space in a browser and make MediaWa
 
 If animation changes seem to stick in the Home Screen app even though Safari shows the new behavior, delete the Home Screen app, go to **Settings -> Safari -> Clear History and Website Data**, open the MediaWall URL in Safari, refresh it, then add it to the Home Screen again.
 
+Different devices handle motion differently. On older devices such as a 2017 iPad, start with simpler transitions like `crossfade` or `fade`, and gentler animations like `breathe`, `pan`, or `focus`. `kenburns`, `drift`, and the directional slide/push transitions can look great on faster displays, but they may feel heavier on older tablets.
+
 ### Android Devices
 
 Open your MediaWall space in Chrome, open the browser menu, then choose **Add to Home screen** or **Install app** if Chrome offers it. If sounds are enabled, tap the screen once after opening so the browser allows audio playback.
@@ -176,6 +180,7 @@ These work in both Now Playing and Wallpaper/Screensaver mode unless noted.
 | `ArrowRight` | Next session or next artwork. |
 | `Space` | Pause or resume the current mode. |
 | `m` | Switch between Now Playing and Wallpaper/Screensaver. |
+| `y` | Toggle local sound mute when sounds are enabled for the space. |
 | `l` | Toggle logo display. |
 | `i` | Toggle the media-info option for the current media type. |
 | `a` | Toggle album art when available. |
@@ -186,7 +191,7 @@ These work in both Now Playing and Wallpaper/Screensaver mode unless noted.
 
 ### Tapping and Clicking
 
-Tap or click the left side of the display to go back, the right side to advance, and the center area to show the controls. Quickly tapping or clicking the center three times requests fullscreen. This works in both Now Playing and Wallpaper/Screensaver mode.
+Tap or click the left side of the display to go back, the right side to advance, and the center area to show the controls. Quickly tapping or clicking the center three times enters fullscreen; doing it again exits fullscreen. If sounds are enabled for the space, quickly tapping or clicking the center five times toggles local sound mute. This works in both Now Playing and Wallpaper/Screensaver mode.
 
 ### Raspberry Pi
 
@@ -263,7 +268,7 @@ navidrome:
     local_files: true
 ```
 
-Then add at least one `path_mappings` entry whose `mediawall` value points to the local root containing artist folders:
+Then add at least one `path_mappings` mapping whose `mediawall` value points to the local root containing artist folders:
 
 ```yaml
 navidrome:

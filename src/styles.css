@@ -853,6 +853,49 @@ body.idle {
   backdrop-filter: blur(16px);
 }
 
+.sound-toggle-indicator {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  width: calc(96px * var(--ui-scale, 1));
+  height: calc(96px * var(--ui-scale, 1));
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(0, 0, 0, 0.58);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(18px);
+  pointer-events: none;
+  animation: sound-toggle-pop 850ms ease both;
+}
+
+.sound-toggle-indicator svg {
+  width: calc(46px * var(--ui-scale, 1));
+  height: calc(46px * var(--ui-scale, 1));
+}
+
+@keyframes sound-toggle-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.86);
+  }
+
+  14%,
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+}
+
 .toast {
   position: fixed;
   right: max(28px, env(safe-area-inset-right));
