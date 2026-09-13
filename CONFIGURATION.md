@@ -96,7 +96,7 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | `mediawall_fallback.max_logo_width` | Maximum logo width for fallback modes where the logo size can change. | `760` | No | Pixels. |
 | `custom_logo.directory` | Directory checked for a custom fallback logo. | `/app/custom_logo` | No | Put one `.png` or `.svg` file here; MediaWall uses the first matching file alphabetically. |
 | `multiple_backdrops.enabled` | Enables multiple-backdrop rotation for Now Playing items. | `true` | No | If only one session is active, rotation uses `interval_seconds`; with multiple sessions, the backdrop advances when that session becomes visible again. |
-| `multiple_backdrops.interval_seconds` | Single-session Now Playing backdrop interval. | `10` | No | Seconds between backdrop transitions when one active Now Playing item has multiple backdrops. |
+| `multiple_backdrops.interval_seconds` | Single-session Now Playing backdrop interval. | `15` | No | Seconds between backdrop transitions when one active Now Playing item has multiple backdrops. |
 
 ### Space Sounds
 

@@ -74,7 +74,7 @@ spaces:
         directory: "/app/custom_logo"
       multiple_backdrops:
         enabled: true
-        interval_seconds: 10
+        interval_seconds: 15
       sounds:
         enabled: true
         jellyfin: true
@@ -185,7 +185,7 @@ spaces:
         directory: "/app/custom_logo"
       multiple_backdrops:
         enabled: true
-        interval_seconds: 10
+        interval_seconds: 15
       sounds:
         enabled: true
         jellyfin: true
@@ -297,7 +297,7 @@ spaces:
         directory: "/app/custom_logo"
       multiple_backdrops:
         enabled: true
-        interval_seconds: 10
+        interval_seconds: 15
       sounds:
         enabled: true
         jellyfin: true

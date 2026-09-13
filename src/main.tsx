@@ -33,6 +33,9 @@ type ArtworkRef = {
   logoUrl?: string;
   thumbUrl?: string;
   backdropCount?: number;
+  backdropTags?: string[];
+  primaryTag?: string;
+  logoTag?: string;
   groupKey?: string;
 };
 
@@ -340,8 +343,10 @@ function App() {
   const continuousInactiveSince = useRef(new Map<string, number>());
   const continuousResumeEligible = useRef(new Map<string, boolean>());
   const lastVisibleNowPlayingKey = useRef<string | undefined>(undefined);
+  const nowPlayingBackdropSignatures = useRef(new Map<string, string>());
   const seenVisibleNowPlayingKeys = useRef(new Set<string>());
   const nowPlayingBackdropIndexes = useRef(new Map<string, number>());
+  const centerTapTimes = useRef<number[]>([]);
   const animationProgress = useRef(new Map<string, number>());
   const activeAnimationRun = useRef<{ key: string; startedAt: number; offset: number; period: number } | undefined>(undefined);
 
@@ -513,22 +518,27 @@ function App() {
     const config = snapshot?.config.now_playing.multiple_backdrops;
     const key = now?.publicSessionId ?? now?.publicMediaKey;
     const count = displayedArtwork?.backdropCount ?? 0;
+    const backdropSignature = nowPlayingBackdropSignature(displayedArtwork);
     if (!snapshot || snapshot.state.mode !== "now-playing" || !now?.playing || !config?.enabled || !key || count < 2) {
       lastVisibleNowPlayingKey.current = undefined;
       setNowPlayingBackdropStep(0);
       return;
     }
-    if (lastVisibleNowPlayingKey.current === key) return;
-    lastVisibleNowPlayingKey.current = key;
+    const sameVisibleSession = lastVisibleNowPlayingKey.current === key;
+    const previousBackdropSignature = nowPlayingBackdropSignatures.current.get(key);
+    if (sameVisibleSession && previousBackdropSignature === backdropSignature) return;
+    nowPlayingBackdropSignatures.current.set(key, backdropSignature);
     const multipleSessions = (now.sessionCount ?? 0) > 1;
     if (!multipleSessions) {
+      lastVisibleNowPlayingKey.current = key;
       nowPlayingBackdropIndexes.current.set(key, 0);
       seenVisibleNowPlayingKeys.current.add(key);
       setNowPlayingBackdropStep(0);
       return;
     }
     const previous = nowPlayingBackdropIndexes.current.get(key) ?? 0;
-    const next = seenVisibleNowPlayingKeys.current.has(key) ? previous + 1 : previous;
+    const next = sameVisibleSession ? previous : seenVisibleNowPlayingKeys.current.has(key) ? previous + 1 : previous;
+    lastVisibleNowPlayingKey.current = key;
     seenVisibleNowPlayingKeys.current.add(key);
     nowPlayingBackdropIndexes.current.set(key, next);
     setNowPlayingBackdropStep(next);
@@ -540,7 +550,8 @@ function App() {
     snapshot?.nowPlaying?.sessionCount,
     snapshot?.config.now_playing.multiple_backdrops.enabled,
     displayedArtwork?.itemId,
-    displayedArtwork?.backdropCount
+    displayedArtwork?.backdropCount,
+    displayedArtwork?.backdropTags?.join("|")
   ]);
 
   useEffect(() => {
@@ -831,7 +842,18 @@ function App() {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!snapshot || shouldIgnoreShortcut(event)) return;
+      if (event.key === "Escape" && isFullscreen()) {
+        event.preventDefault();
+        void exitFullscreen();
+        return;
+      }
       if (shuffleOpen || mediaInfoOpen || favoritePicker) return;
+
+      if (event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        void toggleFullscreen();
+        return;
+      }
 
       if (event.key.toLowerCase() === "m") {
         event.preventDefault();
@@ -887,10 +909,7 @@ function App() {
           break;
         default: {
           const key = event.key.toLowerCase();
-          if (key === "f") {
-            event.preventDefault();
-            void toggleFavorite(cycledArtwork);
-          } else if (key === "l") {
+          if (key === "l") {
             event.preventDefault();
             void setPreference({ showLogo: !snapshot.state.showLogo });
           } else if (key === "i") {
@@ -971,14 +990,57 @@ function App() {
     const leftEdge = bounds.width * 0.33;
     const rightEdge = bounds.width * 0.67;
     if (x <= leftEdge) {
+      centerTapTimes.current = [];
       void action(snapshot.state.mode === "now-playing" ? "playback-previous" : "previous");
       return;
     }
     if (x >= rightEdge) {
+      centerTapTimes.current = [];
       void action(snapshot.state.mode === "now-playing" ? "playback-next" : "next");
       return;
     }
+    if (recordCenterTap()) {
+      void toggleFullscreen();
+      return;
+    }
     revealControls();
+  }
+
+  function recordCenterTap() {
+    const now = Date.now();
+    centerTapTimes.current = [...centerTapTimes.current, now].filter((time) => now - time <= 650);
+    if (centerTapTimes.current.length < 3) return false;
+    centerTapTimes.current = [];
+    return true;
+  }
+
+  async function toggleFullscreen() {
+    if (isFullscreen()) {
+      await exitFullscreen();
+      return;
+    }
+    const element = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    if (element.requestFullscreen) await element.requestFullscreen();
+    else await element.webkitRequestFullscreen?.();
+  }
+
+  async function exitFullscreen() {
+    const fullscreenDocument = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    if (document.fullscreenElement && document.exitFullscreen) {
+      await document.exitFullscreen();
+      return;
+    }
+    if (fullscreenDocument.webkitFullscreenElement) await fullscreenDocument.webkitExitFullscreen?.();
+  }
+
+  function isFullscreen() {
+    const fullscreenDocument = document as Document & { webkitFullscreenElement?: Element | null };
+    return Boolean(document.fullscreenElement || fullscreenDocument.webkitFullscreenElement);
   }
 
   async function setMode(mode: "now-playing" | "screensaver") {
@@ -2172,6 +2234,17 @@ function cycleNowPlayingBackdrop(artwork: ArtworkRef | undefined, snapshot: Snap
   const count = artwork.backdropCount ?? 0;
   if (count < 2 || artwork.imageType !== "Backdrop") return artwork;
   return artworkWithBackdropIndex(artwork, step % count);
+}
+
+function nowPlayingBackdropSignature(artwork?: ArtworkRef) {
+  if (!artwork) return "";
+  return [
+    artwork.source,
+    artwork.itemId,
+    artwork.imageType,
+    artwork.backdropCount ?? 0,
+    ...(artwork.backdropTags ?? [])
+  ].join(":");
 }
 
 function isMusicArtwork(artwork?: ArtworkRef, now?: Snapshot["nowPlaying"]) {
