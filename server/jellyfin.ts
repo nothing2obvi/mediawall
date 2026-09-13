@@ -1,4 +1,5 @@
 import type { AppConfig, ArtworkRef, DisplayConfig, NowPlayingState } from "./types.js";
+import { logger } from "./logger.js";
 
 type JellyfinItem = Record<string, any>;
 
@@ -86,7 +87,7 @@ export class JellyfinClient {
       if (libraryName && normalizedNameSet(displayConfig.now_playing.ignored_libraries).has(libraryName.toLowerCase())) {
         const userName = String(session.UserName ?? session.User?.Name ?? displayConfig.playback_user);
         const title = String(item.Name ?? "Unknown item");
-        console.log(`Ignoring Jellyfin Now Playing session from library "${libraryName}" for user "${userName}": ${title}`);
+        logger.info(`Ignoring Jellyfin Now Playing session from library "${libraryName}" for user "${userName}": ${title}`);
         continue;
       }
       playbacks.push(await this.nowPlayingFromSession(session, displayConfig, libraryName));
@@ -556,7 +557,7 @@ export class JellyfinClient {
   private warnMissingMusicBackdrop(key: string, title: string) {
     if (this.missingMusicBackdropWarnings.has(key)) return;
     this.missingMusicBackdropWarnings.add(key);
-    console.warn(`Jellyfin music artwork for "${title}" has no artist backdrop; using MediaWall fallback backdrop.`);
+    logger.warn(`Jellyfin music artwork for "${title}" has no artist backdrop; using MediaWall fallback backdrop.`);
   }
 
   private async getJson<T>(path: string): Promise<T> {
@@ -586,7 +587,7 @@ export class JellyfinClient {
       } catch (error) {
         lastError = error;
         if (base === this.baseUrl) {
-          console.warn(`Jellyfin request to configured URL failed; trying Docker host gateway for ${path}`);
+          logger.warn(`Jellyfin request to configured URL failed; trying Docker host gateway for ${path}`);
         }
       }
     }
