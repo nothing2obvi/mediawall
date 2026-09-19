@@ -24,6 +24,23 @@ const mediaWallFallbackModes = ["centered", "breathing", "float", "spotlight", "
 const mediaWallFallbackModeOptions = [...mediaWallFallbackModes, "All"] as const;
 const backdropAnimations = ["breathe", "pan", "kenburns", "drift", "focus", "zoom"] as const;
 
+const collectionGroupSchema = z.object({
+  name: z.string().optional(),
+  title_regex: z.string().optional(),
+  title_regexes: z.array(z.string()).default([]),
+  users: z.array(z.string()).default(["All"]),
+  sound: z.string().default("toned.mp3"),
+  user_transition_image: z.string().default(""),
+  image_size: z.number().min(16).default(260)
+}).transform((group) => ({
+  name: group.name,
+  title_regexes: [...(group.title_regex ? [group.title_regex] : []), ...group.title_regexes],
+  users: group.users.length ? group.users : ["All"],
+  sound: group.sound,
+  user_transition_image: group.user_transition_image,
+  image_size: group.image_size
+}));
+
 loadDotEnv();
 
 const mediaWallUserSchema = z.object({
@@ -52,9 +69,9 @@ const spaceSchema = z.object({
     cycle_users: z.boolean().default(false),
     cycle_interval_seconds: z.number().default(15),
     session_cleanup: z.object({
-      paused_after_seconds: z.number().min(0).default(60),
+      paused_after_seconds: z.number().min(0).default(15),
       missing_after_seconds: z.number().min(0).default(5)
-    }).default({ paused_after_seconds: 60, missing_after_seconds: 5 }),
+    }).default({ paused_after_seconds: 15, missing_after_seconds: 5 }),
     session_timer: z.object({
       enabled: z.boolean().default(true),
       size: z.number().default(42)
@@ -63,18 +80,53 @@ const spaceSchema = z.object({
       enabled: z.boolean().default(true),
       font_size: z.number().default(13)
     }).default({ enabled: true, font_size: 13 }),
+    user_transition: z.object({
+      enabled: z.boolean().default(true),
+      duration_seconds: z.number().min(0.5).default(5),
+      background_color: z.string().default("#000000"),
+      avatar_size: z.number().min(16).default(240),
+      username_font_size: z.number().min(8).default(126),
+      message_font_size: z.number().min(8).default(71),
+      source_icon_size: z.number().min(16).default(150)
+    }).default({
+      enabled: true,
+      duration_seconds: 5,
+      background_color: "#000000",
+      avatar_size: 240,
+      username_font_size: 126,
+      message_font_size: 71,
+      source_icon_size: 150
+    }),
     mediawall_fallback: z.object({
       mode: z.enum(mediaWallFallbackModes).optional(),
       modes: z.array(z.enum(mediaWallFallbackModeOptions)).default(["dvd"]),
+      image: z.enum(["banner", "banner_white", "custom"]).default("banner"),
       background_color: z.string().default("#565954"),
       min_logo_width: z.number().default(260),
-      max_logo_width: z.number().default(760)
+      max_logo_width: z.number().default(760),
+      sizes: z.object({
+        centered: z.number().default(760),
+        breathing: z.number().default(760),
+        float: z.number().default(700),
+        spotlight: z.number().default(760),
+        dvd: z.number().default(520),
+        minimal: z.number().default(300)
+      }).default({ centered: 760, breathing: 760, float: 700, spotlight: 760, dvd: 520, minimal: 300 })
     }).transform((fallback) => ({
       modes: fallback.modes.length ? fallback.modes : [fallback.mode ?? "dvd"],
+      image: fallback.image,
       background_color: fallback.background_color,
       min_logo_width: fallback.min_logo_width,
-      max_logo_width: fallback.max_logo_width
-    })).default({ modes: ["dvd"], background_color: "#565954", min_logo_width: 260, max_logo_width: 760 }),
+      max_logo_width: fallback.max_logo_width,
+      sizes: fallback.sizes
+    })).default({
+      modes: ["dvd"],
+      image: "banner",
+      background_color: "#565954",
+      min_logo_width: 260,
+      max_logo_width: 760,
+      sizes: { centered: 760, breathing: 760, float: 700, spotlight: 760, dvd: 520, minimal: 300 }
+    }),
     custom_logo: z.object({
       directory: z.string().default("/app/custom_logo")
     }).default({ directory: "/app/custom_logo" }),
@@ -82,6 +134,20 @@ const spaceSchema = z.object({
       enabled: z.boolean().default(true),
       interval_seconds: z.number().min(1).default(15)
     }).default({ enabled: true, interval_seconds: 15 }),
+    collections: z.object({
+      enabled: z.boolean().default(false),
+      global: z.object({
+        enabled: z.boolean().default(false),
+        sound: z.string().default("toned.mp3"),
+        user_transition_image: z.string().default(""),
+        image_size: z.number().min(16).default(260)
+      }).default({ enabled: false, sound: "toned.mp3", user_transition_image: "", image_size: 260 }),
+      groups: z.array(collectionGroupSchema).default([])
+    }).default({
+      enabled: false,
+      global: { enabled: false, sound: "toned.mp3", user_transition_image: "", image_size: 260 },
+      groups: []
+    }),
     sounds: z.object({
       enabled: z.boolean().default(true),
       jellyfin: z.boolean().default(true),
@@ -125,12 +191,33 @@ const spaceSchema = z.object({
     fallback_shuffle_interval_seconds: 45,
     cycle_users: false,
     cycle_interval_seconds: 15,
-    session_cleanup: { paused_after_seconds: 60, missing_after_seconds: 5 },
+    session_cleanup: { paused_after_seconds: 15, missing_after_seconds: 5 },
     session_timer: { enabled: true, size: 42 },
     session_count: { enabled: true, font_size: 13 },
-    mediawall_fallback: { modes: ["dvd"], background_color: "#565954", min_logo_width: 260, max_logo_width: 760 },
+    user_transition: {
+      enabled: true,
+      duration_seconds: 5,
+      background_color: "#000000",
+      avatar_size: 240,
+      username_font_size: 126,
+      message_font_size: 71,
+      source_icon_size: 150
+    },
+    mediawall_fallback: {
+      modes: ["dvd"],
+      image: "banner",
+      background_color: "#565954",
+      min_logo_width: 260,
+      max_logo_width: 760,
+      sizes: { centered: 760, breathing: 760, float: 700, spotlight: 760, dvd: 520, minimal: 300 }
+    },
     custom_logo: { directory: "/app/custom_logo" },
     multiple_backdrops: { enabled: true, interval_seconds: 15 },
+    collections: {
+      enabled: false,
+      global: { enabled: false, sound: "toned.mp3", user_transition_image: "", image_size: 260 },
+      groups: []
+    },
     sounds: {
       enabled: true,
       jellyfin: true,
@@ -147,8 +234,8 @@ const spaceSchema = z.object({
   }),
   display: z.object({
     ui: z.object({
-      scale: z.number().min(0.6).max(1.8).default(1)
-    }).default({ scale: 1 }),
+      scale: z.number().min(0.6).max(1.8).default(0.85)
+    }).default({ scale: 0.85 }),
     music_artist_images: z.enum(["artists", "albumartists", "both"]).default("albumartists"),
     music_logo_artist: z.enum(["artists", "albumartist"]).default("artists"),
     cycle_interval_seconds: z.number().optional(),
@@ -281,7 +368,7 @@ const spaceSchema = z.object({
       screensaver_interval: cycleInterval
     };
   }).default({
-    ui: { scale: 1 },
+    ui: { scale: 0.85 },
     music_artist_images: "albumartists",
     music_logo_artist: "artists",
     cycle_interval_seconds: 15,

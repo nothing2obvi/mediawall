@@ -35,11 +35,22 @@ export interface DisplayConfig {
       enabled: boolean;
       font_size: number;
     };
+    user_transition: {
+      enabled: boolean;
+      duration_seconds: number;
+      background_color: string;
+      avatar_size: number;
+      username_font_size: number;
+      message_font_size: number;
+      source_icon_size: number;
+    };
     mediawall_fallback: {
       modes: Array<MediaWallFallbackMode | "All">;
+      image: "banner" | "banner_white" | "custom";
       background_color: string;
       min_logo_width: number;
       max_logo_width: number;
+      sizes: Record<MediaWallFallbackMode, number>;
     };
     custom_logo: {
       directory: string;
@@ -47,6 +58,23 @@ export interface DisplayConfig {
     multiple_backdrops: {
       enabled: boolean;
       interval_seconds: number;
+    };
+    collections: {
+      enabled: boolean;
+      global: {
+        enabled: boolean;
+        sound: string;
+        user_transition_image: string;
+        image_size: number;
+      };
+      groups: Array<{
+        name?: string;
+        title_regexes: string[];
+        users: string[];
+        sound: string;
+        user_transition_image: string;
+        image_size: number;
+      }>;
     };
     sounds: {
       enabled: boolean;
@@ -245,6 +273,10 @@ export interface NowPlayingState {
   artistId?: string;
   artistName?: string;
   libraryName?: string;
+  collectionName?: string;
+  collectionTransitionImage?: string;
+  collectionTransitionImageUrl?: string;
+  collectionTransitionImageSize?: number;
   albumArtUrl?: string;
   artwork?: ArtworkRef;
   signature?: string;
@@ -274,6 +306,9 @@ export type PublicNowPlayingState = Pick<
   | "displayUserAvatarUrl"
   | "mediaWallUser"
   | "libraryName"
+  | "collectionName"
+  | "collectionTransitionImageUrl"
+  | "collectionTransitionImageSize"
   | "albumArtUrl"
   | "artwork"
   | "publicSessionId"
@@ -314,9 +349,15 @@ export interface PublicConnectionIssue {
 
 export interface PublicControlCommand {
   id: string;
-  type: "sound" | "mediawall" | "animation";
+  type: "sound" | "mediawall" | "animation" | "user_transition";
   name: string;
   startedAt: number;
+  source?: "jellyfin" | "navidrome";
+  username?: string;
+  avatarUrl?: string;
+  verb?: string;
+  collectionImageUrl?: string;
+  collectionImageSize?: number;
   mode?: MediaWallFallbackMode;
   modes?: MediaWallFallbackMode[];
   modeDurationSeconds?: number;
@@ -326,6 +367,13 @@ export interface PublicControlCommand {
   artwork?: ArtworkRef;
   tones?: string[];
   toneDurationSeconds?: number;
+  expiresAt: number;
+}
+
+export interface PublicUiIndicator {
+  id: string;
+  kind: "sound-on" | "sound-off" | "favorite" | "unfavorite" | "shuffle-on" | "shuffle-off" | "play" | "pause" | "mode-now-playing" | "mode-screensaver";
+  createdAt: number;
   expiresAt: number;
 }
 
@@ -383,5 +431,19 @@ export interface DisplaySnapshot {
   libraryScan?: PublicLibraryScanProgress;
   connectionIssues?: PublicConnectionIssue[];
   controlCommand?: PublicControlCommand;
+  uiIndicator?: PublicUiIndicator;
   activeMediaWallFallbackMode?: MediaWallFallbackMode;
+  presentation: {
+    revision: number;
+    serverNow: number;
+    startedAt: number;
+    nextTransitionAt?: number;
+    backdropIndex: number;
+  };
+  userTransitionEvent?: {
+    id: string;
+    sessionKey: string;
+    startedAt: number;
+    expiresAt: number;
+  };
 }

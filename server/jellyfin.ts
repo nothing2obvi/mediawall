@@ -8,6 +8,7 @@ export class JellyfinClient {
   private userIds = new Map<string, string>();
   private libraryNames = new Map<string, string>();
   private missingMusicBackdropWarnings = new Set<string>();
+  private collectionCache?: { checkedAt: number; collections: Array<{ id: string; name: string; itemIds: Set<string> }> };
 
   constructor(private config: AppConfig) {}
 
@@ -210,7 +211,7 @@ export class JellyfinClient {
         : await this.randomMediaItems(userId, parent.id);
       const item = items.find((entry) =>
         (entry.BackdropImageTags?.length ?? 0) > 0
-        && (!displayConfig.display.require_logos || Boolean(entry.ImageTags?.Logo))
+        && (!displayConfig.display.require_logos || itemHasLogo(entry))
       );
       const artwork = item ? this.artworkFromItem(item, item.Name ?? "Untitled", item.Type ?? "Media") : undefined;
       if (artwork) return artwork;
@@ -269,6 +270,77 @@ export class JellyfinClient {
   async artworkForArtistName(name?: string) {
     const artist = await this.findArtist(name);
     return artist ? this.artworkFromItem(artist, artist.Name ?? name ?? "Artist", "MusicArtist") : undefined;
+  }
+
+  async collectionMatchForItem(itemIds: Array<string | undefined>, displayConfig: DisplayConfig, mediaWallUser?: string) {
+    const config = displayConfig.now_playing.collections;
+    if (!config.enabled) return undefined;
+    const normalizedIds = itemIds.filter((id): id is string => Boolean(id));
+    if (!normalizedIds.length) return undefined;
+    const collections = await this.collectionsWithItems();
+    const matches = collections.filter((collection) => normalizedIds.some((id) => collection.itemIds.has(id)));
+    if (!matches.length) return undefined;
+    if (config.global.enabled) {
+      return {
+        collectionName: matches[0]?.name,
+        sound: config.global.sound,
+        user_transition_image: config.global.user_transition_image,
+        image_size: config.global.image_size
+      };
+    }
+    for (const group of config.groups) {
+      if (!collectionGroupAllowsUser(group.users, mediaWallUser)) continue;
+      const matchedCollection = matches.find((collection) =>
+        group.title_regexes.some((pattern) => regexMatches(pattern, collection.name))
+      );
+      if (!matchedCollection) continue;
+      return {
+        collectionName: matchedCollection.name,
+        sound: group.sound,
+        user_transition_image: group.user_transition_image,
+        image_size: group.image_size
+      };
+    }
+    return undefined;
+  }
+
+  private async collectionsWithItems() {
+    const cached = this.collectionCache;
+    if (cached && Date.now() - cached.checkedAt < 60_000) return cached.collections;
+    const params = new URLSearchParams({
+      IncludeItemTypes: "BoxSet",
+      Recursive: "true",
+      SortBy: "SortName",
+      Fields: "BasicSyncInfo,ChildCount"
+    });
+    const collections = await this.pagedItems("/Items", params, 200);
+    const withItems: Array<{ id: string; name: string; itemIds: Set<string> }> = [];
+    for (const collection of collections) {
+      if (!collection.Id) continue;
+      const itemIds = await this.collectionItemIds(String(collection.Id)).catch((error) => {
+        logger.warn(`Jellyfin collection lookup failed for "${collection.Name ?? collection.Id}"`, error);
+        return new Set<string>();
+      });
+      withItems.push({ id: String(collection.Id), name: String(collection.Name ?? "Collection"), itemIds });
+    }
+    this.collectionCache = { checkedAt: Date.now(), collections: withItems };
+    return withItems;
+  }
+
+  private async collectionItemIds(collectionId: string) {
+    const params = new URLSearchParams({
+      ParentId: collectionId,
+      Recursive: "true",
+      Fields: "SeriesId,ParentId"
+    });
+    const items = await this.pagedItems("/Items", params, 200);
+    const ids = new Set<string>();
+    for (const item of items) {
+      if (item.Id) ids.add(String(item.Id));
+      if (item.SeriesId) ids.add(String(item.SeriesId));
+      if (item.ParentId) ids.add(String(item.ParentId));
+    }
+    return ids;
   }
 
   private async seriesForEpisode(item: JellyfinItem) {
@@ -540,7 +612,8 @@ export class JellyfinClient {
     const backdropTags = item.BackdropImageTags ?? [];
     const hasBackdrop = backdropTags.length > 0;
     const fallbackPrimary = item.ImageTags?.Primary;
-    const logoTag = item.ImageTags?.Logo;
+    const logoTag = item.ImageTags?.Logo ?? item.ParentLogoImageTag;
+    const logoItemId = item.ImageTags?.Logo ? item.Id : item.ParentLogoItemId;
     if (!hasBackdrop && !fallbackPrimary && !logoTag) return undefined;
     const chosenIndex = hasBackdrop ? Math.min(imageIndex, backdropTags.length - 1) : 0;
     return {
@@ -553,7 +626,7 @@ export class JellyfinClient {
       imageIndex: chosenIndex,
       backdropCount: backdropTags.length || 1,
       backdropUrl: hasBackdrop ? this.imageUrl(item.Id, "Backdrop", chosenIndex, backdropTags[chosenIndex]) : undefined,
-      logoUrl: logoTag ? this.imageUrl(item.Id, "Logo", 0, logoTag) : undefined,
+      logoUrl: logoTag && logoItemId ? this.imageUrl(logoItemId, "Logo", 0, logoTag) : undefined,
       thumbUrl: fallbackPrimary ? this.imageUrl(item.Id, "Primary", 0, fallbackPrimary) : undefined,
       backdropTags,
       primaryTag: fallbackPrimary,
@@ -812,6 +885,24 @@ function normalizedNameSet(names: string[]) {
   return new Set(names.map((name) => name.trim().toLowerCase()).filter(Boolean));
 }
 
+function collectionGroupAllowsUser(users: string[], mediaWallUser?: string) {
+  if (!users.length) return true;
+  const current = String(mediaWallUser ?? "").trim().toLowerCase();
+  return users.some((user) => {
+    const normalized = user.trim().toLowerCase();
+    return normalized === "all" || normalized === current;
+  });
+}
+
+function regexMatches(pattern: string, value: string) {
+  try {
+    return new RegExp(pattern, "i").test(value);
+  } catch {
+    logger.warn(`Ignoring invalid collection title regex: ${pattern}`);
+    return false;
+  }
+}
+
 function moviePartSearchTitles(name: string) {
   const stripped = name
     .replace(/^\s*(?:disc|disk|part|cd|dvd|bd|blu[- ]?ray)?\s*\d+\s*[-_.:) ]+/i, "")
@@ -844,6 +935,10 @@ function splitArtistCredit(value: unknown) {
 function formatArtistCredit(value: unknown) {
   const artists = splitArtistCredit(value);
   return artists.length > 1 ? artists.join(" • ") : artists[0];
+}
+
+function itemHasLogo(item: JellyfinItem) {
+  return Boolean(item.ImageTags?.Logo || (item.ParentLogoItemId && item.ParentLogoImageTag));
 }
 
 export function fallbackArtwork(): ArtworkRef {

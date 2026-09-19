@@ -8,11 +8,14 @@ import {
   Disc3,
   Grid2X2,
   Heart,
+  HeartOff,
   Image,
   Info,
   ListFilter,
+  Maximize,
   Pause,
   Play,
+  Radio,
   Sparkles,
   Shuffle,
   Volume2,
@@ -21,9 +24,23 @@ import {
 import jellyfinLogo from "./logos/jellyfin.svg";
 import navidromeLogo from "./logos/navidrome.svg";
 import mediaWallBanner from "./logos/banner.png";
+import mediaWallBannerWhite from "./logos/banner_white.png";
+import packageInfo from "../package.json";
 import "./styles.css";
 
 const mediaAssetCacheToken = Date.now().toString(36);
+const appVersion = packageInfo.version;
+
+configurePwaIdentity();
+
+function configurePwaIdentity() {
+  const normalizedPath = `/${window.location.pathname.split("/").filter(Boolean).join("/")}`;
+  const remote = normalizedPath.endsWith("-remote");
+  const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+  if (manifest) manifest.href = `/api/pwa-manifest?route=${encodeURIComponent(normalizedPath)}&launch=${encodeURIComponent(`${normalizedPath}${window.location.search}`)}`;
+  const touchIcon = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
+  if (touchIcon) touchIcon.href = remote ? "/logos/remote.png" : "/logos/logo.png";
+}
 
 type ArtworkRef = {
   source: "jellyfin" | "navidrome" | "fallback";
@@ -97,9 +114,15 @@ type Snapshot = {
   }>;
   controlCommand?: {
     id: string;
-    type: "sound" | "mediawall" | "animation";
+    type: "sound" | "mediawall" | "animation" | "user_transition";
     name: string;
     startedAt: number;
+    source?: "jellyfin" | "navidrome";
+    username?: string;
+    avatarUrl?: string;
+    verb?: string;
+    collectionImageUrl?: string;
+    collectionImageSize?: number;
     mode?: MediaWallFallbackMode;
     modes?: MediaWallFallbackMode[];
     modeDurationSeconds?: number;
@@ -111,7 +134,26 @@ type Snapshot = {
     toneDurationSeconds?: number;
     expiresAt: number;
   };
+  uiIndicator?: {
+    id: string;
+    kind: ActionIndicatorKind;
+    createdAt: number;
+    expiresAt: number;
+  };
   activeMediaWallFallbackMode?: MediaWallFallbackMode;
+  presentation: {
+    revision: number;
+    serverNow: number;
+    startedAt: number;
+    nextTransitionAt?: number;
+    backdropIndex: number;
+  };
+  userTransitionEvent?: {
+    id: string;
+    sessionKey: string;
+    startedAt: number;
+    expiresAt: number;
+  };
   nowPlaying?: {
     source: "jellyfin" | "navidrome";
     playing: boolean;
@@ -128,6 +170,9 @@ type Snapshot = {
     displayUser?: string;
     displayUserAvatarUrl?: string;
     mediaWallUser?: string;
+    collectionName?: string;
+    collectionTransitionImageUrl?: string;
+    collectionTransitionImageSize?: number;
     albumArtUrl?: string;
     artwork?: ArtworkRef;
     signature?: string;
@@ -162,11 +207,22 @@ type Snapshot = {
         enabled: boolean;
         font_size: number;
       };
+      user_transition: {
+        enabled: boolean;
+        duration_seconds: number;
+        background_color: string;
+        avatar_size: number;
+        username_font_size: number;
+        message_font_size: number;
+        source_icon_size: number;
+      };
       mediawall_fallback: {
         modes: Array<MediaWallFallbackMode | "All">;
+        image: "banner" | "banner_white" | "custom";
         background_color: string;
         min_logo_width: number;
         max_logo_width: number;
+        sizes: Record<MediaWallFallbackMode, number>;
       };
       custom_logo: {
         directory: string;
@@ -174,6 +230,23 @@ type Snapshot = {
       multiple_backdrops: {
         enabled: boolean;
         interval_seconds: number;
+      };
+      collections: {
+        enabled: boolean;
+        global: {
+          enabled: boolean;
+          sound: string;
+          user_transition_image: string;
+          image_size: number;
+        };
+        groups: Array<{
+          name?: string;
+          title_regexes: string[];
+          users: string[];
+          sound: string;
+          user_transition_image: string;
+          image_size: number;
+        }>;
       };
       sounds: {
         enabled: boolean;
@@ -278,9 +351,22 @@ type TransitionStyle =
   | "blur_fade"
   | "wipe_left"
   | "wipe_right";
+type ActionIndicatorKind =
+  | "sound-on"
+  | "sound-off"
+  | "favorite"
+  | "unfavorite"
+  | "shuffle-on"
+  | "shuffle-off"
+  | "play"
+  | "pause"
+  | "mode-now-playing"
+  | "mode-screensaver";
 
 const routeMatch = window.location.pathname.match(/^\/([^/?#]+)/);
-const route = { space: routeMatch?.[1] ?? "livingroom" };
+const rawRouteSpace = routeMatch?.[1] ?? "livingroom";
+const remoteRoute = rawRouteSpace.endsWith("-remote");
+const route = { space: remoteRoute ? rawRouteSpace.slice(0, -"-remote".length) : rawRouteSpace, remote: remoteRoute };
 const passwordParam = rememberedPasswordParam(route.space);
 const favoritesShuffleLibrary: Library = { id: "__favorites__", name: "Favorites", type: "favorites" };
 const browserScrollPositions = new Map<string, number>();
@@ -333,6 +419,23 @@ function App() {
   const [soundUnlockNeeded, setSoundUnlockNeeded] = useState(false);
   const [soundMuted, setSoundMuted] = useState(() => rememberedSoundMuted(route.space));
   const [soundIndicator, setSoundIndicator] = useState<"on" | "muted">();
+  const [actionIndicator, setActionIndicator] = useState<ActionIndicatorKind>();
+  const [availableSpaces, setAvailableSpaces] = useState<string[]>([]);
+  const [userTransition, setUserTransition] = useState<{
+    id: string;
+    source: "jellyfin" | "navidrome";
+    username: string;
+    avatarUrl?: string;
+    verb: string;
+    durationSeconds: number;
+    backgroundColor: string;
+    avatarSize: number;
+    usernameFontSize: number;
+    messageFontSize: number;
+    sourceIconSize: number;
+    collectionImageUrl?: string;
+    collectionImageSize?: number;
+  }>();
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
     height: window.innerHeight
@@ -349,6 +452,8 @@ function App() {
   const audioBuffers = useRef(new Map<string, AudioBuffer>());
   const silentSource = useRef<AudioBufferSourceNode | undefined>(undefined);
   const seenSoundSessions = useRef(new Set<string>());
+  const seenUserTransitions = useRef(new Set<string>());
+  const userTransitionInactiveSince = useRef(new Map<string, number>());
   const seenSoundMedia = useRef(new Set<string>());
   const seenSoundUsers = useRef(new Set<string>());
   const seenControlCommands = useRef(new Set<string>());
@@ -364,6 +469,8 @@ function App() {
   const centerTapTimes = useRef<number[]>([]);
   const centerTapActionTimer = useRef<number | undefined>(undefined);
   const soundIndicatorTimer = useRef<number | undefined>(undefined);
+  const actionIndicatorTimer = useRef<number | undefined>(undefined);
+  const userTransitionTimer = useRef<number | undefined>(undefined);
   const animationProgress = useRef(new Map<string, number>());
   const activeAnimationRun = useRef<{ key: string; startedAt: number; offset: number; period: number } | undefined>(undefined);
 
@@ -384,11 +491,11 @@ function App() {
       ?? snapshot?.config.display.backdrop_motion?.duration_seconds
       ?? 26
   );
-  const resolvedNowPlayingBackdropStep = resolveNowPlayingBackdropStep();
+  const resolvedNowPlayingBackdropStep = snapshot?.presentation.backdropIndex ?? 0;
   const cycledArtwork = useMemo(
     () => previewArtwork ?? (snapshot?.state.mode === "now-playing" && snapshot.nowPlaying?.playing
       ? cycleNowPlayingBackdrop(displayedArtwork, snapshot, resolvedNowPlayingBackdropStep)
-      : cycleBackdrop(displayedArtwork, snapshot, backdropStep)),
+      : cycleBackdrop(displayedArtwork, snapshot, snapshot?.presentation.backdropIndex ?? backdropStep)),
     [
       previewArtwork,
       displayedArtwork,
@@ -469,7 +576,12 @@ function App() {
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(refresh, 3500);
-    return () => window.clearInterval(timer);
+    const events = new EventSource(spaceApi("/events"));
+    events.addEventListener("sync", () => void refresh());
+    return () => {
+      window.clearInterval(timer);
+      events.close();
+    };
   }, []);
 
   useEffect(() => {
@@ -484,6 +596,8 @@ function App() {
     return () => {
       window.clearTimeout(centerTapActionTimer.current);
       window.clearTimeout(soundIndicatorTimer.current);
+      window.clearTimeout(actionIndicatorTimer.current);
+      window.clearTimeout(userTransitionTimer.current);
     };
   }, []);
 
@@ -526,10 +640,11 @@ function App() {
 
   useEffect(() => {
     window.clearTimeout(advanceTimer.current);
-    if (!snapshot || snapshot.state.mode !== "screensaver" || !snapshot.state.playing) return;
-    advanceTimer.current = window.setTimeout(() => void action("next"), snapshot.config.display.cycle_interval_seconds * 1000);
+    const nextAt = snapshot?.presentation.nextTransitionAt;
+    if (!nextAt) return;
+    advanceTimer.current = window.setTimeout(() => void refresh(), Math.max(50, nextAt - Date.now() + 25));
     return () => window.clearTimeout(advanceTimer.current);
-  }, [snapshot?.state.mode, snapshot?.state.playing, snapshot?.state.current?.itemId, snapshot?.state.current?.imageIndex]);
+  }, [snapshot?.presentation.nextTransitionAt]);
 
   useEffect(() => {
     setBackdropStep(0);
@@ -633,7 +748,7 @@ function App() {
   useEffect(() => {
     const now = snapshot?.nowPlaying;
     const soundConfig = snapshot?.config.now_playing.sounds;
-    if (!snapshot || !soundConfig?.enabled) {
+    if (route.remote || !snapshot || !soundConfig?.enabled) {
       activeSoundSessions.current.clear();
       quietSuppressedStarts.current.clear();
       continuousResumeEligible.current.clear();
@@ -694,6 +809,8 @@ function App() {
       ? isNewSoundSession || resumeEligible === true
       : isNewSoundSession;
 
+    const transitionEvent = snapshot.userTransitionEvent;
+    const eventMatchesVisibleSession = transitionEvent?.sessionKey === visibleSession.key;
     const initialSoundPass = !soundsInitialized.current;
     continuousResumeEligible.current.delete(visibleSession.key);
     seenSoundSessions.current.add(visibleSession.key);
@@ -701,7 +818,11 @@ function App() {
     seenSoundUsers.current.add(visibleSession.userKey);
 
     if (!soundsInitialized.current) soundsInitialized.current = true;
-    if (initialSoundPass && visibleSession.continuous) return;
+    if (!eventMatchesVisibleSession) return;
+    const localSoundEventKey = `mediawall:${route.space}:sound-event:${transitionEvent.id}`;
+    if (window.sessionStorage.getItem(localSoundEventKey)) return;
+    window.sessionStorage.setItem(localSoundEventKey, "played");
+    if (initialSoundPass && visibleSession.continuous && transitionEvent.startedAt < Date.now() - 10_000) return;
     if (!startEligible) return;
     if (wasQuietSuppressed) return;
     if (!continuousCooldownAllowsStart) return;
@@ -715,15 +836,36 @@ function App() {
     const tone = safeToneName(now.soundTone, soundConfig.available)
       ?? safeToneName(soundConfig.tone, soundConfig.available);
     if (!tone) return;
-    void playVisibleSessionSound(tone, soundConfig.volume, cycledArtwork);
+    if (snapshot.config.now_playing.user_transition.enabled) void playSound(tone, soundConfig.volume);
+    else void playVisibleSessionSound(tone, soundConfig.volume, cycledArtwork);
   }, [
     snapshot?.nowPlaying?.publicSoundSessionKey,
     snapshot?.nowPlaying?.publicMediaKey,
     snapshot?.nowPlaying?.playing,
     snapshot?.nowPlaying?.mediaWallUser,
     snapshot?.nowPlaying?.source,
+    snapshot?.userTransitionEvent?.id,
     snapshot?.soundSessions?.map((session) => session.key).join("|"),
     cycledArtwork?.backdropUrl
+  ]);
+
+  useEffect(() => {
+    if (route.remote) return;
+    if (!snapshot) return;
+    const now = snapshot.nowPlaying;
+    const key = now?.publicSoundSessionKey ?? now?.publicSessionId;
+    const event = snapshot.userTransitionEvent;
+    if (snapshot.state.mode !== "now-playing" || !now?.playing || !key || !event || event.sessionKey !== key) return;
+    if (seenUserTransitions.current.has(event.id)) return;
+    seenUserTransitions.current.add(event.id);
+    startUserTransition(now);
+  }, [
+    snapshot?.config.now_playing.sounds.enabled,
+    snapshot?.state.mode,
+    snapshot?.nowPlaying?.publicSoundSessionKey,
+    snapshot?.nowPlaying?.publicSessionId,
+    snapshot?.nowPlaying?.playing,
+    snapshot?.userTransitionEvent?.id
   ]);
 
   useEffect(() => {
@@ -740,10 +882,44 @@ function App() {
   }, [snapshot?.controlCommand?.id, commandTick]);
 
   useEffect(() => {
+    const command = snapshot?.controlCommand;
+    if (!command || command.type !== "user_transition") return;
+    if (seenControlCommands.current.has(command.id)) return;
+    seenControlCommands.current.add(command.id);
+    startUserTransition({
+      source: command.source ?? "jellyfin",
+      playing: true,
+      paused: false,
+      user: command.username ?? command.name,
+      displayUser: command.username ?? command.name,
+      displayUserAvatarUrl: command.avatarUrl,
+      publicSessionId: command.id,
+      publicSoundSessionKey: command.id,
+      collectionTransitionImageUrl: command.collectionImageUrl,
+      collectionTransitionImageSize: command.collectionImageSize
+    });
+  }, [snapshot?.controlCommand?.id]);
+
+  useEffect(() => {
     if (!snapshot?.controlCommand) return;
     const timer = window.setInterval(() => setCommandTick((current) => current + 1), 1000);
     return () => window.clearInterval(timer);
   }, [snapshot?.controlCommand?.id]);
+
+  useEffect(() => {
+    if (!route.remote) return;
+    fetch("/api/spaces")
+      .then((response) => response.ok ? response.json() : undefined)
+      .then((body: { spaces?: string[] } | undefined) => setAvailableSpaces(body?.spaces ?? []))
+      .catch(() => setAvailableSpaces([]));
+  }, []);
+
+  useEffect(() => {
+    if (route.remote) return;
+    const indicator = snapshot?.uiIndicator;
+    if (!indicator) return;
+    showActionIndicator(indicator.kind);
+  }, [snapshot?.uiIndicator?.id]);
 
   useEffect(() => {
     const avatarUrl = snapshot?.nowPlaying?.displayUserAvatarUrl;
@@ -832,7 +1008,13 @@ function App() {
     if (!unlocked) return;
     const pending = pendingSound.current;
     pendingSound.current = undefined;
-    if (pending) void playSound(pending.tone, pending.volume);
+    if (pending) {
+      void playSound(pending.tone, pending.volume);
+      return;
+    }
+    const sounds = snapshot?.config.now_playing.sounds;
+    const confirmationTone = sounds ? safeToneName(sounds.tone, sounds.available) : undefined;
+    if (confirmationTone && sounds) void playSound(confirmationTone, sounds.volume);
   }
 
   async function unlockAudioContext() {
@@ -1021,6 +1203,8 @@ function App() {
       window.clearTimeout(advanceTimer.current);
     }
     const result = await api<{ state: DisplayState; libraryName?: string; nowPlaying?: Snapshot["nowPlaying"]; sessionPosition?: number; sessionCount?: number }>(spaceApi(`/${name}`), { method: "POST" });
+    if (name === "toggle") void emitActionIndicator(result.state.playing ? "play" : "pause");
+    if (name === "playback-toggle") void emitActionIndicator(result.state.nowPlayingCyclePaused ? "pause" : "play");
     if ((name === "up" || name === "down") && result.libraryName) showToast(result.libraryName);
     setSnapshot((current) => current ? { ...current, state: result.state, mode: result.state.mode, nowPlaying: result.nowPlaying ?? current.nowPlaying } : current);
   }
@@ -1085,6 +1269,7 @@ function App() {
         setSoundUnlockNeeded(false);
       }
       showSoundIndicator(next ? "muted" : "on");
+      void emitActionIndicator(next ? "sound-off" : "sound-on");
       return next;
     });
   }
@@ -1093,6 +1278,56 @@ function App() {
     setSoundIndicator(next);
     window.clearTimeout(soundIndicatorTimer.current);
     soundIndicatorTimer.current = window.setTimeout(() => setSoundIndicator(undefined), 850);
+  }
+
+  function showActionIndicator(kind: ActionIndicatorKind) {
+    setActionIndicator(kind);
+    window.clearTimeout(actionIndicatorTimer.current);
+    actionIndicatorTimer.current = window.setTimeout(() => setActionIndicator(undefined), 900);
+  }
+
+  async function emitActionIndicator(kind: ActionIndicatorKind) {
+    if (!route.remote) showActionIndicator(kind);
+    try {
+      await api(spaceApi("/indicator"), {
+        method: "POST",
+        body: JSON.stringify({ kind }),
+        headers: { "Content-Type": "application/json" }
+      });
+    } catch {
+      // Indicators are best-effort UI feedback.
+    }
+  }
+
+  function startUserTransition(now: Snapshot["nowPlaying"]) {
+    const config = snapshot?.config.now_playing.user_transition;
+    if (!config?.enabled || !now) return false;
+    const id = now.publicSoundSessionKey ?? now.publicSessionId ?? now.signature ?? `${now.source}:${Date.now()}`;
+    const username = now.source === "navidrome"
+      ? now.user ?? now.displayUser ?? now.mediaWallUser ?? "Navidrome"
+      : now.displayUser ?? now.user ?? now.mediaWallUser ?? "Jellyfin";
+    const verb = now.source === "navidrome" || isMusicArtwork(now.artwork, now)
+      ? "started listening to"
+      : "started watching";
+    const durationSeconds = Math.max(0.5, config.duration_seconds ?? 3);
+    window.clearTimeout(userTransitionTimer.current);
+    setUserTransition({
+      id,
+      source: now.source,
+      username,
+      avatarUrl: now.source === "jellyfin" ? now.displayUserAvatarUrl : undefined,
+      verb,
+      durationSeconds,
+      backgroundColor: config.background_color ?? "#000000",
+      avatarSize: config.avatar_size ?? 240,
+      usernameFontSize: config.username_font_size ?? 74,
+      messageFontSize: config.message_font_size ?? 42,
+      sourceIconSize: config.source_icon_size ?? 240,
+      collectionImageUrl: now.collectionTransitionImageUrl,
+      collectionImageSize: now.collectionTransitionImageSize
+    });
+    userTransitionTimer.current = window.setTimeout(() => setUserTransition(undefined), durationSeconds * 1000);
+    return true;
   }
 
   async function toggleFullscreen() {
@@ -1132,16 +1367,19 @@ function App() {
       headers: { "Content-Type": "application/json" }
     });
     closeOverlays();
+    void emitActionIndicator(mode === "screensaver" ? "mode-screensaver" : "mode-now-playing");
     setSnapshot((current) => current ? { ...current, state: result.state, mode: result.state.mode } : current);
   }
 
   async function toggleShuffle() {
     if (!snapshot) return;
+    const nextShuffle = !snapshot.state.shuffle;
     const result = await api<{ state: DisplayState }>(spaceApi("/shuffle"), {
       method: "POST",
-      body: JSON.stringify({ enabled: !snapshot.state.shuffle }),
+      body: JSON.stringify({ enabled: nextShuffle }),
       headers: { "Content-Type": "application/json" }
     });
+    void emitActionIndicator(nextShuffle ? "shuffle-on" : "shuffle-off");
     setSnapshot((current) => current ? { ...current, state: result.state } : current);
   }
 
@@ -1242,6 +1480,7 @@ function App() {
       body: JSON.stringify({ artwork }),
       headers: { "Content-Type": "application/json" }
     });
+    void emitActionIndicator(favoriteExists(result.state, artwork) ? "favorite" : "unfavorite");
     setSnapshot((current) => current ? { ...current, state: result.state, mode: result.state.mode } : current);
   }
 
@@ -1320,6 +1559,91 @@ function App() {
 
   if (error) return <div className="error">{error}</div>;
 
+  if (route.remote) {
+    return (
+      <main
+        className="remote-shell"
+        style={{
+          "--ui-scale": String(snapshot?.config.display.ui.scale ?? 1)
+        } as React.CSSProperties}
+        onPointerDown={revealControls}
+      >
+        <RemoteControl
+          snapshot={snapshot}
+          panel={panel}
+          isFavorite={isFavorite}
+          soundMuted={soundMuted}
+          availableSpaces={availableSpaces}
+          previewArtwork={cycledArtwork}
+          onMode={setMode}
+          onPrevious={() => action(snapshot?.state.mode === "now-playing" ? "playback-previous" : "previous")}
+          onToggle={() => action(snapshot?.state.mode === "now-playing" ? "playback-toggle" : "toggle")}
+          onNext={() => action(snapshot?.state.mode === "now-playing" ? "playback-next" : "next")}
+          onShuffle={toggleShuffle}
+          onShuffleSettings={openShuffleSettings}
+          onPanel={() => showBrowsePanel(panel === "browse" ? "none" : "browse")}
+          onFavorite={() => toggleFavorite(cycledArtwork)}
+          onLogo={() => snapshot && setPreference({ showLogo: !snapshot.state.showLogo })}
+          onMediaInfo={openMediaInfoSettings}
+          onAlbumArt={() => snapshot && setPreference({ showAlbumArt: !snapshot.state.showAlbumArt })}
+          onSound={toggleSoundMuted}
+          onFullscreen={toggleFullscreen}
+        />
+        {snapshot && shuffleOpen && (
+          <>
+            <button className="remote-dismiss" type="button" aria-label="Close dialog" onClick={() => closeOverlays()} />
+            <ShuffleDialog
+              libraries={libraries}
+              selected={snapshot.state.shuffleLibraries}
+              onCancel={() => setShuffleOpen(false)}
+              onChange={(libraryNames) => void saveShuffle(libraryNames, true)}
+              onSave={() => setShuffleOpen(false)}
+            />
+          </>
+        )}
+        {snapshot && mediaInfoOpen && (
+          <>
+            <button className="remote-dismiss" type="button" aria-label="Close dialog" onClick={() => closeOverlays()} />
+            <MediaInfoDialog
+              state={snapshot.state}
+              onCancel={() => setMediaInfoOpen(false)}
+              onChange={(patch) => void setPreference(patch)}
+              onSave={() => setMediaInfoOpen(false)}
+            />
+          </>
+        )}
+        {snapshot && favoritePicker && (
+          <>
+            <button className="remote-dismiss" type="button" aria-label="Close dialog" onClick={() => closeOverlays()} />
+            <BackdropFavoriteDialog
+              backdrops={favoritePicker.backdrops}
+              favorites={snapshot.state.favorites}
+              onCancel={() => setFavoritePicker(undefined)}
+              onConfirm={confirmFavorites}
+            />
+          </>
+        )}
+        {panel === "browse" && (
+          <>
+            <button className="remote-dismiss" type="button" aria-label="Close grid" onClick={() => closeOverlays()} />
+            <Browser
+              libraries={libraries}
+              activeLibrary={activeLibrary}
+              items={items}
+              favorites={snapshot?.state.favorites ?? []}
+              favoritesOnly={favoritesOnly}
+              onLibrary={setActiveLibrary}
+              onFavoritesOnly={() => setFavoritesOnly((current) => !current)}
+              onSelect={selectItem}
+              onClose={() => closeOverlays()}
+            />
+          </>
+        )}
+        {toast && <div className={`toast ${toastVisible ? "visible" : ""}`}>{toast}</div>}
+      </main>
+    );
+  }
+
   return (
     <main
       className={`wall ${viewportClass} transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""} ${scanWithAlbumArt ? "scan-with-album-art" : ""}`}
@@ -1341,6 +1665,7 @@ function App() {
       onPointerDown={handleWallPointerDown}
     >
       {showMediaWallIdle && snapshot ? <MediaWallIdle snapshot={snapshot} /> : <Backdrop artwork={cycledArtwork} />}
+      {userTransition && <UserTransitionIntro intro={userTransition} />}
       {!showMediaWallIdle && <div className="shade" />}
       {!showMediaWallIdle && <Identity snapshot={snapshot} artwork={cycledArtwork} />}
       <SessionTimer snapshot={snapshot} />
@@ -1356,6 +1681,7 @@ function App() {
           {soundIndicator === "muted" ? <VolumeX /> : <Volume2 />}
         </div>
       )}
+      {actionIndicator && <ActionIndicator kind={actionIndicator} />}
       <ControlCommandLabel command={snapshot?.controlCommand} />
       <LibraryScanProgress snapshot={snapshot} />
       {toast && <div className={`toast ${toastVisible ? "visible" : ""}`}>{toast}</div>}
@@ -1387,6 +1713,9 @@ function App() {
           onLogo={() => setPreference({ showLogo: !snapshot.state.showLogo })}
           onMediaInfo={openMediaInfoSettings}
           onAlbumArt={() => setPreference({ showAlbumArt: !snapshot.state.showAlbumArt })}
+          onFullscreen={toggleFullscreen}
+          onSound={toggleSoundMuted}
+          soundMuted={soundMuted}
         />
       )}
       {visible && snapshot && shuffleOpen && (
@@ -1426,6 +1755,7 @@ function App() {
           onLibrary={setActiveLibrary}
           onFavoritesOnly={() => setFavoritesOnly((current) => !current)}
           onSelect={selectItem}
+          onClose={() => closeOverlays()}
         />
       )}
     </main>
@@ -1498,7 +1828,11 @@ function MediaWallIdle({ snapshot }: { snapshot: Snapshot }) {
     ?? snapshot.activeMediaWallFallbackMode
     ?? firstMediaWallFallbackMode(snapshot.config.now_playing.mediawall_fallback.modes);
   const commandLabel = snapshot.controlCommand?.type === "mediawall" ? mediaWallModeLabel(mode) : undefined;
-  const customLogoUrl = spaceApi("/custom-logo");
+  const fallbackImage = snapshot.config.now_playing.mediawall_fallback.image;
+  const customLogoUrl = fallbackImage === "custom" ? spaceApi("/custom-logo") : fallbackImage === "banner_white" ? mediaWallBannerWhite : mediaWallBanner;
+  const modeWidth = snapshot.config.now_playing.mediawall_fallback.sizes?.[mode]
+    ?? snapshot.config.now_playing.mediawall_fallback.max_logo_width
+    ?? 760;
   const imageRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
@@ -1577,10 +1911,54 @@ function MediaWallIdle({ snapshot }: { snapshot: Snapshot }) {
   }, [mode]);
 
   return (
-    <section className={`mediawall-idle mediawall-idle-${mode}`}>
+    <section className={`mediawall-idle mediawall-idle-${mode}`} style={{ "--fallback-logo-mode-width": `${modeWidth}px` } as React.CSSProperties}>
       <div className="mediawall-idle-spotlight" />
       <img ref={imageRef} src={customLogoUrl} alt="MediaWall" onError={(event) => { event.currentTarget.src = mediaWallBanner; }} />
       {commandLabel && <div className="mediawall-command-label">{commandLabel}</div>}
+    </section>
+  );
+}
+
+function UserTransitionIntro({ intro }: {
+  intro: {
+    source: "jellyfin" | "navidrome";
+    username: string;
+    avatarUrl?: string;
+    verb: string;
+    durationSeconds: number;
+    backgroundColor: string;
+    avatarSize: number;
+    usernameFontSize: number;
+    messageFontSize: number;
+    sourceIconSize: number;
+    collectionImageUrl?: string;
+    collectionImageSize?: number;
+  };
+}) {
+  const icon = intro.source === "navidrome" ? navidromeLogo : jellyfinLogo;
+  return (
+    <section
+      className="user-transition-intro"
+      style={{
+        "--user-transition-duration": `${intro.durationSeconds}s`,
+        "--user-transition-background": intro.backgroundColor,
+        "--user-transition-avatar-size": `${intro.avatarSize}px`,
+        "--user-transition-username-size": `${intro.usernameFontSize}px`,
+        "--user-transition-message-size": `${intro.messageFontSize}px`,
+        "--user-transition-source-icon-size": `${intro.sourceIconSize}px`,
+        "--user-transition-collection-image-size": `${intro.collectionImageSize ?? 260}px`
+      } as React.CSSProperties}
+      aria-live="polite"
+    >
+      <img className="user-transition-source-icon" src={icon} alt="" />
+      <div className="user-transition-card">
+        <div className={`user-transition-person ${intro.avatarUrl ? "with-avatar" : "no-avatar"}`}>
+          {intro.avatarUrl && <img src={mediaUrl(intro.avatarUrl)} alt="" />}
+          <span>{intro.username}</span>
+        </div>
+        <div className="user-transition-verb">{intro.verb}</div>
+        {intro.collectionImageUrl && <img className="user-transition-collection-image" src={mediaUrl(intro.collectionImageUrl)} alt="" />}
+      </div>
     </section>
   );
 }
@@ -1790,6 +2168,24 @@ function ControlCommandLabel({ command }: { command?: Snapshot["controlCommand"]
   return <div className="mediawall-command-label">{activeTone.tone.toLowerCase()}</div>;
 }
 
+function ActionIndicator({ kind }: { kind: ActionIndicatorKind }) {
+  const icon = actionIndicatorIcon(kind);
+  return <div className="action-indicator" aria-live="polite">{icon}</div>;
+}
+
+function actionIndicatorIcon(kind: ActionIndicatorKind) {
+  if (kind === "sound-on") return <Volume2 />;
+  if (kind === "sound-off") return <VolumeX />;
+  if (kind === "favorite") return <Heart fill="currentColor" />;
+  if (kind === "unfavorite") return <HeartOff />;
+  if (kind === "shuffle-on") return <Shuffle />;
+  if (kind === "shuffle-off") return <Shuffle className="slashed-icon" />;
+  if (kind === "play") return <Play />;
+  if (kind === "pause") return <Pause />;
+  if (kind === "mode-screensaver") return <Image />;
+  return <Radio />;
+}
+
 function ControlBar(props: {
   snapshot: Snapshot;
   isFavorite: boolean;
@@ -1809,6 +2205,9 @@ function ControlBar(props: {
   onLogo: () => void;
   onMediaInfo: () => void;
   onAlbumArt: () => void;
+  onFullscreen: () => void;
+  onSound: () => void;
+  soundMuted: boolean;
 }) {
   const { snapshot } = props;
   const wallpaperMode = snapshot.state.mode === "screensaver";
@@ -1823,7 +2222,7 @@ function ControlBar(props: {
         aria-label={wallpaperMode ? "Switch to Now Playing" : "Switch to Wallpaper / Screensaver"}
         data-flash={props.flash === "mode" ? "true" : undefined}
       >
-        <Image />
+        {wallpaperMode ? <Image /> : <Radio />}
         <span>{wallpaperMode ? "Wallpaper/Screensaver" : "Now Playing"}</span>
       </button>
       {(wallpaperMode || !showPlaybackControls) && <span className="divider" />}
@@ -1861,7 +2260,128 @@ function ControlBar(props: {
       <IconButton label="Logo" active={snapshot.state.showLogo} onClick={props.onLogo}><Sparkles /></IconButton>
       {showAlbumArtButton && <IconButton label="Album art" active={snapshot.state.showAlbumArt} onClick={props.onAlbumArt}><Disc3 /></IconButton>}
       <IconButton label="Media info" active={mediaInfoEnabled(snapshot.state)} onClick={props.onMediaInfo}><Info /></IconButton>
+      <span className="divider" />
+      <IconButton label="Toggle fullscreen" onClick={props.onFullscreen}><Maximize /></IconButton>
+      {snapshot.config.now_playing.sounds.enabled && (
+        <IconButton label="Toggle sound" active={!props.soundMuted} onClick={props.onSound}>
+          {props.soundMuted ? <VolumeX /> : <Volume2 />}
+        </IconButton>
+      )}
+      <span className="divider" />
+      <a className="control-version" href="https://github.com/nothing2obvi/mediawall" target="_blank" rel="noreferrer">
+        v{appVersion}
+      </a>
     </nav>
+  );
+}
+
+function RemoteControl(props: {
+  snapshot?: Snapshot;
+  panel: "none" | "browse";
+  isFavorite: boolean;
+  soundMuted: boolean;
+  availableSpaces: string[];
+  previewArtwork?: ArtworkRef;
+  onMode: (mode: "now-playing" | "screensaver") => void;
+  onPrevious: () => void;
+  onToggle: () => void;
+  onNext: () => void;
+  onShuffle: () => void;
+  onShuffleSettings: () => void;
+  onPanel: () => void;
+  onFavorite: () => void;
+  onLogo: () => void;
+  onMediaInfo: () => void;
+  onAlbumArt: () => void;
+  onSound: () => void;
+  onFullscreen: () => void;
+}) {
+  const snapshot = props.snapshot;
+  const wallpaperMode = snapshot?.state.mode === "screensaver";
+  const customLogoUrl = spaceApi("/custom-logo");
+  const disabled = !snapshot;
+  const currentSpaceIndex = props.availableSpaces.indexOf(route.space);
+  const multipleSpaces = props.availableSpaces.length > 1 && currentSpaceIndex >= 0;
+  const previewUrl = mediaUrl(props.previewArtwork?.backdropUrl);
+  function remoteSpaceHref(offset: number) {
+    if (!multipleSpaces) return "#";
+    const next = props.availableSpaces[(currentSpaceIndex + offset + props.availableSpaces.length) % props.availableSpaces.length];
+    const query = passwordParam ? `?password=${encodeURIComponent(passwordParam)}` : "";
+    return `/${next}-remote${query}`;
+  }
+  return (
+    <section className="remote-control">
+      <header className="remote-header">
+        <img src={customLogoUrl} alt="MediaWall" onError={(event) => { event.currentTarget.src = mediaWallBannerWhite; }} />
+        <div className={`remote-space-row ${multipleSpaces ? "" : "single-space"}`}>
+          {multipleSpaces && <a href={remoteSpaceHref(-1)} aria-label="Previous remote space">&lt;</a>}
+          <strong>{route.space}</strong>
+          {multipleSpaces && <a href={remoteSpaceHref(1)} aria-label="Next remote space">&gt;</a>}
+        </div>
+      </header>
+      <div className="remote-status">
+        <div>
+          <span>{wallpaperMode ? "Wallpaper/Screensaver" : "Now Playing"}</span>
+          {snapshot?.nowPlaying?.playing && <strong>{snapshot.nowPlaying.title ?? snapshot.nowPlaying.album ?? "Active session"}</strong>}
+        </div>
+        {previewUrl && <img src={previewUrl} alt="" />}
+      </div>
+      <div className="remote-button-grid">
+        <button disabled={disabled} onClick={props.onPrevious}>
+          <ChevronLeft />
+          <span>Previous</span>
+        </button>
+        <button disabled={disabled || !wallpaperMode} onClick={props.onToggle}>
+          {snapshot?.state.playing ? <Pause /> : <Play />}
+          <span>{snapshot?.state.playing ? "Pause" : "Play"}</span>
+        </button>
+        <button disabled={disabled} onClick={props.onNext}>
+          <ChevronRight />
+          <span>Next</span>
+        </button>
+        <button disabled={disabled} onClick={() => snapshot && props.onMode(wallpaperMode ? "now-playing" : "screensaver")}>
+          <Image />
+          <span>Mode</span>
+        </button>
+        <button disabled={disabled || !wallpaperMode} onClick={props.onShuffleSettings}>
+          <ListFilter />
+          <span>Selection</span>
+        </button>
+        <button disabled={disabled || !wallpaperMode} className={snapshot?.state.shuffle ? "active" : ""} onClick={props.onShuffle}>
+          <Shuffle />
+          <span>Shuffle</span>
+        </button>
+        <button disabled={disabled || !wallpaperMode} className={props.panel === "browse" ? "active" : ""} onClick={props.onPanel}>
+          <Grid2X2 />
+          <span>Grid</span>
+        </button>
+        <button disabled={disabled} className={props.isFavorite ? "active" : ""} onClick={props.onFavorite}>
+          <Heart fill={props.isFavorite ? "currentColor" : "none"} />
+          <span>Favorite</span>
+        </button>
+        <button disabled={disabled} className={snapshot?.state.showLogo ? "active" : ""} onClick={props.onLogo}>
+          <Sparkles />
+          <span>Logo</span>
+        </button>
+        <button disabled={disabled} className={snapshot && mediaInfoEnabled(snapshot.state) ? "active" : ""} onClick={props.onMediaInfo}>
+          <Info />
+          <span>Media Info</span>
+        </button>
+        <button disabled={disabled} onClick={props.onFullscreen}>
+          <Maximize />
+          <span>Full Screen</span>
+        </button>
+        {snapshot?.config.now_playing.sounds.enabled && (
+          <button disabled={disabled} className={!props.soundMuted ? "active" : ""} onClick={props.onSound}>
+            {props.soundMuted ? <VolumeX /> : <Volume2 />}
+            <span>Sound</span>
+          </button>
+        )}
+      </div>
+      <a className="remote-version" href="https://github.com/nothing2obvi/mediawall" target="_blank" rel="noreferrer">
+        MediaWall v{appVersion}
+      </a>
+    </section>
   );
 }
 
@@ -2012,7 +2532,7 @@ function ShuffleDialog({ libraries, selected, onCancel, onChange, onSave }: {
   );
 }
 
-function Browser({ libraries, activeLibrary, items, favorites, favoritesOnly, onLibrary, onFavoritesOnly, onSelect }: {
+function Browser({ libraries, activeLibrary, items, favorites, favoritesOnly, onLibrary, onFavoritesOnly, onSelect, onClose }: {
   libraries: Library[];
   activeLibrary?: string;
   items: BrowseItem[];
@@ -2021,6 +2541,7 @@ function Browser({ libraries, activeLibrary, items, favorites, favoritesOnly, on
   onLibrary: (id: string) => void;
   onFavoritesOnly: () => void;
   onSelect: (item: BrowseItem, sequence?: BrowseItem[], exactBackdrop?: boolean, imageIndex?: number) => void;
+  onClose: () => void;
 }) {
   const [gridBackdropStep, setGridBackdropStep] = useState(0);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -2085,6 +2606,9 @@ function Browser({ libraries, activeLibrary, items, favorites, favoritesOnly, on
       </div>
       <button className="grid-top-button" type="button" onClick={scrollToTop} title="Back to top" aria-label="Back to top">
         <ChevronUp />
+      </button>
+      <button className="grid-close-button" type="button" onClick={onClose}>
+        Cancel
       </button>
     </aside>
   );
@@ -2279,6 +2803,12 @@ function artworkKey(artwork: ArtworkRef) {
   return `${artwork.source}:${artwork.groupKey ?? artwork.itemId}:${artwork.imageType}:${artwork.imageIndex}`;
 }
 
+function favoriteExists(state: DisplayState, artwork: ArtworkRef) {
+  const exactKey = artworkKey(artwork);
+  const policyKey = backdropPolicyKey(artwork);
+  return state.favorites.some((favorite) => artworkKey(favorite) === exactKey || backdropPolicyKey(favorite) === policyKey);
+}
+
 function backdropPolicyKey(artwork: ArtworkRef) {
   return `${artwork.source}:${artwork.groupKey ?? artwork.itemId}`;
 }
@@ -2460,11 +2990,13 @@ function seededBackdropIndex(artwork: ArtworkRef, step: number, count: number) {
 
 function artworkWithBackdropIndex(artwork: ArtworkRef, imageIndex: number): ArtworkRef {
   if (artwork.source === "jellyfin" && artwork.imageType === "Backdrop") {
+    const tag = artwork.backdropTags?.[imageIndex];
+    const tagQuery = tag ? `&tag=${encodeURIComponent(tag)}` : "";
     return {
       ...artwork,
       imageIndex,
-      backdropUrl: `/api/jellyfin/image/${encodeURIComponent(artwork.itemId)}/Backdrop/${imageIndex}?quality=92`,
-      thumbUrl: `/api/jellyfin/image/${encodeURIComponent(artwork.itemId)}/Backdrop/${imageIndex}?quality=92`
+      backdropUrl: `/api/jellyfin/image/${encodeURIComponent(artwork.itemId)}/Backdrop/${imageIndex}?quality=92${tagQuery}`,
+      thumbUrl: `/api/jellyfin/image/${encodeURIComponent(artwork.itemId)}/Backdrop/${imageIndex}?quality=92${tagQuery}`
     };
   }
   if (artwork.source === "navidrome" && artwork.imageType === "Backdrop") {

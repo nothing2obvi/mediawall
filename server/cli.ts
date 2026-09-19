@@ -15,10 +15,12 @@ const usage = [
   "  npm run mediawall -- play mediawall <screensaver_name> on <space>",
   "  npm run mediawall -- play media wall <screensaver_name> on <space>",
   "  npm run mediawall -- play screensaver <screensaver_name> on <space>",
+  "  npm run mediawall -- play user transition on <space>",
+  "  npm run mediawall -- play user transition <display_name> on <space>",
   "  npm run mediawall -- play <screensaver_name> on <space>"
 ].join("\n");
 
-type CommandType = "sound" | "mediawall" | "animation";
+type CommandType = "sound" | "mediawall" | "animation" | "user_transition";
 
 async function main() {
   const parsed = parseArgs(process.argv.slice(2));
@@ -54,7 +56,7 @@ async function main() {
     console.error(body);
     process.exit(1);
   }
-  console.log(`Playing ${parsed.type === "mediawall" ? "MediaWall fallback" : parsed.type} "${parsed.name}" on /${parsed.space}.`);
+  console.log(`Playing ${parsed.type === "mediawall" ? "MediaWall fallback" : parsed.type === "user_transition" ? "user transition" : parsed.type} "${parsed.name}" on /${parsed.space}.`);
 }
 
 function parseArgs(args: string[]):
@@ -73,6 +75,10 @@ function parseArgs(args: string[]):
     type = "mediawall";
     nameParts.splice(0, 2);
   }
+  if (first === "user" && second === "transition") {
+    type = "user_transition";
+    nameParts.splice(0, 2);
+  }
   const command = nameParts[0]?.toLowerCase();
   if (command === "sound" || command === "sounds" || command === "mediawall") {
     type = command === "sounds" ? "sound" : command as CommandType;
@@ -80,11 +86,14 @@ function parseArgs(args: string[]):
   } else if (command === "screensaver") {
     type = "mediawall";
     nameParts.shift();
+  } else if (command === "user-transition" || command === "user_transition") {
+    type = "user_transition";
+    nameParts.shift();
   } else if (command === "animation" || command === "animations") {
     type = "animation";
     nameParts.shift();
   }
-  const name = nameParts.join(" ").trim();
+  const name = nameParts.join(" ").trim() || (type === "user_transition" ? "test" : "");
   if (!name) return { ok: false, error: "Missing sound or MediaWall fallback name." };
   const inferredType = backdropAnimations.includes(name.toLowerCase() as typeof backdropAnimations[number]) || name.toLowerCase() === "all"
     ? "animation"

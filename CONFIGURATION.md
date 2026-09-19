@@ -92,19 +92,46 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | `fallback_shuffle_interval_seconds` | Idle fallback shuffle interval. | `45` | No | Used only when fallback is `shuffle`. |
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
 | `cycle_interval_seconds` | Now Playing session cycle interval. | `15` | No | Used for natural session cycling and the timer ring. |
-| `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `60` | No | Jellyfin sessions with a reported playhead must show position progress before they count as active. Navidrome sessions must keep refreshing their Now Playing timestamp. Sessions are removed if those signals stop advancing for this long. |
+| `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `15` | No | The timer begins when MediaWall observes a paused state. Jellyfin and Navidrome playheads are checked for legitimate progress; removal may take up to one additional client poll. |
 | `session_cleanup.missing_after_seconds` | Keeps a recently active session visible across brief empty API polls. | `5` | No | Prevents flicker to the fallback screen between tracks or episodes. Set to `0` to disable. |
 | `session_timer.enabled` | Shows the countdown ring. | `true` | No | Only meaningful when multiple active sessions are cycling. |
 | `session_timer.size` | Countdown ring diameter. | `42` | No | Pixels. |
 | `session_count.enabled` | Shows `1 of 4` session count. | `true` | No | Independent from the timer ring. |
 | `session_count.font_size` | Session count font size. | `13` | No | Pixels. |
+| `user_transition.enabled` | Shows a user-intro screen the first time a session becomes visible. | `true` | No | It does not repeat when session cycling comes back to that same session. The sound starts at this same visible-session moment when sounds are enabled and allowed. |
+| `user_transition.duration_seconds` | User-intro duration. | `5` | No | Separate from the normal session display interval. |
+| `user_transition.background_color` | User-intro background color. | `#000000` | No | Use a hex color. |
+| `user_transition.avatar_size` | User-intro Jellyfin avatar size. | `240` | No | Pixels. Navidrome intros do not show avatars. |
+| `user_transition.username_font_size` | User-intro username font size. | `126` | No | Pixels. MediaWall constrains it responsively on smaller screens. |
+| `user_transition.message_font_size` | User-intro message font size. | `71` | No | Controls the `started watching` / `started listening to` line. MediaWall constrains it responsively on smaller screens. |
+| `user_transition.source_icon_size` | User-intro Jellyfin/Navidrome source icon size. | `150` | No | Pixels. MediaWall constrains it responsively on smaller screens. |
 | `mediawall_fallback.modes` | Ordered list of MediaWall banner fallback animations used across separate no-session rounds. | `["dvd"]` | No | Options: `centered`, `breathing`, `float`, `spotlight`, `dvd`, `minimal`, `All`. Use `All` to include every mode. If you list specific modes, the next no-session period advances to the next mode in that written order. |
+| `mediawall_fallback.image` | Image used by MediaWall fallback animations. | `banner` | No | Options: `banner`, `banner_white`, `custom`. `custom` uses the first image from `custom_logo.directory`. |
 | `mediawall_fallback.background_color` | Background color used behind the intentional MediaWall/logo fallback screen. | `#565954` | No | Use a hex color such as `#4f524d`. |
 | `mediawall_fallback.min_logo_width` | Minimum logo width for fallback modes where the logo size can change. | `260` | No | Pixels. |
 | `mediawall_fallback.max_logo_width` | Maximum logo width for fallback modes where the logo size can change. | `760` | No | Pixels. |
+| `mediawall_fallback.sizes.centered` | Fallback image width in centered mode. | `760` | No | Pixels, constrained by min/max and viewport. |
+| `mediawall_fallback.sizes.breathing` | Fallback image width in breathing mode. | `760` | No | Pixels, constrained by min/max and viewport. |
+| `mediawall_fallback.sizes.float` | Fallback image width in float mode. | `700` | No | Pixels, constrained by min/max and viewport. |
+| `mediawall_fallback.sizes.spotlight` | Fallback image width in spotlight mode. | `760` | No | Pixels, constrained by min/max and viewport. |
+| `mediawall_fallback.sizes.dvd` | Fallback image width in dvd mode. | `520` | No | Pixels, constrained by min/max and viewport. |
+| `mediawall_fallback.sizes.minimal` | Fallback image width in minimal mode. | `300` | No | Pixels, constrained by min/max and viewport. |
 | `custom_logo.directory` | Directory checked for a custom fallback logo. | `/app/custom_logo` | No | Put one `.png` or `.svg` file here; MediaWall uses the first matching file alphabetically. |
 | `multiple_backdrops.enabled` | Enables multiple-backdrop rotation for Now Playing items. | `true` | No | If only one session is active, rotation uses `interval_seconds`; with multiple sessions, the backdrop advances when that session becomes visible again. |
 | `multiple_backdrops.interval_seconds` | Single-session Now Playing backdrop interval. | `15` | No | Seconds between backdrop transitions when one active Now Playing item has multiple backdrops. |
+| `collections.enabled` | Enables Jellyfin collection-aware sounds and user-transition images. | `false` | No | Applies only to Jellyfin collections. Put transition images in `/app/collections`. |
+| `collections.global.enabled` | Uses one collection sound/image for any matching Jellyfin collection. | `false` | No | When enabled, group rules are ignored. |
+| `collections.global.sound` | Session-start tone for any matching collection. | `toned.mp3` | No | Filename from the configured sounds directory. |
+| `collections.global.user_transition_image` | Image shown during the user transition for any matching collection. | unset | No | Filename from `/app/collections`. Supports `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, and `.svg`. |
+| `collections.global.image_size` | Global collection transition image size. | `260` | No | Pixels, constrained responsively. |
+| `collections.groups` | Ordered collection rule list. | `[]` | No | First matching group wins. Keep groups specific if more than one regex could match the same collection. |
+| `collections.groups.name` | Optional label for a collection rule group. | unset | No | For config readability only. |
+| `collections.groups.title_regexes` | Collection title regexes matched by this group. | `[]` | No | Case-insensitive JavaScript regex strings. |
+| `collections.groups.title_regex` | Single collection title regex shorthand. | unset | No | Added to `title_regexes` during config loading. |
+| `collections.groups.users` | MediaWall users allowed to use this collection rule. | `["All"]` | No | Use `All` for every MediaWall user, or list user keys from the top-level `users` section. |
+| `collections.groups.sound` | Session-start tone for this collection group. | `toned.mp3` | No | Overrides the user's normal start tone when the played item is in a matching collection. |
+| `collections.groups.user_transition_image` | Image shown during the user transition for this collection group. | unset | No | Filename from `/app/collections`. |
+| `collections.groups.image_size` | Group collection transition image size. | `260` | No | Pixels, constrained responsively. |
 
 ### Space Sounds
 
@@ -128,6 +155,8 @@ Per-user sounds override the global tones for any space where that MediaWall use
 
 **Browser sound note:** most browsers will not allow MediaWall to play audible sounds until the page has received at least one click, tap, or keypress after loading. This is a browser autoplay restriction, not a MediaWall setting.
 
+Session-start sound events are tied to the server runtime's first presentation of a session. Refreshing or reopening a browser doesn't create another sound event. Restarting the MediaWall server clears this temporary runtime history, so an already-active non-continuous session may sound when first presented again. Browser permission and local mute remain device-specific.
+
 **Testing sound note:** if you keep testing with the same media item, MediaWall may not play the tone every time. Duplicate session detection and the inactive cooldown are meant to prevent reconnects, brief pauses, and track changes inside continuous sessions from repeatedly triggering sounds.
 
 For custom audio, normalize files before adding them. The bundled sounds use MP3 at 44.1 kHz stereo, 128 kbps, with loudness normalized around `I=-18`, `TP=-1.5`, `LRA=11`. One ffmpeg example:
@@ -140,7 +169,7 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `ui.scale` | Scales app UI chrome. | `1` | No | Applies to controls, dialogs, grid cards, and toast notifications. |
+| `ui.scale` | Scales app UI chrome. | `0.85` | No | Applies to controls, dialogs, grid cards, and toast notifications. v0.2 uses a more compact default while preserving touch targets. |
 | `music_artist_images` | Music artist role filter. | `albumartists` | No | Options: `artists`, `albumartists`, `both`. |
 | `music_logo_artist` | Music logo and fallback text artist credit. | `artists` | No | Options: `artists`, `albumartist`. `music_artist_images` controls which artist artwork/backdrops are selected; this setting controls whether the visible logo/text follows the track's credited artists or the album artist. |
 | `cycle_interval_seconds` | Wallpaper/Screensaver cycle interval. | `15` | No | When shuffle is off, items go library-by-library and alphabetically. |

@@ -57,7 +57,7 @@ spaces:
       cycle_users: true
       cycle_interval_seconds: 15
       session_cleanup:
-        paused_after_seconds: 60
+        paused_after_seconds: 15
         missing_after_seconds: 5
       session_timer:
         enabled: true
@@ -65,17 +65,41 @@ spaces:
       session_count:
         enabled: true
         font_size: 13
+      user_transition:
+        enabled: true
+        duration_seconds: 5
+        background_color: "#000000"
+        avatar_size: 240
+        username_font_size: 126
+        message_font_size: 71
+        source_icon_size: 150
       mediawall_fallback:
         modes:
           - dvd
+        image: banner
         background_color: "#565954"
         min_logo_width: 260
         max_logo_width: 760
+        sizes:
+          centered: 760
+          breathing: 760
+          float: 700
+          spotlight: 760
+          dvd: 520
+          minimal: 300
       custom_logo:
         directory: "/app/custom_logo"
       multiple_backdrops:
         enabled: true
         interval_seconds: 15
+      collections:
+        enabled: false
+        global:
+          enabled: false
+          sound: "toned.mp3"
+          user_transition_image: ""
+          image_size: 260
+        groups: []
       sounds:
         enabled: true
         jellyfin: true
@@ -99,7 +123,7 @@ spaces:
         volume: 0.35
     display:
       ui:
-        scale: 1
+        scale: 0.85
       music_artist_images: albumartists
       music_logo_artist: artists
       cycle_interval_seconds: 15
@@ -170,7 +194,7 @@ spaces:
       cycle_users: false
       cycle_interval_seconds: 15
       session_cleanup:
-        paused_after_seconds: 60
+        paused_after_seconds: 15
         missing_after_seconds: 5
       session_timer:
         enabled: true
@@ -178,17 +202,41 @@ spaces:
       session_count:
         enabled: true
         font_size: 13
+      user_transition:
+        enabled: true
+        duration_seconds: 5
+        background_color: "#000000"
+        avatar_size: 240
+        username_font_size: 126
+        message_font_size: 71
+        source_icon_size: 150
       mediawall_fallback:
         modes:
           - dvd
+        image: banner
         background_color: "#565954"
         min_logo_width: 260
         max_logo_width: 760
+        sizes:
+          centered: 760
+          breathing: 760
+          float: 700
+          spotlight: 760
+          dvd: 520
+          minimal: 300
       custom_logo:
         directory: "/app/custom_logo"
       multiple_backdrops:
         enabled: true
         interval_seconds: 15
+      collections:
+        enabled: false
+        global:
+          enabled: false
+          sound: "toned.mp3"
+          user_transition_image: ""
+          image_size: 260
+        groups: []
       sounds:
         enabled: true
         jellyfin: true
@@ -212,7 +260,7 @@ spaces:
         volume: 0.35
     display:
       ui:
-        scale: 1
+        scale: 0.85
       music_artist_images: albumartists
       music_logo_artist: artists
       cycle_interval_seconds: 15
@@ -284,7 +332,7 @@ spaces:
       cycle_users: true
       cycle_interval_seconds: 15
       session_cleanup:
-        paused_after_seconds: 60
+        paused_after_seconds: 15
         missing_after_seconds: 5
       session_timer:
         enabled: true
@@ -292,17 +340,41 @@ spaces:
       session_count:
         enabled: true
         font_size: 13
+      user_transition:
+        enabled: true
+        duration_seconds: 5
+        background_color: "#000000"
+        avatar_size: 240
+        username_font_size: 126
+        message_font_size: 71
+        source_icon_size: 150
       mediawall_fallback:
         modes:
           - dvd
+        image: banner
         background_color: "#565954"
         min_logo_width: 260
         max_logo_width: 760
+        sizes:
+          centered: 760
+          breathing: 760
+          float: 700
+          spotlight: 760
+          dvd: 520
+          minimal: 300
       custom_logo:
         directory: "/app/custom_logo"
       multiple_backdrops:
         enabled: true
         interval_seconds: 15
+      collections:
+        enabled: false
+        global:
+          enabled: false
+          sound: "toned.mp3"
+          user_transition_image: ""
+          image_size: 260
+        groups: []
       sounds:
         enabled: true
         jellyfin: true
@@ -326,7 +398,7 @@ spaces:
         volume: 0.35
     display:
       ui:
-        scale: 1
+        scale: 0.85
       music_artist_images: albumartists
       music_logo_artist: artists
       cycle_interval_seconds: 15

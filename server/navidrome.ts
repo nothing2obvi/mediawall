@@ -23,6 +23,9 @@ type NowPlayingEntry = {
   playerName?: string;
   playerId?: string;
   minutesAgo?: number | string;
+  state?: string;
+  positionMs?: number | string;
+  playbackRate?: number | string;
   duration?: number | string;
   path?: string;
   parent?: string;
@@ -101,7 +104,11 @@ export class NavidromeClient {
     const navidromeUser = entry.username ?? requestedUser;
     const displayUser = navidromeUser;
     const activityAt = navidromeTimestamp(entry.minutesAgo);
-    const stale = navidromeEntryStale(entry);
+    const reportedState = String(entry.state ?? "").toLowerCase();
+    const paused = reportedState === "paused";
+    const stopped = reportedState === "stopped";
+    const stale = reportedState ? stopped : navidromeEntryStale(entry, displayConfig.now_playing.session_cleanup.paused_after_seconds);
+    const positionMs = numberOrUndefined(entry.positionMs);
     const artworkArtist = this.artworkArtistName(entry, displayConfig);
     const logoText = this.logoArtistCredit(entry, displayConfig);
     const resolvedArtwork = await this.resolveNowPlayingArtwork(entry, artworkArtist);
@@ -130,8 +137,8 @@ export class NavidromeClient {
       source: "navidrome",
       user: navidromeUser,
       displayUser,
-      playing: true,
-      paused: false,
+      playing: !stopped,
+      paused,
       stale,
       sessionKey: [
         "navidrome",
@@ -142,6 +149,7 @@ export class NavidromeClient {
         entry.path
       ].filter(Boolean).join(":"),
       activityAt,
+      playbackPositionTicks: positionMs !== undefined ? Math.round(positionMs * 10_000) : undefined,
       title: entry.title,
       artist: artworkArtist ?? entry.artist,
       album: entry.album,
@@ -445,11 +453,21 @@ function navidromeTimestamp(minutesAgo: NowPlayingEntry["minutesAgo"]) {
   return Number.isFinite(minutes) ? Date.now() - (minutes * 60_000) : undefined;
 }
 
-function navidromeEntryStale(entry: NowPlayingEntry) {
+function navidromeEntryStale(entry: NowPlayingEntry, inactiveAfterSeconds: number) {
   const minutesAgo = Number(entry.minutesAgo);
   const durationSeconds = Number(entry.duration);
-  if (!Number.isFinite(minutesAgo) || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
-  return minutesAgo * 60_000 > (durationSeconds * 1000) + 60_000;
+  if (!Number.isFinite(minutesAgo)) return false;
+  const inactiveMs = minutesAgo * 60_000;
+  const configuredLimitMs = Math.max(0, inactiveAfterSeconds) * 1000;
+  if (configuredLimitMs > 0 && inactiveMs >= configuredLimitMs) return true;
+  return Number.isFinite(durationSeconds) && durationSeconds > 0
+    ? inactiveMs > (durationSeconds * 1000) + 60_000
+    : false;
+}
+
+function numberOrUndefined(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function firstArtistCredit(value: unknown) {
