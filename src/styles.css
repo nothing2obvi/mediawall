@@ -258,7 +258,7 @@ body.idle {
 }
 
 .mediawall-idle img {
-  width: clamp(var(--fallback-logo-min, 260px), 54vw, var(--fallback-logo-max, 760px));
+  width: clamp(var(--fallback-logo-min, 260px), var(--fallback-logo-mode-width, 54vw), var(--fallback-logo-max, 760px));
   max-height: 34vh;
   object-fit: contain;
   filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.18));
@@ -307,6 +307,129 @@ body.idle {
   font-size: calc(13px * var(--ui-scale, 1));
   font-weight: 700;
   letter-spacing: 0;
+}
+
+.user-transition-intro {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  background: var(--user-transition-background, #000000);
+  pointer-events: none;
+  animation: user-transition-backdrop var(--user-transition-duration, 3s) ease-in-out both;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.user-transition-source-icon {
+  position: absolute;
+  top: max(22px, env(safe-area-inset-top));
+  right: max(28px, env(safe-area-inset-right));
+  width: min(var(--user-transition-source-icon-size, 150px), 22vw);
+  height: min(var(--user-transition-source-icon-size, 150px), 22vw);
+  object-fit: contain;
+  opacity: 0.9;
+  filter: drop-shadow(0 14px 34px rgba(0, 0, 0, 0.5));
+  animation: user-transition-source var(--user-transition-duration, 3s) ease-in-out both;
+}
+
+.user-transition-card {
+  display: grid;
+  gap: 16px;
+  place-items: center;
+  justify-items: center;
+  width: min(86vw, 1100px);
+  text-align: center;
+  color: rgba(255, 255, 255, 0.94);
+  text-shadow: 0 12px 34px rgba(0, 0, 0, 0.7);
+  animation: user-transition-card var(--user-transition-duration, 3s) cubic-bezier(0.2, 0.72, 0.2, 1) both;
+}
+
+.user-transition-person {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  width: 100%;
+  font-size: min(var(--user-transition-username-size, 126px), 10vw);
+  font-weight: 820;
+  line-height: 1;
+}
+
+.user-transition-person.no-avatar {
+  display: block;
+}
+
+.user-transition-person img {
+  width: min(var(--user-transition-avatar-size, 240px), 24vw);
+  height: min(var(--user-transition-avatar-size, 240px), 24vw);
+  flex: 0 0 min(var(--user-transition-avatar-size, 240px), 24vw);
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+}
+
+.user-transition-verb {
+  width: 100%;
+  text-align: center;
+  font-size: min(var(--user-transition-message-size, 71px), 6vw);
+  font-weight: 720;
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.user-transition-collection-image {
+  width: min(var(--user-transition-collection-image-size, 260px), 34vw);
+  max-height: 24vh;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 44px rgba(0, 0, 0, 0.45));
+}
+
+@keyframes user-transition-backdrop {
+  0%,
+  62% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes user-transition-source {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  16%,
+  58% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(0.42);
+  }
+}
+
+@keyframes user-transition-card {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  16%,
+  58% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(calc(32vw - 50%), calc(-36vh + 50%)) scale(0.18);
+  }
 }
 
 .mediawall-idle-spotlight .mediawall-idle-spotlight {
@@ -641,6 +764,15 @@ body.idle {
   height: calc(23px * var(--ui-scale, 1));
 }
 
+.control-version {
+  padding: 0 calc(6px * var(--ui-scale, 1));
+  color: rgba(255, 255, 255, 0.54);
+  font-size: calc(12px * var(--ui-scale, 1));
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .divider {
   width: 1px;
   height: calc(30px * var(--ui-scale, 1));
@@ -680,6 +812,23 @@ body.idle {
   color: rgba(8, 10, 14, 0.92);
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
+}
+
+.grid-close-button {
+  position: sticky;
+  left: 100%;
+  bottom: 0;
+  z-index: 2;
+  min-height: calc(38px * var(--ui-scale, 1));
+  margin: 8px 0 0 auto;
+  padding: 0 calc(16px * var(--ui-scale, 1));
+  border: 0;
+  border-radius: 7px;
+  color: rgba(8, 10, 14, 0.92);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
+  font-size: calc(13px * var(--ui-scale, 1));
+  font-weight: 780;
 }
 
 .grid-top-button svg {
@@ -853,7 +1002,8 @@ body.idle {
   backdrop-filter: blur(16px);
 }
 
-.sound-toggle-indicator {
+.sound-toggle-indicator,
+.action-indicator {
   position: fixed;
   top: 50%;
   left: 50%;
@@ -873,9 +1023,14 @@ body.idle {
   animation: sound-toggle-pop 850ms ease both;
 }
 
-.sound-toggle-indicator svg {
+.sound-toggle-indicator svg,
+.action-indicator svg {
   width: calc(46px * var(--ui-scale, 1));
   height: calc(46px * var(--ui-scale, 1));
+}
+
+.action-indicator .slashed-icon {
+  opacity: 0.58;
 }
 
 @keyframes sound-toggle-pop {
@@ -1269,6 +1424,189 @@ body.idle {
   font-size: calc(14px * var(--ui-scale, 1));
   line-height: 1.2;
   overflow: hidden;
+}
+
+.remote-shell {
+  min-height: 100%;
+  height: 100%;
+  overflow: auto;
+  padding: max(18px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  color: white;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(125, 227, 212, 0.14), transparent 34%),
+    #080a0e;
+}
+
+.remote-control {
+  width: min(520px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
+.remote-header {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 8px 0 2px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 13px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.remote-header img {
+  width: min(300px, 72vw);
+  max-height: 92px;
+  object-fit: contain;
+}
+
+.remote-space-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  gap: 8px;
+}
+
+.remote-space-row.single-space {
+  grid-template-columns: 1fr;
+}
+
+.remote-space-row a,
+.remote-space-row span {
+  min-height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.86);
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.remote-space-row strong {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.remote-status {
+  display: grid;
+  grid-template-columns: 1fr minmax(88px, 34%);
+  align-items: center;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.remote-status > div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.remote-status span {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.remote-status strong {
+  min-height: 22px;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 18px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.remote-status img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 7px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+  transition: opacity 180ms ease;
+}
+
+.remote-button-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.remote-button-grid button {
+  min-height: 78px;
+  display: grid;
+  place-items: center;
+  gap: 7px;
+  padding: 10px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.remote-button-grid button.active {
+  color: #061112;
+  background: #7de3d4;
+}
+
+.remote-button-grid button:disabled {
+  opacity: 0.42;
+}
+
+.remote-button-grid svg {
+  width: 28px;
+  height: 28px;
+}
+
+.remote-button-grid span {
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.1;
+}
+
+.remote-version {
+  justify-self: center;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.remote-shell .panel,
+.remote-shell .modal {
+  top: max(18px, env(safe-area-inset-top));
+  width: min(620px, calc(100vw - 24px));
+  max-height: calc(100dvh - 36px);
+  z-index: 12;
+}
+
+.remote-shell .panel {
+  padding-bottom: 62px;
+}
+
+.remote-shell .tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  overflow: visible;
+}
+
+.remote-shell .tabs button {
+  white-space: normal;
+}
+
+.remote-shell .grid {
+  grid-template-columns: 1fr;
+}
+
+.remote-dismiss {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+  border: 0;
+  background: rgba(0, 0, 0, 0.48);
 }
 
 .empty,

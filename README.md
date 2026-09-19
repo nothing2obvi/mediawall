@@ -21,6 +21,16 @@ MediaWall is a way to take advantage of an old iPad, a Raspberry Pi with a displ
 
 ## Screenshots
 
+![MediaWall on a monitor](src/screenshots/monitor_1.jpg)
+
+![MediaWall monitor detail](src/screenshots/monitor_2.jpg)
+
+![MediaWall monitor setup](src/screenshots/monitor_3.jpg)
+
+<p align="center">
+  <img src="src/screenshots/gif_1.gif" alt="MediaWall animated display">
+</p>
+
 ![MediaWall on iPad](src/screenshots/ipad_1.jpg)
 
 ![MediaWall on iPad, alternate setup](src/screenshots/ipad_2.jpg)
@@ -49,9 +59,13 @@ Then I realized I had an old iPad laying around doing absolutely nothing. I want
 
 MediaWall is a display app for Jellyfin and Navidrome built around three main features, and it's meant to work well on things like an old iPad, a Raspberry Pi connected to a monitor, or really any device with a browser.
 
+Each display space also has a phone-friendly remote at the same route with `-remote` appended.
+
 The first, and most prominent, is Now Playing. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers, along with artwork, user information, media details, and optional sound notifications when sessions start or end. When nothing's playing in Now Playing mode, you can choose to show shuffled artwork, use the MediaWall fallback with the bundled logo, or use the fallback mode with your own custom logo made for your server.
 
 The sound system is customizable too. You can use one global sound, assign custom sounds to individual users, and control when sounds should or shouldn't play. This is especially useful with Navidrome or Jellyfin music libraries, where you probably don't want a notification every time the next song starts.
+
+MediaWall can also react to Jellyfin collections. If someone starts media from a configured collection, MediaWall can use a collection-specific sound and show a collection image during the user transition. This is meant for little visual/sound markers around collection groups, not for changing the normal Jellyfin artwork lookup. If multiple collection groups could match the same item, the first matching group in your config wins, so it's best to keep those groups intentionally specific.
 
 The second feature is Screensaver mode. This is heavily inspired by the Jellyfin Android TV screensaver and cycles through artwork from your Jellyfin libraries, with some additional options for controlling what appears and how it's displayed. The idea is to turn an otherwise unused screen, whether that's an old iPad or a Raspberry Pi display, into a constantly changing showcase for the artwork already sitting in your media collection. I know that many of you have terabytes of media, but it's all just data. MediaWall allows its viewers to passively browse your libraries.
 
@@ -95,6 +109,7 @@ That's really the idea behind MediaWall: it can be a Now Playing display, a home
 
 - Shows active playback sessions from Jellyfin, Navidrome, or both.
 - Supports multiple MediaWall users per space, including Jellyfin `All` users.
+- Can show a configurable user-intro transition when a Now Playing session first appears.
 - Falls back to a default MediaWall screen or shuffled artwork when nothing is playing.
 - Provides a full-screen Wallpaper/Screensaver mode with library browsing, favorites, shuffle, logos, media info, transitions, and subtle backdrop motion.
 - Uses Jellyfin backdrops/logos where available.
@@ -121,8 +136,9 @@ services:
     volumes:
       - ./config.yml:/app/config.yml:ro
       - ./data:/app/data
-      - ./sounds:/app/sounds:ro
+      - ./app/sounds:/app/sounds:ro
       - ./custom_logo:/app/custom_logo:ro
+      - ./collections:/app/collections:ro
       # Only needed when using Navidrome with local artist backdrop/logo files.
       # - /path/to/your/navidrome/music:/navidrome_music:ro
 ```
@@ -151,6 +167,14 @@ If a space has a password, pass it in the URL:
 ```text
 http://localhost:1221/livingroom?password=your-password
 ```
+
+You can also open a mobile-friendly remote for any space by adding `-remote` to the space name:
+
+```text
+http://localhost:1221/livingroom-remote
+```
+
+The remote follows the same password rule as the space, so a protected remote uses the same `?password=` value.
 
 Interactive state is stored in `data/state.json`. Image cache data is stored under the configured library scan directory, which defaults to `/app/data/grid-cache` inside the container.
 
@@ -228,11 +252,27 @@ docker exec mediawall npm run mediawall -- play sound noted.mp3 on livingroom
 docker exec mediawall npm run mediawall -- play sounds All on livingroom
 docker exec mediawall npm run mediawall -- play mediawall dvd on livingroom
 docker exec mediawall npm run mediawall -- play screensaver All on livingroom
+docker exec mediawall npm run mediawall -- play user transition on livingroom
+docker exec mediawall npm run mediawall -- play user transition Jon on livingroom
 docker exec mediawall npm run mediawall -- animation pan on livingroom
 docker exec mediawall npm run mediawall -- animation all --random on livingroom
 ```
 
-The MediaWall fallback test displays the selected fallback for 30 seconds. `All` previews each configured MediaWall fallback animation for 30 seconds each and labels the current one in the bottom-right corner. Animation previews use the current backdrop by default; add `--random` to pick a random backdrop for the preview. `play sounds All` plays each available sound with two seconds between sounds and labels the current sound in the bottom-right corner. The command reads `config.yml`, so it can target password-protected spaces without putting the password in the command.
+The MediaWall fallback test displays the selected fallback for 30 seconds. `All` previews each configured MediaWall fallback animation for 30 seconds each and labels the current one in the bottom-right corner. Animation previews use the current backdrop by default; add `--random` to pick a random backdrop for the preview. `play sounds All` plays each available sound with two seconds between sounds and labels the current sound in the bottom-right corner. `play user transition` previews the Now Playing user-intro overlay. The command reads `config.yml`, so it can target password-protected spaces without putting the password in the command.
+
+## Remote
+
+Every display space has a matching remote URL. For example, `/livingroom` has `/livingroom-remote`. The remote is meant for a phone or small tablet, works vertically or horizontally, and exposes the main controls: previous/next, pause/play in Wallpaper/Screensaver mode, mode, selection, grid, shuffle, favorites, media info, fullscreen, and sound mute when sounds are enabled.
+
+The remote controls the same server-owned presentation state as the display. Browsers connected to the same space share the current mode, item/session, backdrop position, pause state, and transition deadline; another space keeps its own independent timeline. MediaWall uses a lightweight server-sent events connection to wake clients when that shared state changes, plus shared server timestamps so it doesn't need to send timer ticks every second.
+
+Dialogs and the grid can be dismissed by tapping outside them or tapping the same remote button again. The grid uses the same libraries, favorite filtering, and password rules as the display. Remote button presses also show the same brief center-screen feedback icons on the display.
+
+Display and remote routes install as distinct PWAs. A route ending in `-remote` uses the remote icon and its own manifest identity; normal space routes use the MediaWall logo. Query-string passwords are preserved in the launch URL but aren't used when deciding which icon/identity applies.
+
+## Deployment Notes
+
+Current compose examples mount `./app/sounds`, `./custom_logo`, and `./collections` separately. Add custom sounds to `app/sounds` so MediaWall has one canonical sound directory at `/app/sounds`. Mounting the whole `/app` directory is not recommended because it can hide the application files inside the container.
 
 ## Configuration
 
@@ -321,7 +361,7 @@ npm run dev
 
 ## License
 
-MIT. Fork it, remix it, and make your own builds.
+Starting with v0.2, MediaWall is licensed under the [GNU Affero General Public License v3.0](LICENSE). MediaWall remains open source and may still be used commercially, but modified versions used over a network must make the corresponding source code available under the terms of the AGPLv3. Previously released MIT versions remain under the license that accompanied those releases.
 
 ## Contributors
 

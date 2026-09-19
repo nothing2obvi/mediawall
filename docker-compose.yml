@@ -9,6 +9,9 @@ services:
     volumes:
       - ./config.yml:/app/config.yml:ro
       - ./data:/app/data
+      - ./app/sounds:/app/sounds:ro
+      - ./custom_logo:/app/custom_logo:ro
+      - ./collections:/app/collections:ro
       # Optional. Mount local music files when using Navidrome-only artist backdrop lookup.
       # - /path/to/music:/navidrome_music:ro
     restart: unless-stopped

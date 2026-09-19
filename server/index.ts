@@ -8,7 +8,7 @@ import { JellyfinClient, fallbackArtwork } from "./jellyfin.js";
 import { NavidromeClient } from "./navidrome.js";
 import { logger } from "./logger.js";
 import { StateStore } from "./state.js";
-import type { ArtworkRef, BackdropAnimation, DisplayConfig, DisplaySnapshot, NowPlayingState, PublicConnectionIssue, PublicControlCommand, PublicLibraryScanProgress, PublicNowPlayingState, PublicSoundSession } from "./types.js";
+import type { ArtworkRef, BackdropAnimation, DisplayConfig, DisplaySnapshot, NowPlayingState, PublicConnectionIssue, PublicControlCommand, PublicLibraryScanProgress, PublicNowPlayingState, PublicSoundSession, PublicUiIndicator } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../public");
@@ -45,7 +45,21 @@ const libraryScanClearTimers = new Map<string, NodeJS.Timeout>();
 const connectionIssueCache = new Map<string, { checkedAt: number; issues: PublicConnectionIssue[] }>();
 const connectionIssueFailures = new Map<string, number>();
 const controlCommands = new Map<string, PublicControlCommand>();
+const uiIndicators = new Map<string, PublicUiIndicator>();
 const lastLoggedPlaybackBySpace = new Map<string, string>();
+type SpaceRuntime = {
+  revision: number;
+  startedAt: number;
+  nextTransitionAt?: number;
+  backdropIndex: number;
+  shownUserTransitions: Set<string>;
+  selectedSessionKey?: string;
+  sessionBackdropIndexes: Map<string, number>;
+  userTransitionEvent?: { id: string; sessionKey: string; startedAt: number; expiresAt: number };
+};
+const spaceRuntimes = new Map<string, SpaceRuntime>();
+const shownRuntimeUserTransitions = new Set<string>();
+const spaceSubscribers = new Map<string, Set<express.Response>>();
 type CachedImageResult = {
   status: number;
   buffer?: Buffer;
@@ -75,10 +89,70 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json());
+app.use((req, res, next) => {
+  if (req.method === "POST" && req.path.startsWith("/api/space/")) {
+    res.on("finish", () => {
+      if (res.statusCode < 400) {
+        const space = req.path.split("/")[3];
+        if (space) {
+          const runtime = spaceRuntime(space);
+          const presentationAction = /\/(next|previous|up|down|playback-next|playback-previous|mode|toggle|select|shuffle)$/.test(req.path);
+          if (presentationAction) {
+            runtime.startedAt = Date.now();
+            runtime.nextTransitionAt = undefined;
+            runtime.backdropIndex = 0;
+          }
+          touchSpace(space);
+        }
+      }
+    });
+  }
+  next();
+});
 app.use(express.static(publicDir));
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, jellyfinConfigured: jellyfin.configured(), navidromeConfigured: navidrome.configured() });
+});
+
+app.get("/api/pwa-manifest", (req, res) => {
+  const requestedPath = normalizePwaPath(String(req.query.route ?? "/"));
+  const launchUrl = normalizePwaLaunch(String(req.query.launch ?? requestedPath), requestedPath);
+  const remote = requestedPath.endsWith("-remote");
+  const icon = remote ? "/logos/remote.png" : "/logos/logo.png";
+  res.setHeader("Content-Type", "application/manifest+json");
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    id: `mediawall:${remote ? "remote" : "display"}:${requestedPath}`,
+    name: remote ? "MediaWall Remote" : "MediaWall",
+    short_name: remote ? "MW Remote" : "MediaWall",
+    start_url: launchUrl,
+    scope: "/",
+    display: "standalone",
+    orientation: remote ? "any" : "landscape",
+    background_color: "#050508",
+    theme_color: "#050508",
+    icons: [{ src: icon, sizes: "1024x1024", type: "image/png", purpose: "any maskable" }]
+  });
+});
+
+app.get("/api/space/:space/events", (req, res) => {
+  const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
+  if (!resolved) return;
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+  const subscribers = spaceSubscribers.get(req.params.space) ?? new Set<express.Response>();
+  subscribers.add(res);
+  spaceSubscribers.set(req.params.space, subscribers);
+  res.write(`event: sync\ndata: ${JSON.stringify({ revision: spaceRuntime(req.params.space).revision })}\n\n`);
+  const heartbeat = setInterval(() => res.write(": keepalive\n\n"), 25_000);
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    subscribers.delete(res);
+    if (!subscribers.size) spaceSubscribers.delete(req.params.space);
+  });
 });
 
 app.use(["/api/jellyfin", "/api/navidrome"], (req, res, next) => {
@@ -228,6 +302,18 @@ app.get("/api/space/:space/custom-logo", (req, res) => {
   res.sendFile(imagePath);
 });
 
+app.get("/api/space/:space/collections/:file", (req, res) => {
+  const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
+  if (!resolved) return;
+  const imagePath = resolveCollectionImagePath(req.params.file);
+  if (!imagePath) {
+    res.sendStatus(404);
+    return;
+  }
+  res.setHeader("Cache-Control", "public, max-age=60");
+  res.sendFile(imagePath);
+});
+
 app.post("/api/space/:space/command", async (req, res) => {
   const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
   if (!resolved) return;
@@ -242,6 +328,28 @@ app.post("/api/space/:space/command", async (req, res) => {
   }
   controlCommands.set(req.params.space, command.command);
   res.json({ ok: true, command: command.command });
+});
+
+app.post("/api/space/:space/indicator", (req, res) => {
+  const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
+  if (!resolved) return;
+  const kind = String(req.body?.kind ?? "");
+  if (!isUiIndicatorKind(kind)) {
+    res.status(400).json({ error: "Invalid indicator kind" });
+    return;
+  }
+  const indicator: PublicUiIndicator = {
+    id: crypto.randomUUID(),
+    kind,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 5000
+  };
+  uiIndicators.set(req.params.space, indicator);
+  res.json({ ok: true, indicator });
+});
+
+app.get("/api/spaces", (_req, res) => {
+  res.json({ spaces: Object.keys(config.spaces).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" })) });
 });
 
 app.post("/api/space/:space/next", async (req, res) => {
@@ -589,6 +697,30 @@ app.get(/.*/, (_req, res) => {
 
 async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promise<DisplaySnapshot> {
   let state = states.get(space, undefined, displayConfig);
+  const runtime = spaceRuntime(space);
+  const now = Date.now();
+  if (state.mode === "screensaver" && state.playing) {
+    const intervalMs = Math.max(1, displayConfig.display.cycle_interval_seconds) * 1000;
+    runtime.nextTransitionAt ??= now + intervalMs;
+    const backdropCount = state.current?.backdropCount ?? 1;
+    runtime.backdropIndex = displayConfig.display.multiple_backdrops.mode === "cycle" && backdropCount > 1
+      ? Math.min(backdropCount - 1, Math.floor(((now - runtime.startedAt) / intervalMs) * backdropCount))
+      : runtime.backdropIndex;
+    if (now >= runtime.nextTransitionAt) {
+      const selected = state.shuffle
+        ? await shuffleSelection(displayConfig, state)
+        : await orderedWallpaperSelection(displayConfig, state);
+      if (selected) {
+        state = states.pushCurrent(space, undefined, displayConfig, selected.artwork, selected.patch);
+        runtime.startedAt = now;
+        runtime.nextTransitionAt = now + intervalMs;
+        runtime.backdropIndex = 0;
+        touchSpace(space);
+      }
+    }
+  } else if (state.mode !== "screensaver" || !state.playing) {
+    runtime.nextTransitionAt = undefined;
+  }
   const connectionIssues = await enabledConnectionIssues(displayConfig);
   const controlCommand = activeControlCommand(space);
   if (!startupFavoriteRefreshes.has(space)) {
@@ -723,6 +855,42 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     state = states.advanceTransition(space, undefined, displayConfig, { lastNowPlayingSignature: nowPlaying.signature });
   }
 
+  if (mode === "now-playing" && nowPlaying?.playing) {
+    const sessionKey = nowPlaying.publicSoundSessionKey ?? nowPlaying.publicSessionId;
+    if (sessionKey) {
+      const firstSelection = !runtime.selectedSessionKey;
+      const selectedChanged = Boolean(runtime.selectedSessionKey && runtime.selectedSessionKey !== sessionKey);
+      if (selectedChanged && (nowPlaying.sessionCount ?? 0) > 1) {
+        runtime.sessionBackdropIndexes.set(sessionKey, (runtime.sessionBackdropIndexes.get(sessionKey) ?? -1) + 1);
+      }
+      runtime.selectedSessionKey = sessionKey;
+      const playbackCycle = recentPlaybackCycles.get(space);
+      runtime.startedAt = playbackCycle?.selectedAt ?? (firstSelection || selectedChanged ? now : runtime.startedAt);
+      runtime.nextTransitionAt = state.nowPlayingCyclePaused || (nowPlaying.sessionCount ?? 0) < 2
+        ? undefined
+        : runtime.startedAt + Math.max(1, displayConfig.now_playing.cycle_interval_seconds) * 1000;
+      runtime.backdropIndex = (nowPlaying.sessionCount ?? 0) > 1
+        ? runtime.sessionBackdropIndexes.get(sessionKey) ?? 0
+        : Math.floor((now - runtime.startedAt) / (Math.max(1, displayConfig.now_playing.multiple_backdrops.interval_seconds) * 1000));
+      if (selectedChanged) touchSpace(space);
+    }
+    if (sessionKey && !shownRuntimeUserTransitions.has(sessionKey)) {
+      shownRuntimeUserTransitions.add(sessionKey);
+      runtime.shownUserTransitions.add(sessionKey);
+      const duration = Math.max(0.5, displayConfig.now_playing.user_transition.duration_seconds) * 1000;
+      runtime.userTransitionEvent = {
+        id: crypto.randomUUID(),
+        sessionKey,
+        startedAt: now,
+        expiresAt: now + duration
+      };
+      touchSpace(space);
+    }
+  }
+  if (runtime.userTransitionEvent && runtime.userTransitionEvent.expiresAt <= now) {
+    runtime.userTransitionEvent = undefined;
+  }
+
   return {
     profile: "",
     display: space,
@@ -734,8 +902,84 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     libraryScan: libraryScanProgress.get(space),
     connectionIssues,
     controlCommand,
-    activeMediaWallFallbackMode: controlCommand?.type === "mediawall" ? controlCommand.mode : activeMediaWallFallbackMode
+    uiIndicator: activeUiIndicator(space),
+    activeMediaWallFallbackMode: controlCommand?.type === "mediawall" ? controlCommand.mode : activeMediaWallFallbackMode,
+    presentation: {
+      revision: runtime.revision,
+      serverNow: now,
+      startedAt: runtime.startedAt,
+      nextTransitionAt: runtime.nextTransitionAt,
+      backdropIndex: runtime.backdropIndex
+    },
+    userTransitionEvent: runtime.userTransitionEvent
   };
+}
+
+function spaceRuntime(space: string): SpaceRuntime {
+  const existing = spaceRuntimes.get(space);
+  if (existing) return existing;
+  const created: SpaceRuntime = {
+    revision: 1,
+    startedAt: Date.now(),
+    backdropIndex: 0,
+    shownUserTransitions: new Set(),
+    sessionBackdropIndexes: new Map()
+  };
+  spaceRuntimes.set(space, created);
+  return created;
+}
+
+function normalizePwaPath(input: string) {
+  try {
+    const url = new URL(input, "http://mediawall.local");
+    const pathname = `/${url.pathname.split("/").filter(Boolean).join("/")}`;
+    return pathname === "/" ? "/" : pathname.replace(/\/+$/, "");
+  } catch {
+    return "/";
+  }
+}
+
+function normalizePwaLaunch(input: string, fallbackPath: string) {
+  try {
+    const url = new URL(input, "http://mediawall.local");
+    if (normalizePwaPath(url.pathname) !== fallbackPath) return fallbackPath;
+    return `${fallbackPath}${url.search}`;
+  } catch {
+    return fallbackPath;
+  }
+}
+
+function touchSpace(space: string) {
+  const runtime = spaceRuntime(space);
+  runtime.revision += 1;
+  for (const response of spaceSubscribers.get(space) ?? []) {
+    response.write(`event: sync\ndata: ${JSON.stringify({ revision: runtime.revision })}\n\n`);
+  }
+}
+
+function activeUiIndicator(space: string) {
+  const indicator = uiIndicators.get(space);
+  if (!indicator) return undefined;
+  if (indicator.expiresAt <= Date.now()) {
+    uiIndicators.delete(space);
+    return undefined;
+  }
+  return indicator;
+}
+
+function isUiIndicatorKind(value: string): value is PublicUiIndicator["kind"] {
+  return [
+    "sound-on",
+    "sound-off",
+    "favorite",
+    "unfavorite",
+    "shuffle-on",
+    "shuffle-off",
+    "play",
+    "pause",
+    "mode-now-playing",
+    "mode-screensaver"
+  ].includes(value);
 }
 
 function publicDisplayConfig(displayConfig: DisplayConfig): DisplaySnapshot["config"] {
@@ -781,6 +1025,22 @@ function resolveCustomLogoDirectory(displayConfig: DisplayConfig) {
   const configured = displayConfig.now_playing.custom_logo.directory || "/app/custom_logo";
   if (configured === "/app/custom_logo") return path.resolve(appRoot, "app/custom_logo");
   return path.resolve(configured);
+}
+
+function resolveCollectionImagePath(filename: string | undefined) {
+  if (!filename || filename.includes("/") || filename.includes("\\") || filename.includes("\0")) return undefined;
+  const mountedDirectory = path.resolve("/app/collections");
+  const bundledDirectory = path.resolve(appRoot, "app/collections");
+  const directory = fs.existsSync(mountedDirectory) ? mountedDirectory : bundledDirectory;
+  const candidate = path.resolve(directory, filename);
+  if (!candidate.startsWith(`${directory}${path.sep}`)) return undefined;
+  if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) return undefined;
+  if (!/\.(?:png|jpe?g|webp|gif|svg)$/i.test(candidate)) return undefined;
+  return candidate;
+}
+
+function collectionImageUrl(space: string, filename: string) {
+  return `/api/space/${encodeURIComponent(space)}/collections/${encodeURIComponent(filename)}`;
 }
 
 function mediaWallFallbackForIdleRound(displayConfig: DisplayConfig, state: DisplaySnapshot["state"], advance: boolean) {
@@ -874,6 +1134,9 @@ function publicNowPlaying(nowPlaying: NowPlayingState): PublicNowPlayingState {
     displayUserAvatarUrl: nowPlaying.displayUserAvatarUrl,
     mediaWallUser: nowPlaying.mediaWallUser,
     libraryName: nowPlaying.libraryName,
+    collectionName: nowPlaying.collectionName,
+    collectionTransitionImageUrl: nowPlaying.collectionTransitionImageUrl,
+    collectionTransitionImageSize: nowPlaying.collectionTransitionImageSize,
     albumArtUrl: nowPlaying.albumArtUrl,
     artwork: nowPlaying.artwork,
     publicSessionId: nowPlaying.publicSessionId,
@@ -1273,13 +1536,38 @@ async function controlCommandFromRequest(body: unknown, displayConfig: DisplayCo
   | { ok: false; error: string }
 > {
   const input = body && typeof body === "object" ? body as { type?: unknown; name?: unknown; durationSeconds?: unknown; randomBackdrop?: unknown } : {};
-  const type = input.type === "mediawall" ? "mediawall" : input.type === "sound" ? "sound" : input.type === "animation" ? "animation" : undefined;
+  const type = input.type === "mediawall"
+    ? "mediawall"
+    : input.type === "sound"
+      ? "sound"
+      : input.type === "animation"
+        ? "animation"
+        : input.type === "user_transition"
+          ? "user_transition"
+          : undefined;
   const name = typeof input.name === "string" ? input.name.trim() : "";
-  if (!type || !name) return { ok: false, error: "Command must include type and name." };
+  if (!type || (!name && type !== "user_transition")) return { ok: false, error: "Command must include type and name." };
   const rawDuration = Number(input.durationSeconds ?? (type === "sound" ? 15 : 30));
   const durationSeconds = Math.max(1, Math.min(300, Number.isFinite(rawDuration) ? rawDuration : 30));
   const startedAt = Date.now();
   const expiresAt = Date.now() + durationSeconds * 1000;
+  if (type === "user_transition") {
+    const firstUser = displayConfig.users[0];
+    const username = name || firstUser?.name || displayConfig.playback_user || "MediaWall";
+    return {
+      ok: true,
+      command: {
+        id: crypto.randomUUID(),
+        type,
+        name: username,
+        startedAt,
+        source: "jellyfin",
+        username,
+        verb: "started watching",
+        expiresAt
+      }
+    };
+  }
   if (type === "sound") {
     if (name.toLowerCase() === "all") {
       const tones = listSoundFiles(displayConfig);
@@ -1588,8 +1876,10 @@ function sendImageResult(res: express.Response, result: CachedImageResult) {
 }
 
 async function browseLibraries(displayConfig: DisplayConfig) {
-  if (useNavidromeBrowse(displayConfig)) return navidrome.browseLibraries(displayConfig);
-  return jellyfin.browseLibraries(displayConfig);
+  const libraries = useNavidromeBrowse(displayConfig)
+    ? await navidrome.browseLibraries(displayConfig)
+    : await jellyfin.browseLibraries(displayConfig);
+  return libraries.sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
 }
 
 async function browseItems(displayConfig: DisplayConfig, libraryId: string, libraryType: string) {
@@ -1875,11 +2165,12 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
   for (const user of displayConfig.users) {
     if (displayConfig.playback_source === "jellyfin" || displayConfig.playback_source === "both") {
       try {
-        candidates.push(...(await jellyfin.activePlaybacks({
+        const playbacks = (await jellyfin.activePlaybacks({
           ...displayConfig,
           playback_user: user.jellyfin_user ?? user.name,
           users: [user]
-        })).map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound)));
+        })).map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound));
+        candidates.push(...(await Promise.all(playbacks.map((playback) => applyCollectionPresentation(playback, displayConfig, user.name)))));
       } catch (error) {
         logger.warn("Jellyfin playback source poll failed", error);
       }
@@ -1897,6 +2188,33 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
     }
   }
   return dedupePlaybackCandidates(candidates);
+}
+
+async function applyCollectionPresentation(state: NowPlayingState, displayConfig: DisplayConfig, mediaWallUser: string): Promise<NowPlayingState> {
+  if (state.source !== "jellyfin" || !displayConfig.now_playing.collections.enabled) return state;
+  const match = await jellyfin.collectionMatchForItem([
+    state.itemId,
+    state.artwork?.itemId,
+    state.artistId
+  ], displayConfig, mediaWallUser).catch((error) => {
+    logger.warn(`Jellyfin collection match failed for "${state.title ?? state.artwork?.title ?? "unknown"}"`, error);
+    return undefined;
+  });
+  if (!match) return state;
+  const imageFile = match.user_transition_image && resolveCollectionImagePath(match.user_transition_image)
+    ? match.user_transition_image
+    : undefined;
+  if (match.user_transition_image && !imageFile) {
+    logger.warn(`Collection transition image "${match.user_transition_image}" was not found in /app/collections`);
+  }
+  logger.debug(`Collection match for "${state.title ?? state.artwork?.title ?? "unknown"}": ${match.collectionName}`);
+  return {
+    ...state,
+    collectionName: match.collectionName,
+    collectionTransitionImage: imageFile,
+    collectionTransitionImageSize: match.image_size,
+    soundTone: match.sound || state.soundTone
+  };
 }
 
 function dedupePlaybackCandidates(candidates: NowPlayingState[]) {
@@ -1940,7 +2258,7 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
     if (previous?.state.source === "jellyfin" && candidate.source === "jellyfin") {
       logNowPlayingArtworkRefresh(displayKey, previous.state, candidate);
     }
-    const tracksPlaybackProgress = candidate.source === "jellyfin" && candidate.playbackPositionTicks !== undefined;
+    const tracksPlaybackProgress = candidate.playbackPositionTicks !== undefined;
     const positionChanged = tracksPlaybackProgress
       && !signatureChanged
       && previous?.playbackPositionTicks !== undefined
@@ -1955,7 +2273,11 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
       ?? (signatureChanged ? now : previous?.activityAt)
       ?? previous?.seenAt
       ?? now;
-    const pausedSince = candidate.paused || candidate.stale ? previous?.pausedSince ?? candidate.activityAt ?? now : undefined;
+    const pausedSince = candidate.paused
+      ? previous?.pausedSince ?? now
+      : candidate.stale
+        ? previous?.pausedSince ?? candidate.activityAt ?? now
+        : undefined;
     const pausedActive = !pausedSince || now - pausedSince < pausedSessionGraceMs;
     const progressActive = !tracksPlaybackProgress
       || (progressConfirmed && (!stalledSince || now - stalledSince < pausedSessionGraceMs));
@@ -2037,7 +2359,7 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
       : (manualDirection > 0 ? 0 : activeChronological.length - 1);
     const [selectedKey, selected] = activeChronological[nextIndex]!;
     recentPlaybackCycles.set(displayKey, { selectedKey, selectedAt: now, newestSeenAt: newestSeenAt(activeChronological) });
-    return withPlaybackPosition(selected.state, selectedKey, activeChronological, displayConfig);
+    return withPlaybackPosition(selected.state, selectedKey, activeChronological, displayConfig, displayKey);
   }
 
   if (active.length > 1) {
@@ -2048,31 +2370,31 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
     if (cycle && selectedStillActive && state.nowPlayingCyclePaused) {
       const selected = records.get(cycle.selectedKey!);
       recentPlaybackCycles.set(displayKey, { ...cycle, newestSeenAt: Math.max(cycle.newestSeenAt, newest.seenAt) });
-      return withPlaybackPosition(selected?.state ?? newest.state, cycle.selectedKey!, activeChronological, displayConfig);
+      return withPlaybackPosition(selected?.state ?? newest.state, cycle.selectedKey!, activeChronological, displayConfig, displayKey);
     }
     if (!cycle || !selectedStillActive) {
       const [selectedKey, selected] = activeChronological[0]!;
       recentPlaybackCycles.set(displayKey, { selectedKey, selectedAt: now, newestSeenAt: newestSeenAt(activeChronological) });
-      return withPlaybackPosition(selected.state, selectedKey, activeChronological, displayConfig);
+      return withPlaybackPosition(selected.state, selectedKey, activeChronological, displayConfig, displayKey);
     }
     if (newest.seenAt > cycle.newestSeenAt) {
       const selected = records.get(cycle.selectedKey!);
       recentPlaybackCycles.set(displayKey, { ...cycle, newestSeenAt: newest.seenAt });
-      return withPlaybackPosition(selected?.state ?? activeChronological[0]![1].state, cycle.selectedKey!, activeChronological, displayConfig);
+      return withPlaybackPosition(selected?.state ?? activeChronological[0]![1].state, cycle.selectedKey!, activeChronological, displayConfig, displayKey);
     }
     if (now - cycle.selectedAt < intervalMs) {
       const selected = records.get(cycle.selectedKey!);
-      return withPlaybackPosition(selected?.state ?? newest.state, cycle.selectedKey!, activeChronological, displayConfig);
+      return withPlaybackPosition(selected?.state ?? newest.state, cycle.selectedKey!, activeChronological, displayConfig, displayKey);
     }
     const currentIndex = activeChronological.findIndex(([key]) => key === cycle.selectedKey);
     const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % activeChronological.length : 0;
     const [selectedKey, selected] = activeChronological[nextIndex]!;
     recentPlaybackCycles.set(displayKey, { selectedKey, selectedAt: now, newestSeenAt: cycle.newestSeenAt });
-    return withPlaybackPosition(selected.state, selectedKey, activeChronological, displayConfig);
+    return withPlaybackPosition(selected.state, selectedKey, activeChronological, displayConfig, displayKey);
   }
   recentPlaybackCycles.delete(displayKey);
   const first = sorted[0];
-  return first ? withPlaybackPosition(first[1].state, first[0], activeChronological, displayConfig) : undefined;
+  return first ? withPlaybackPosition(first[1].state, first[0], activeChronological, displayConfig, displayKey) : undefined;
 }
 
 function logNowPlayingArtworkRefresh(displayKey: string, previous: NowPlayingState, next: NowPlayingState) {
@@ -2104,7 +2426,8 @@ function withPlaybackPosition(
   state: NowPlayingState,
   selectedKey: string,
   activeChronological: Array<[string, RecentPlaybackRecord]>,
-  displayConfig: DisplayConfig
+  displayConfig: DisplayConfig,
+  space: string
 ) {
   const sessionCount = activeChronological.length;
   const sessionPosition = activeChronological.findIndex(([key]) => key === selectedKey) + 1;
@@ -2113,6 +2436,9 @@ function withPlaybackPosition(
     publicSessionId: publicSessionId(selectedKey),
     publicMediaKey: publicMediaKey(state),
     publicSoundSessionKey: hashPublicKey(soundSessionIdentity(state, displayConfig)),
+    collectionTransitionImageUrl: state.collectionTransitionImage
+      ? collectionImageUrl(space, state.collectionTransitionImage)
+      : undefined,
     sessionPosition: sessionPosition > 0 ? sessionPosition : undefined,
     sessionCount: sessionCount || undefined
   };
@@ -2250,18 +2576,18 @@ function playbackSessionKey(state: NowPlayingState) {
 const supportedSoundExtensions = new Set([".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac"]);
 
 function listSoundFiles(displayConfig: DisplayConfig) {
+  const files = new Set<string>();
   const directory = soundDirectory(displayConfig);
   try {
-    return fs.readdirSync(directory)
-      .filter((filename) => supportedSoundExtensions.has(path.extname(filename).toLowerCase()))
-      .filter((filename) => {
-        const resolved = path.resolve(directory, filename);
-        return resolved.startsWith(`${directory}${path.sep}`) && fs.statSync(resolved).isFile();
-      })
-      .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+    for (const filename of fs.readdirSync(directory)) {
+      if (!supportedSoundExtensions.has(path.extname(filename).toLowerCase())) continue;
+      const resolved = path.resolve(directory, filename);
+      if (resolved.startsWith(`${directory}${path.sep}`) && fs.statSync(resolved).isFile()) files.add(filename);
+    }
   } catch {
     return [];
   }
+  return [...files].sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
 }
 
 function resolveSoundPath(displayConfig: DisplayConfig, tone: string) {

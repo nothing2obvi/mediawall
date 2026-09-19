@@ -18,7 +18,8 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/src/logos ./dist/public/logos
 COPY --from=build /app/app/sounds ./sounds
 COPY --from=build /app/app/custom_logo ./custom_logo
+COPY --from=build /app/app/collections ./collections
 COPY config.yml ./config.yml
-RUN mkdir -p /app/data /app/custom_logo
+RUN mkdir -p /app/data /app/custom_logo /app/collections
 EXPOSE 1221
 CMD ["node", "dist/server/index.js"]
