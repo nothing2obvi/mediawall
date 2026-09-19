@@ -137,8 +137,8 @@ services:
       - ./config.yml:/app/config.yml:ro
       - ./data:/app/data
       - ./app/sounds:/app/sounds:ro
-      - ./custom_logo:/app/custom_logo:ro
-      - ./collections:/app/collections:ro
+      - ./app/custom_logo:/app/custom_logo:ro
+      - ./app/collections:/app/collections:ro
       # Only needed when using Navidrome with local artist backdrop/logo files.
       # - /path/to/your/navidrome/music:/navidrome_music:ro
 ```
@@ -272,7 +272,7 @@ Display and remote routes install as distinct PWAs. A route ending in `-remote` 
 
 ## Deployment Notes
 
-Current compose examples mount `./app/sounds`, `./custom_logo`, and `./collections` separately. Add custom sounds to `app/sounds` so MediaWall has one canonical sound directory at `/app/sounds`. Mounting the whole `/app` directory is not recommended because it can hide the application files inside the container.
+Current compose examples mount `./app/sounds`, `./app/custom_logo`, and `./app/collections` separately. Add custom sounds to `app/sounds` so MediaWall has one canonical sound directory at `/app/sounds`. Mounting the whole `/app` directory is not recommended because it can hide the application files inside the container.
 
 ## Configuration
 
