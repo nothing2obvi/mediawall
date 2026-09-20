@@ -63,7 +63,7 @@ The first, and most prominent, is **Now Playing**. MediaWall shows what's curren
 
 The sound system is customizable too. You can use one global sound, assign custom sounds to individual users, and control when sounds should or shouldn't play. This is especially useful with Navidrome or Jellyfin music libraries, where you probably don't want a notification every time the next song starts.
 
-MediaWall can also react to configured Jellyfin collections by using collection-specific sounds and transition images when matching media starts playing.
+MediaWall can also react to configured Jellyfin collections by using collection-specific sounds and transition images when matching media starts playing. Collection matches are indexed during the existing Jellyfin library scan, persisted to disk, and reused without querying collection membership during playback. Items in several matching collections use the first alphabetical collection's sound and show all relevant collection images in alphabetical order.
 
 The second feature is **Screensaver mode**. This is heavily inspired by the Jellyfin Android TV screensaver and cycles through artwork from your Jellyfin libraries, with additional options for controlling what appears and how it's displayed. The idea is to turn an otherwise unused screen into a constantly changing showcase for the artwork already sitting in your media collection. I know many of you have terabytes of media, but most of the time it's all just data sitting there. MediaWall gives you a way to passively browse your libraries and actually see more of it.
 

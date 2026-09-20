@@ -177,6 +177,7 @@ type Snapshot = {
     collectionName?: string;
     collectionTransitionImageUrl?: string;
     collectionTransitionImageSize?: number;
+    collectionTransitionImageUrls?: Array<{ collectionName: string; url: string; size: number }>;
     albumArtUrl?: string;
     artwork?: ArtworkRef;
     signature?: string;
@@ -484,6 +485,7 @@ function App() {
     sourceIconSize: number;
     collectionImageUrl?: string;
     collectionImageSize?: number;
+    collectionImages?: Array<{ collectionName: string; url: string; size: number }>;
   }>();
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -1408,7 +1410,8 @@ function App() {
       messageFontSize: config.message_font_size ?? 42,
       sourceIconSize: config.source_icon_size ?? 240,
       collectionImageUrl: now.collectionTransitionImageUrl,
-      collectionImageSize: now.collectionTransitionImageSize
+      collectionImageSize: now.collectionTransitionImageSize,
+      collectionImages: now.collectionTransitionImageUrls
     });
     userTransitionTimer.current = window.setTimeout(() => setUserTransition(undefined), durationSeconds * 1000);
     return true;
@@ -2184,6 +2187,7 @@ function UserTransitionIntro({ intro }: {
     sourceIconSize: number;
     collectionImageUrl?: string;
     collectionImageSize?: number;
+    collectionImages?: Array<{ collectionName: string; url: string; size: number }>;
   };
 }) {
   const icon = intro.source === "navidrome" ? navidromeLogo : jellyfinLogo;
@@ -2208,7 +2212,21 @@ function UserTransitionIntro({ intro }: {
           <span>{intro.username}</span>
         </div>
         <div className="user-transition-verb">{intro.verb}</div>
-        {intro.collectionImageUrl && <img className="user-transition-collection-image" src={mediaUrl(intro.collectionImageUrl)} alt="" />}
+        {intro.collectionImages?.length ? (
+          <div className="user-transition-collection-images">
+            {intro.collectionImages.map((image, index) => (
+              <img
+                key={`${image.collectionName}:${image.url}:${index}`}
+                className="user-transition-collection-image"
+                src={mediaUrl(image.url)}
+                alt=""
+                style={{ "--user-transition-collection-image-size": `${image.size}px` } as React.CSSProperties}
+              />
+            ))}
+          </div>
+        ) : intro.collectionImageUrl ? (
+          <img className="user-transition-collection-image" src={mediaUrl(intro.collectionImageUrl)} alt="" />
+        ) : null}
       </div>
     </section>
   );
