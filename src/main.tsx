@@ -100,6 +100,7 @@ type Snapshot = {
   display: string;
   mode: DisplayState["mode"];
   state: DisplayState;
+  playbackDetectionPending?: boolean;
   libraryScan?: {
     active: boolean;
     completed: boolean;
@@ -527,10 +528,12 @@ function App() {
   const showMediaWallPreview = snapshot?.controlCommand?.type === "mediawall";
   const showMediaWallIdle = showMediaWallPreview || (snapshot?.state.mode === "now-playing"
     && snapshot.config.now_playing.fallback === "mediawall"
+    && !snapshot.playbackDetectionPending
     && !snapshot.nowPlaying?.playing);
   const showImmichKioskIdle = !showMediaWallPreview
     && snapshot?.state.mode === "now-playing"
     && snapshot.config.now_playing.fallback === "immich_kiosk"
+    && !snapshot.playbackDetectionPending
     && !snapshot.nowPlaying?.playing;
   const showImmichKioskMode = snapshot?.state.mode === "immich-kiosk";
   const immichKioskActive = Boolean(showImmichKioskIdle || showImmichKioskMode);
@@ -1643,6 +1646,10 @@ function App() {
 
   if (error) return <div className="error">{error}</div>;
 
+  if (!route.remote && (!snapshot || snapshot.playbackDetectionPending)) {
+    return <MediaWallLoading />;
+  }
+
   if (route.remote) {
     return (
       <main
@@ -1927,12 +1934,12 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
     );
   }
 
-  if (status === "checking" && active) return <section className="immich-kiosk-handoff active"><div className="immich-kiosk-loading" /></section>;
+  if (status === "checking" && active) return <section className="immich-kiosk-handoff active"><MediaWallLoading embedded /></section>;
   if (status !== "available" || !url) return null;
 
   return (
     <section className={`immich-kiosk-handoff ${active ? "active" : ""}`}>
-      {!loaded && <div className="immich-kiosk-loading" aria-label="Loading Immich Kiosk" />}
+      {!loaded && <MediaWallLoading embedded />}
       <iframe
         className={loaded ? "loaded" : ""}
         src={url}
@@ -1946,6 +1953,17 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
         }}
         onError={() => setStatus("unavailable")}
       />
+    </section>
+  );
+}
+
+function MediaWallLoading({ embedded = false }: { embedded?: boolean }) {
+  return (
+    <section className={`mediawall-loading ${embedded ? "embedded" : ""}`} aria-label="MediaWall is loading">
+      <img src={mediaWallBanner} alt="MediaWall" />
+      <div className="mediawall-loading-copy">
+        MediaWall is loading<span className="mediawall-loading-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+      </div>
     </section>
   );
 }

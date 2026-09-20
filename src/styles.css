@@ -1677,6 +1677,54 @@ body.idle {
   background: #050508;
 }
 
+.mediawall-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  box-sizing: border-box;
+  padding: 32px;
+  color: #fff;
+  background: #3f423e;
+}
+
+.mediawall-loading.embedded {
+  position: absolute;
+}
+
+.mediawall-loading img {
+  width: min(72vw, 760px);
+  height: auto;
+}
+
+.mediawall-loading-copy {
+  font-size: clamp(18px, 2.2vw, 30px);
+  font-weight: 600;
+}
+
+.mediawall-loading-dots span {
+  opacity: 0.2;
+  animation: mediawall-loading-dot 1.2s infinite;
+}
+
+.mediawall-loading-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.mediawall-loading-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes mediawall-loading-dot {
+  0%, 20% { opacity: 0.2; }
+  45%, 70% { opacity: 1; }
+  100% { opacity: 0.2; }
+}
+
 .immich-mode-controls {
   position: fixed;
   left: 50%;
