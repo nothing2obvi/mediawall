@@ -282,6 +282,7 @@ export interface NowPlayingState {
   collectionTransitionImage?: string;
   collectionTransitionImageUrl?: string;
   collectionTransitionImageSize?: number;
+  collectionPresentationPending?: boolean;
   albumArtUrl?: string;
   artwork?: ArtworkRef;
   signature?: string;

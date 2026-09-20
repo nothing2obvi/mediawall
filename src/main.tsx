@@ -456,6 +456,7 @@ function App() {
   const [shuffleOpen, setShuffleOpen] = useState(false);
   const [mediaInfoOpen, setMediaInfoOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [themePreview, setThemePreview] = useState<string>();
   const [favoritePicker, setFavoritePicker] = useState<{ itemKey: string; backdrops: ArtworkRef[] }>();
   const [backdropStep, setBackdropStep] = useState(0);
   const [nowPlayingBackdropStep, setNowPlayingBackdropStep] = useState(0);
@@ -1129,6 +1130,7 @@ function App() {
       if (!snapshot || shouldIgnoreShortcut(event)) return;
       if (event.key === "Escape" && themeOpen) {
         event.preventDefault();
+        setThemePreview(undefined);
         setThemeOpen(false);
         return;
       }
@@ -1263,7 +1265,10 @@ function App() {
     if (keep !== "browse") setPanel("none");
     if (keep !== "shuffle") setShuffleOpen(false);
     if (keep !== "mediaInfo") setMediaInfoOpen(false);
-    if (keep !== "theme") setThemeOpen(false);
+    if (keep !== "theme") {
+      setThemeOpen(false);
+      setThemePreview(undefined);
+    }
     if (keep !== "favoritePicker") setFavoritePicker(undefined);
   }
 
@@ -1467,7 +1472,15 @@ function App() {
       return;
     }
     closeOverlays("theme");
+    setThemePreview(snapshot?.state.activeTheme);
     setThemeOpen(true);
+  }
+
+  async function saveThemePreview() {
+    if (!themePreview) return;
+    await selectTheme(themePreview);
+    setThemePreview(undefined);
+    setThemeOpen(false);
   }
 
   async function toggleShuffle() {
@@ -1667,7 +1680,7 @@ function App() {
       <main
         className="remote-shell"
         style={{
-          ...themeVariables(snapshot?.state.activeTheme),
+          ...themeVariables(themePreview ?? snapshot?.state.activeTheme),
           "--ui-scale": String(snapshot?.config.display.ui.scale ?? 1)
         } as React.CSSProperties}
         onPointerDown={revealControls}
@@ -1720,7 +1733,12 @@ function App() {
         {snapshot && themeOpen && snapshot.config.theme === "All" && (
           <>
             <button className="remote-dismiss" type="button" aria-label="Close theme selector" onClick={() => closeOverlays()} />
-            <ThemeDialog active={snapshot.state.activeTheme} onSelect={(theme) => void selectTheme(theme)} onCancel={() => setThemeOpen(false)} />
+            <ThemeDialog
+              active={themePreview ?? snapshot.state.activeTheme}
+              onSelect={setThemePreview}
+              onCancel={() => { setThemePreview(undefined); setThemeOpen(false); }}
+              onSave={() => void saveThemePreview()}
+            />
           </>
         )}
         {snapshot && favoritePicker && (
@@ -1759,7 +1777,7 @@ function App() {
     <main
       className={`wall ${viewportClass} transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""} ${scanWithAlbumArt ? "scan-with-album-art" : ""} ${immichKioskActive ? "immich-active" : ""}`}
       style={{
-        ...themeVariables(snapshot?.state.activeTheme),
+        ...themeVariables(themePreview ?? snapshot?.state.activeTheme),
         "--transition-duration": `${snapshot?.config.display.transitions.duration_ms ?? 1200}ms`,
         "--viewport-width": `${viewportSize.width}px`,
         "--viewport-height": `${viewportSize.height}px`,
@@ -1852,7 +1870,12 @@ function App() {
         />
       )}
       {visible && snapshot && themeOpen && snapshot.config.theme === "All" && (
-        <ThemeDialog active={snapshot.state.activeTheme} onSelect={(theme) => void selectTheme(theme)} onCancel={() => setThemeOpen(false)} />
+        <ThemeDialog
+          active={themePreview ?? snapshot.state.activeTheme}
+          onSelect={setThemePreview}
+          onCancel={() => { setThemePreview(undefined); setThemeOpen(false); }}
+          onSave={() => void saveThemePreview()}
+        />
       )}
       {visible && snapshot && favoritePicker && (
         <BackdropFavoriteDialog
@@ -1987,7 +2010,13 @@ function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
   const url = mediaUrl(artwork?.backdropUrl);
 
   useEffect(() => {
-    if (!url) return;
+    if (!url) {
+      targetUrl.current = undefined;
+      setFront(undefined);
+      setBack(undefined);
+      setFlipped(false);
+      return;
+    }
     let cancelled = false;
     const activeUrl = flipped ? back : front;
     if (url === activeUrl) return;
@@ -2001,7 +2030,12 @@ function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
     image.decoding = "async";
     async function swapAfterDecode() {
       try {
-        await image.decode?.();
+        if (image.decode) {
+          await Promise.race([
+            image.decode(),
+            new Promise<void>((resolve) => window.setTimeout(resolve, 900))
+          ]);
+        }
       } catch {
         // Some browsers reject decode for cached/proxied images even after load.
       }
@@ -2629,10 +2663,11 @@ function RemoteControl(props: {
   );
 }
 
-function ThemeDialog({ active, onSelect, onCancel }: {
+function ThemeDialog({ active, onSelect, onCancel, onSave }: {
   active: string;
   onSelect: (theme: string) => void;
   onCancel: () => void;
+  onSave: () => void;
 }) {
   return (
     <aside className="modal theme-dialog" role="dialog" aria-label="Themes">
@@ -2648,8 +2683,9 @@ function ThemeDialog({ active, onSelect, onCancel }: {
           );
         })}
       </div>
-      <div className="dialog-actions">
+      <div className="modal-actions">
         <button type="button" onClick={onCancel}>Cancel</button>
+        <button className="primary" type="button" onClick={onSave}>Save</button>
       </div>
     </aside>
   );
