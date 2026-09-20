@@ -335,11 +335,22 @@ body.idle {
 }
 
 .user-transition-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(86vw, 1100px);
+  max-height: 90vh;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+}
+
+.user-transition-card-content {
   display: grid;
   gap: 16px;
   place-items: center;
   justify-items: center;
-  width: min(86vw, 1100px);
+  width: 100%;
+  box-sizing: border-box;
   text-align: center;
   color: rgba(255, 255, 255, 0.94);
   text-shadow: 0 12px 34px rgba(0, 0, 0, 0.7);
@@ -438,7 +449,7 @@ body.idle {
 
   100% {
     opacity: 0;
-    transform: translate(calc(32vw - 50%), calc(-36vh + 50%)) scale(0.18);
+    transform: translate(32vw, -36vh) scale(0.18);
   }
 }
 

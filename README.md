@@ -59,7 +59,7 @@ Then I realized I had an old iPad laying around doing absolutely nothing. I want
 
 MediaWall is a display app for Jellyfin and Navidrome built around three main features, and it's meant to work well on an old iPad, a Raspberry Pi connected to a monitor, or really any device with a browser. Each display space also has a phone-friendly remote at the same route with `-remote` appended, so you can control the display without walking over to it.
 
-The first, and most prominent, is **Now Playing**. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers, along with artwork, user information, media details, and optional sound notifications when sessions start or end. When nothing is playing, you can show shuffled artwork, use the standard MediaWall fallback with the bundled logo, or use your own custom server logo.
+The first, and most prominent, is **Now Playing**. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers, along with artwork, user information, media details, and optional sound notifications when sessions start or end.
 
 The sound system is customizable too. You can use one global sound, assign custom sounds to individual users, and control when sounds should or shouldn't play. This is especially useful with Navidrome or Jellyfin music libraries, where you probably don't want a notification every time the next song starts.
 
@@ -68,6 +68,8 @@ MediaWall can also react to configured Jellyfin collections by using collection-
 The second feature is **Screensaver mode**. This is heavily inspired by the Jellyfin Android TV screensaver and cycles through artwork from your Jellyfin libraries, with additional options for controlling what appears and how it's displayed. The idea is to turn an otherwise unused screen into a constantly changing showcase for the artwork already sitting in your media collection. I know many of you have terabytes of media, but most of the time it's all just data sitting there. MediaWall gives you a way to passively browse your libraries and actually see more of it.
 
 Third is **Wallpaper mode**. If MediaWall lands on something you particularly like, you can pause on that media item and use it as a static wallpaper. You can also choose favorites and have MediaWall cycle through those instead, essentially creating your own curated rotation of artwork.
+
+While nothing is playing, MediaWall can cycle through your library artwork in Screensaver mode, show the bundled MediaWall screensaver or one with your own custom logo, or hand the display over to a configured Immich Kiosk setup. That way, even between playback sessions, the screen can keep working as a digital photo frame.
 
 So depending on how you use it, MediaWall can be a live window into your Jellyfin and Navidrome servers, a Jellyfin-powered digital art display, or basically a very overengineered way to give an old iPad, Raspberry Pi, or spare screen something useful to do.
 
@@ -288,7 +290,7 @@ Put the actual URL in `.env`, especially when it contains an Immich Kiosk passwo
 HOMELAB_IMMICH_KIOSK_URL=https://immich-kiosk.example.com/?password=replace-me
 ```
 
-MediaWall remains loaded behind the handoff and continues checking Jellyfin and Navidrome. When playback becomes active, it smoothly fades the embedded Kiosk out and resumes the normal Now Playing session flow. After the final session ends and MediaWall's normal missing-session grace period expires, the Kiosk fades back in. The iframe stays mounted while Now Playing is visible, so a Kiosk album or link selected by the viewer remains selected when the fallback returns. Other spaces keep their own configured fallback.
+MediaWall remains loaded behind the handoff and continues checking Jellyfin and Navidrome. When playback becomes active, it smoothly fades the embedded Kiosk out and resumes the normal Now Playing session flow. After the final session ends and MediaWall's normal missing-session grace period expires, the Kiosk fades back in. The iframe stays mounted while Now Playing is visible, so a Kiosk album or link selected by the viewer remains selected when the fallback returns. That temporary selection doesn't survive a browser or PWA refresh because MediaWall can't inspect navigation inside a cross-origin Kiosk iframe. A container restart only affects it if the display page also reloads. To make an album selection permanent, include that album in the configured Immich Kiosk URL. Other spaces keep their own configured fallback.
 
 When a Kiosk URL is configured, Immich Kiosk also appears as a third top-level mode alongside Now Playing and Wallpaper/Screensaver. In that mode, only MediaWall's mode control appears at the bottom of the screen; Immich Kiosk keeps its own controls and interactions at the top. The third mode is omitted entirely for spaces without a Kiosk URL.
 
@@ -373,6 +375,8 @@ navidrome:
 Older configs using `jellyfin` in a path mapping are still accepted for compatibility, but new configs should use `mediawall`.
 
 ## Development
+
+Node.js 22 or later is required. MediaWall's disk-backed Jellyfin collection index uses Node's built-in SQLite support.
 
 Install dependencies:
 
