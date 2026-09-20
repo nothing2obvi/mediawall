@@ -282,7 +282,8 @@ export interface NowPlayingState {
   collectionTransitionImage?: string;
   collectionTransitionImageUrl?: string;
   collectionTransitionImageSize?: number;
-  collectionPresentationPending?: boolean;
+  collectionTransitionImages?: Array<{ collectionName: string; file: string; size: number }>;
+  collectionTransitionImageUrls?: Array<{ collectionName: string; url: string; size: number }>;
   albumArtUrl?: string;
   artwork?: ArtworkRef;
   signature?: string;
@@ -315,6 +316,7 @@ export type PublicNowPlayingState = Pick<
   | "collectionName"
   | "collectionTransitionImageUrl"
   | "collectionTransitionImageSize"
+  | "collectionTransitionImageUrls"
   | "albumArtUrl"
   | "artwork"
   | "publicSessionId"

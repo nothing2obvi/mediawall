@@ -135,6 +135,10 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | `collections.groups.user_transition_image` | Image shown during the user transition for this collection group. | unset | No | Filename from `/app/collections`. |
 | `collections.groups.image_size` | Group collection transition image size. | `260` | No | Pixels, constrained responsively. |
 
+Collection matching is precomputed as part of the existing Jellyfin library scan and saved in the disk-backed SQLite index `/app/data/grid-cache/jellyfin-collection-index.sqlite`. MediaWall queries this indexed file directly for session lookups; it does not retain the full mapping in memory or query Jellyfin for collection membership when playback starts. The index is rebuilt from scratch only during an enabled startup scan or scheduled Jellyfin scan. Each successful build atomically replaces the prior index, so removed items, memberships, collections, and rules disappear on the next scan. If a rebuild fails, MediaWall keeps the last known-good index. Changes remain intentionally stale until the next configured scan.
+
+For one collection, the first eligible group in written config order wins. If an item belongs to several matching collections, the alphabetically first matching collection supplies the session-start sound. Every matching collection contributes its configured transition image, shown in alphabetical collection order at its configured size. Duplicate references to the same image and size are shown once.
+
 ### Space Sounds
 
 | Setting | Purpose | Default | Required | Notes |

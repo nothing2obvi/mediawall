@@ -7,6 +7,7 @@ import { loadConfig, findDisplay, themeNames } from "./config.js";
 import { JellyfinClient, fallbackArtwork } from "./jellyfin.js";
 import { NavidromeClient } from "./navidrome.js";
 import { logger } from "./logger.js";
+import { JellyfinCollectionIndex } from "./collection-index.js";
 import { StateStore } from "./state.js";
 import type { ArtworkRef, BackdropAnimation, DisplayConfig, DisplaySnapshot, NowPlayingState, PublicConnectionIssue, PublicControlCommand, PublicLibraryScanProgress, PublicNowPlayingState, PublicSoundSession, PublicUiIndicator } from "./types.js";
 
@@ -15,6 +16,7 @@ const publicDir = path.resolve(__dirname, "../public");
 const appRoot = path.resolve(__dirname, "../..");
 const config = loadConfig();
 const jellyfin = new JellyfinClient(config);
+const collectionIndex = new JellyfinCollectionIndex(config, jellyfin);
 const navidrome = new NavidromeClient(config, jellyfin);
 const states = new StateStore();
 const app = express();
@@ -45,12 +47,6 @@ const libraryScanClearTimers = new Map<string, NodeJS.Timeout>();
 const connectionIssueCache = new Map<string, { checkedAt: number; issues: PublicConnectionIssue[] }>();
 const connectionIssueFailures = new Map<string, number>();
 const immichKioskStatusCache = new Map<string, { checkedAt: number; available: boolean; reason?: string }>();
-type CollectionPresentation = Pick<NowPlayingState, "collectionName" | "collectionTransitionImage" | "collectionTransitionImageSize" | "soundTone">;
-const collectionPresentationCache = new Map<string, {
-  expiresAt: number;
-  resolved?: CollectionPresentation | null;
-  pending?: Promise<void>;
-}>();
 const controlCommands = new Map<string, PublicControlCommand>();
 const uiIndicators = new Map<string, PublicUiIndicator>();
 const lastLoggedPlaybackBySpace = new Map<string, string>();
@@ -943,7 +939,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
         : Math.floor((now - runtime.startedAt) / (Math.max(1, displayConfig.now_playing.multiple_backdrops.interval_seconds) * 1000));
       if (selectedChanged) touchSpace(space);
     }
-    if (sessionKey && !nowPlaying.collectionPresentationPending && !shownRuntimeUserTransitions.has(sessionKey)) {
+    if (sessionKey && !shownRuntimeUserTransitions.has(sessionKey)) {
       shownRuntimeUserTransitions.add(sessionKey);
       runtime.shownUserTransitions.add(sessionKey);
       const duration = Math.max(0.5, displayConfig.now_playing.user_transition.duration_seconds) * 1000;
@@ -1268,6 +1264,7 @@ function publicNowPlaying(nowPlaying: NowPlayingState): PublicNowPlayingState {
     collectionName: nowPlaying.collectionName,
     collectionTransitionImageUrl: nowPlaying.collectionTransitionImageUrl,
     collectionTransitionImageSize: nowPlaying.collectionTransitionImageSize,
+    collectionTransitionImageUrls: nowPlaying.collectionTransitionImageUrls,
     albumArtUrl: nowPlaying.albumArtUrl,
     artwork: nowPlaying.artwork,
     publicSessionId: nowPlaying.publicSessionId,
@@ -2050,6 +2047,16 @@ async function runGridCacheScan(port: number, reason: string) {
   let warmed = 0;
   logger.info(`Library scan ${reason} starting`);
 
+  if (Object.values(config.spaces).some((space) =>
+    space.now_playing.collections.enabled
+    && (space.playback_source === "jellyfin" || space.playback_source === "both")
+  )) {
+    logger.info(`Library scan ${reason}: Jellyfin collection index starting`);
+    await collectionIndex.rebuild().catch((error) => {
+      logger.error(`Library scan ${reason}: Jellyfin collection index failed; preserving the last known-good index`, error);
+    });
+  }
+
   for (const [space, displayConfig] of Object.entries(config.spaces)) {
     for (const source of scanSources(displayConfig)) {
       const libraries = await browseLibrariesForScan(source, displayConfig);
@@ -2262,7 +2269,7 @@ async function activePlayback(space: string, displayConfig: DisplayConfig, state
 }
 
 async function activePlaybackDetails(space: string, displayConfig: DisplayConfig, state: DisplaySnapshot["state"], manualDirection?: -1 | 1) {
-  const candidates = await activePlaybackCandidates(displayConfig);
+  const candidates = await activePlaybackCandidates(space, displayConfig);
   logger.debug(`Playback poll on /${space}: candidates=${candidates.length}`);
   const selected = updateRecentPlayback(space, candidates, displayConfig, state, manualDirection);
   const runtime = spaceRuntime(space);
@@ -2296,7 +2303,7 @@ function logPlaybackSelection(space: string, selected: NowPlayingState | undefin
   }
 }
 
-async function activePlaybackCandidates(displayConfig: DisplayConfig) {
+async function activePlaybackCandidates(space: string, displayConfig: DisplayConfig) {
   const candidates: NowPlayingState[] = [];
   for (const user of displayConfig.users) {
     if (displayConfig.playback_source === "jellyfin" || displayConfig.playback_source === "both") {
@@ -2306,7 +2313,7 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
           playback_user: user.jellyfin_user ?? user.name,
           users: [user]
         })).map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound));
-        candidates.push(...playbacks.map((playback) => applyCollectionPresentation(playback, displayConfig, user.name)));
+        candidates.push(...playbacks.map((playback) => applyCollectionPresentation(playback, space, displayConfig, user.name)));
       } catch (error) {
         logger.warn("Jellyfin playback source poll failed", error);
       }
@@ -2326,53 +2333,23 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
   return dedupePlaybackCandidates(candidates);
 }
 
-function applyCollectionPresentation(state: NowPlayingState, displayConfig: DisplayConfig, mediaWallUser: string): NowPlayingState {
+function applyCollectionPresentation(state: NowPlayingState, space: string, displayConfig: DisplayConfig, mediaWallUser: string): NowPlayingState {
   if (state.source !== "jellyfin" || !displayConfig.now_playing.collections.enabled) return state;
   const itemIds = [state.itemId, state.artwork?.itemId, state.artistId].filter((value): value is string => Boolean(value));
-  const collectionConfigKey = crypto.createHash("sha256")
-    .update(JSON.stringify(displayConfig.now_playing.collections))
-    .digest("hex")
-    .slice(0, 12);
-  const cacheKey = `${collectionConfigKey}:${mediaWallUser}:${itemIds.join(":")}`;
-  const cached = collectionPresentationCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    if (cached.pending) return { ...state, collectionPresentationPending: true };
-    return cached.resolved ? { ...state, ...cached.resolved } : state;
-  }
-  const entry = { expiresAt: Date.now() + 5 * 60_000 } as {
-    expiresAt: number;
-    resolved?: CollectionPresentation | null;
-    pending?: Promise<void>;
+  const match = collectionIndex.lookup(space, mediaWallUser, itemIds);
+  if (!match) return state;
+  const images = match.images.filter((image) => {
+    const found = Boolean(resolveCollectionImagePath(image.file));
+    if (!found) logger.warn(`Collection transition image "${image.file}" was not found in /app/collections`);
+    return found;
+  });
+  logger.debug(`Collection index match for "${state.title ?? state.artwork?.title ?? "unknown"}": ${match.collectionNames.join(", ")}`);
+  return {
+    ...state,
+    collectionName: match.collectionName,
+    collectionTransitionImages: images,
+    soundTone: match.sound || state.soundTone
   };
-  entry.pending = jellyfin.collectionMatchForItem(itemIds, displayConfig, mediaWallUser)
-    .then((match) => {
-      if (!match) {
-        entry.resolved = null;
-        return;
-      }
-      const imageFile = match.user_transition_image && resolveCollectionImagePath(match.user_transition_image)
-        ? match.user_transition_image
-        : undefined;
-      if (match.user_transition_image && !imageFile) {
-        logger.warn(`Collection transition image "${match.user_transition_image}" was not found in /app/collections`);
-      }
-      entry.resolved = {
-        collectionName: match.collectionName,
-        collectionTransitionImage: imageFile,
-        collectionTransitionImageSize: match.image_size,
-        soundTone: match.sound || state.soundTone
-      };
-      logger.debug(`Collection match for "${state.title ?? state.artwork?.title ?? "unknown"}": ${match.collectionName}`);
-    })
-    .catch((error) => {
-      entry.resolved = null;
-      logger.warn(`Jellyfin collection match failed for "${state.title ?? state.artwork?.title ?? "unknown"}"`, error);
-    })
-    .finally(() => {
-      entry.pending = undefined;
-    });
-  collectionPresentationCache.set(cacheKey, entry);
-  return { ...state, collectionPresentationPending: true };
 }
 
 function dedupePlaybackCandidates(candidates: NowPlayingState[]) {
@@ -2597,6 +2574,11 @@ function withPlaybackPosition(
     collectionTransitionImageUrl: state.collectionTransitionImage
       ? collectionImageUrl(space, state.collectionTransitionImage)
       : undefined,
+    collectionTransitionImageUrls: state.collectionTransitionImages?.map((image) => ({
+      collectionName: image.collectionName,
+      url: collectionImageUrl(space, image.file),
+      size: image.size
+    })),
     sessionPosition: sessionPosition > 0 ? sessionPosition : undefined,
     sessionCount: sessionCount || undefined
   };
@@ -2643,7 +2625,6 @@ function publicSoundSessions(displayKey: string, displayConfig: DisplayConfig): 
     .filter((record) =>
       record.state.playing
       && record.active
-      && !record.state.collectionPresentationPending
       && (record.state.source === "jellyfin" || record.state.source === "navidrome")
     )
     .map((record) => {
@@ -2831,11 +2812,5 @@ async function warmStartupMetadata() {
     logger.info(`Jellyfin avatar startup cache complete: users=${users.length} images=${warmed}`);
   } catch (error) {
     logger.warn("Jellyfin avatar startup cache failed", error);
-  }
-  try {
-    const count = await jellyfin.warmCollections();
-    logger.info(`Jellyfin collection startup cache complete: collections=${count}`);
-  } catch (error) {
-    logger.warn("Jellyfin collection startup cache failed", error);
   }
 }
