@@ -345,6 +345,7 @@ body.idle {
 }
 
 .user-transition-card-content {
+  position: relative;
   display: grid;
   gap: 16px;
   place-items: center;
@@ -397,6 +398,9 @@ body.idle {
 }
 
 .user-transition-collection-images {
+  position: absolute;
+  top: calc(100% + 28px);
+  left: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -404,6 +408,7 @@ body.idle {
   gap: min(28px, 2.5vw);
   width: min(92vw, 1500px);
   max-height: 30vh;
+  transform: translateX(-50%);
 }
 
 @keyframes user-transition-backdrop {
