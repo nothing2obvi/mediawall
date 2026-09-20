@@ -1640,10 +1640,6 @@ body.idle {
   transition: opacity 900ms ease;
 }
 
-.immich-active .controls,
-.immich-active .panel,
-.immich-active .modal,
-.immich-active .dismiss-layer,
 .immich-active .identity,
 .immich-active .session-status,
 .immich-active .now-playing-badge,
@@ -1655,6 +1651,27 @@ body.idle {
 .immich-active .sound-toggle-indicator,
 .immich-active .mediawall-command-label {
   display: none;
+}
+
+.immich-active .controls {
+  top: auto;
+  bottom: max(calc(16px * var(--ui-scale, 1)), env(safe-area-inset-bottom));
+  z-index: 10003;
+}
+
+.immich-active .panel,
+.immich-active .modal,
+.immich-active .dismiss-layer {
+  z-index: 10004;
+}
+
+.immich-control-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 10002;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
 }
 
 .immich-kiosk-handoff iframe {
@@ -1721,33 +1738,6 @@ body.idle {
   100% { opacity: 0.2; }
 }
 
-.immich-mode-controls {
-  position: fixed;
-  left: 50%;
-  bottom: max(18px, env(safe-area-inset-bottom));
-  z-index: 10001;
-  display: flex;
-  padding: calc(10px * var(--ui-scale, 1));
-  transform: translateX(-50%);
-  border: 1px solid var(--theme-border, rgba(255, 255, 255, 0.16));
-  border-radius: 8px;
-  background: var(--theme-surface, rgba(10, 12, 16, 0.82));
-  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(22px);
-}
-
-.immich-mode-controls button {
-  min-height: calc(48px * var(--ui-scale, 1));
-  display: grid;
-  grid-template-columns: calc(24px * var(--ui-scale, 1)) auto;
-  place-items: center;
-  gap: calc(9px * var(--ui-scale, 1));
-  padding: 0 calc(14px * var(--ui-scale, 1));
-  border: 0;
-  border-radius: 7px;
-  color: var(--theme-text, white);
-  background: var(--theme-surface, rgba(10, 12, 16, 0.82));
-}
 
 .wall,
 .remote-shell {

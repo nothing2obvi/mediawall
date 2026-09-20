@@ -523,7 +523,9 @@ function App() {
   const activeAnimationRun = useRef<{ key: string; startedAt: number; offset: number; period: number } | undefined>(undefined);
 
   const displayedArtwork = snapshot?.state.mode === "now-playing"
-    ? (snapshot.nowPlaying?.playing ? snapshot.nowPlaying?.artwork : undefined) ?? snapshot.state.current
+    ? snapshot.nowPlaying?.playing
+      ? snapshot.nowPlaying.artwork
+      : snapshot.config.now_playing.fallback === "shuffle" ? snapshot.state.current : undefined
     : snapshot?.state.current;
   const previewArtwork = snapshot?.controlCommand?.type === "animation" ? snapshot.controlCommand.artwork : undefined;
   const showMediaWallPreview = snapshot?.controlCommand?.type === "mediawall";
@@ -1876,19 +1878,14 @@ function App() {
       {snapshot?.config.now_playing.immich_kiosk.url && (
         <ImmichKioskLayer snapshot={snapshot} active={immichKioskActive} />
       )}
-      {showImmichKioskMode && snapshot && (
-        <nav className="immich-mode-controls">
-          <button
-            className="mode-select"
-            type="button"
-            onClick={() => void setMode(nextDisplayMode(snapshot.state.mode, true))}
-            title="Switch mode"
-            aria-label="Switch mode"
-          >
-            <UsersRound />
-            <span>Immich Kiosk</span>
-          </button>
-        </nav>
+      {immichKioskActive && !visible && (
+        <button
+          className="immich-control-reveal"
+          type="button"
+          aria-label="Show MediaWall controls"
+          onPointerMove={revealControls}
+          onClick={revealControls}
+        />
       )}
     </main>
   );
@@ -1901,6 +1898,11 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
   const loadTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    setLoaded(false);
+    setStatus("checking");
+  }, [url]);
+
+  useEffect(() => {
     let cancelled = false;
     let retryTimer: number | undefined;
     async function check() {
@@ -1908,9 +1910,9 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
       try {
         const result = await api<{ available: boolean }>(spaceApi("/immich-kiosk/status"));
         shouldRetry = !result.available;
-        if (!cancelled) setStatus(result.available ? "available" : "unavailable");
+        if (!cancelled && result.available) setStatus("available");
       } catch {
-        if (!cancelled) setStatus("unavailable");
+        shouldRetry = true;
       }
       if (!cancelled && shouldRetry) retryTimer = window.setTimeout(check, 30_000);
     }
@@ -1922,12 +1924,11 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
   }, [url]);
 
   useEffect(() => {
-    setLoaded(false);
     window.clearTimeout(loadTimer.current);
-    if (!active || !url) return;
+    if (!active || !url || loaded || status === "available") return;
     loadTimer.current = window.setTimeout(() => setStatus("unavailable"), 10_000);
     return () => window.clearTimeout(loadTimer.current);
-  }, [active, url]);
+  }, [active, loaded, status, url]);
 
   if ((status === "unavailable" || !url) && active) {
     return (
@@ -2440,6 +2441,7 @@ function ControlBar(props: {
 }) {
   const { snapshot } = props;
   const wallpaperMode = snapshot.state.mode === "screensaver";
+  const immichMode = snapshot.state.mode === "immich-kiosk";
   const showPlaybackControls = !wallpaperMode && (snapshot.nowPlaying?.sessionCount ?? 0) > 1;
   const showAlbumArtButton = !wallpaperMode && isMusicArtwork(snapshot.nowPlaying?.artwork ?? snapshot.state.current, snapshot.nowPlaying);
   return (
@@ -2451,8 +2453,8 @@ function ControlBar(props: {
         aria-label="Switch mode"
         data-flash={props.flash === "mode" ? "true" : undefined}
       >
-        {wallpaperMode ? <Image /> : <Radio />}
-        <span>{wallpaperMode ? "Wallpaper/Screensaver" : "Now Playing"}</span>
+        {immichMode ? <UsersRound /> : wallpaperMode ? <Image /> : <Radio />}
+        <span>{immichMode ? "Immich Kiosk" : wallpaperMode ? "Wallpaper/Screensaver" : "Now Playing"}</span>
       </button>
       {(wallpaperMode || !showPlaybackControls) && <span className="divider" />}
       {wallpaperMode && (
