@@ -574,6 +574,8 @@ function App() {
   );
   const [flash, setFlash] = useState<string>();
   const [animationOffsetSeconds, setAnimationOffsetSeconds] = useState(0);
+  const [immichExitPending, setImmichExitPending] = useState(false);
+  const immichExitTimer = useRef<number | undefined>(undefined);
   const nowPlayingAnimationKey = snapshot?.state.mode === "now-playing"
     && snapshot.nowPlaying?.playing
     && activeAnimation
@@ -636,7 +638,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setInitialLoadingExpired(true), 10_000);
+    const timer = window.setTimeout(() => setInitialLoadingExpired(true), 15_000);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -668,8 +670,17 @@ function App() {
       window.clearTimeout(soundIndicatorTimer.current);
       window.clearTimeout(actionIndicatorTimer.current);
       window.clearTimeout(userTransitionTimer.current);
+      window.clearTimeout(immichExitTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!immichExitPending || snapshot?.state.mode !== "now-playing") return;
+    if (cycledArtwork?.backdropUrl) return;
+    window.clearTimeout(immichExitTimer.current);
+    immichExitTimer.current = window.setTimeout(() => setImmichExitPending(false), 250);
+    return () => window.clearTimeout(immichExitTimer.current);
+  }, [cycledArtwork?.backdropUrl, immichExitPending, snapshot?.state.mode]);
 
   useEffect(() => {
     if (!snapshot?.libraryScan) return;
@@ -1448,14 +1459,25 @@ function App() {
 
   async function setMode(mode: "now-playing" | "screensaver" | "immich-kiosk") {
     flashButton("mode");
-    const result = await api<{ state: DisplayState }>(spaceApi("/mode"), {
-      method: "POST",
-      body: JSON.stringify({ mode }),
-      headers: { "Content-Type": "application/json" }
-    });
-    closeOverlays();
-    if (mode !== "immich-kiosk") void emitActionIndicator(mode === "screensaver" ? "mode-screensaver" : "mode-now-playing");
-    setSnapshot((current) => current ? { ...current, state: result.state, mode: result.state.mode } : current);
+    const leavingImmichForNowPlaying = snapshot?.state.mode === "immich-kiosk" && mode === "now-playing";
+    if (leavingImmichForNowPlaying) {
+      setImmichExitPending(true);
+      window.clearTimeout(immichExitTimer.current);
+      immichExitTimer.current = window.setTimeout(() => setImmichExitPending(false), 6500);
+    }
+    try {
+      const result = await api<{ state: DisplayState }>(spaceApi("/mode"), {
+        method: "POST",
+        body: JSON.stringify({ mode }),
+        headers: { "Content-Type": "application/json" }
+      });
+      closeOverlays();
+      if (mode !== "immich-kiosk") void emitActionIndicator(mode === "screensaver" ? "mode-screensaver" : "mode-now-playing");
+      setSnapshot((current) => current ? { ...current, state: result.state, mode: result.state.mode } : current);
+    } catch (error) {
+      setImmichExitPending(false);
+      throw error;
+    }
   }
 
   async function selectTheme(theme: string) {
@@ -1797,7 +1819,11 @@ function App() {
       onPointerMove={revealControls}
       onPointerDown={handleWallPointerDown}
     >
-      {showMediaWallIdle && snapshot ? <MediaWallIdle snapshot={snapshot} /> : <Backdrop artwork={cycledArtwork} />}
+      {showMediaWallIdle && snapshot ? (
+        <MediaWallIdle snapshot={snapshot} />
+      ) : (
+        <Backdrop artwork={cycledArtwork} onReady={() => setImmichExitPending(false)} />
+      )}
       {userTransition && <UserTransitionIntro intro={userTransition} />}
       {!showMediaWallIdle && <div className="shade" />}
       {!showMediaWallIdle && <Identity snapshot={snapshot} artwork={cycledArtwork} />}
@@ -1902,7 +1928,7 @@ function App() {
         />
       )}
       {snapshot?.config.now_playing.immich_kiosk.url && (
-        <ImmichKioskLayer snapshot={snapshot} active={immichKioskActive} />
+        <ImmichKioskLayer snapshot={snapshot} active={immichKioskActive || immichExitPending} />
       )}
       {immichKioskActive && !visible && (
         <button
@@ -1919,14 +1945,32 @@ function App() {
 
 function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: boolean }) {
   const url = snapshot.config.now_playing.immich_kiosk.url;
+  const storageKey = `mediawall:immich-kiosk-url:${snapshot.profile}/${snapshot.display}`;
+  const [frameUrl, setFrameUrl] = useState(() => rememberedImmichKioskUrl(url, storageKey));
   const [status, setStatus] = useState<"checking" | "available" | "unavailable">("checking");
   const [loaded, setLoaded] = useState(false);
   const loadTimer = useRef<number | undefined>(undefined);
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
+    setFrameUrl(rememberedImmichKioskUrl(url, storageKey));
     setLoaded(false);
     setStatus("checking");
-  }, [url]);
+  }, [storageKey, url]);
+
+  useEffect(() => {
+    if (!url) return;
+    const configuredOrigin = safeUrlOrigin(url);
+    function rememberMessage(event: MessageEvent) {
+      if (!configuredOrigin || event.origin !== configuredOrigin || event.source !== frameRef.current?.contentWindow) return;
+      const data = event.data as { type?: string; url?: string } | undefined;
+      if (data?.type !== "mediawall:immich-location" || !data.url) return;
+      rememberImmichKioskUrl(url, data.url, storageKey);
+      setFrameUrl(data.url);
+    }
+    window.addEventListener("message", rememberMessage);
+    return () => window.removeEventListener("message", rememberMessage);
+  }, [storageKey, url]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1977,8 +2021,9 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
     <section className={`immich-kiosk-handoff ${active ? "active" : ""}`}>
       {!loaded && <div className="immich-kiosk-loading" aria-label="Loading Immich Kiosk" />}
       <iframe
+        ref={frameRef}
         className={loaded ? "loaded" : ""}
-        src={url}
+        src={frameUrl}
         title="Immich Kiosk"
         allow="autoplay; fullscreen; picture-in-picture"
         allowFullScreen
@@ -1987,11 +2032,48 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
           window.clearTimeout(loadTimer.current);
           setStatus("available");
           setLoaded(true);
+          try {
+            const currentUrl = frameRef.current?.contentWindow?.location.href;
+            if (currentUrl) rememberImmichKioskUrl(url, currentUrl, storageKey);
+          } catch {
+            // Cross-origin Kiosk pages must opt into the postMessage hook above.
+          }
         }}
         onError={() => setStatus("unavailable")}
       />
     </section>
   );
+}
+
+function safeUrlOrigin(value: string) {
+  try {
+    return new URL(value, window.location.href).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function rememberedImmichKioskUrl(configuredUrl: string, storageKey: string) {
+  if (!configuredUrl) return configuredUrl;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(storageKey) ?? "null") as {
+      configuredUrl?: string;
+      selectedUrl?: string;
+    } | null;
+    if (stored?.configuredUrl !== configuredUrl || !stored.selectedUrl) return configuredUrl;
+    return new URL(stored.selectedUrl).origin === new URL(configuredUrl).origin ? stored.selectedUrl : configuredUrl;
+  } catch {
+    return configuredUrl;
+  }
+}
+
+function rememberImmichKioskUrl(configuredUrl: string, selectedUrl: string, storageKey: string) {
+  try {
+    if (new URL(selectedUrl).origin !== new URL(configuredUrl).origin) return;
+    window.localStorage.setItem(storageKey, JSON.stringify({ configuredUrl, selectedUrl }));
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
 }
 
 function MediaWallLoading() {
@@ -2005,16 +2087,26 @@ function MediaWallLoading() {
   );
 }
 
-function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
+function Backdrop({ artwork, onReady }: { artwork?: ArtworkRef; onReady?: () => void }) {
   const [front, setFront] = useState<string>();
   const [back, setBack] = useState<string>();
   const [flipped, setFlipped] = useState(false);
   const targetUrl = useRef<string | undefined>(undefined);
+  const retryTimer = useRef<number | undefined>(undefined);
+  const retryCount = useRef(0);
+  const onReadyRef = useRef(onReady);
+  const [retryTick, setRetryTick] = useState(0);
   const url = mediaUrl(artwork?.backdropUrl);
 
   useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
+  useEffect(() => {
+    window.clearTimeout(retryTimer.current);
     if (!url) {
       targetUrl.current = undefined;
+      retryCount.current = 0;
       setFront(undefined);
       setBack(undefined);
       setFlipped(false);
@@ -2022,7 +2114,10 @@ function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
     }
     let cancelled = false;
     const activeUrl = flipped ? back : front;
-    if (url === activeUrl) return;
+    if (url === activeUrl) {
+      onReadyRef.current?.();
+      return;
+    }
     if (url === targetUrl.current) return;
     targetUrl.current = url;
     if (url === front || url === back) {
@@ -2046,16 +2141,26 @@ function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
       if (flipped) setFront(url);
       else setBack(url);
       setFlipped((current) => !current);
+      onReadyRef.current?.();
     }
     image.onload = () => void swapAfterDecode();
     image.onerror = () => {
       if (targetUrl.current === url) targetUrl.current = undefined;
+      if (cancelled || retryCount.current >= 4) return;
+      const delay = [250, 700, 1500, 3000][retryCount.current] ?? 3000;
+      retryCount.current += 1;
+      retryTimer.current = window.setTimeout(() => setRetryTick((current) => current + 1), delay);
     };
     image.src = url;
     return () => {
       cancelled = true;
+      window.clearTimeout(retryTimer.current);
     };
-  }, [url, front, back, flipped]);
+  }, [url, front, back, flipped, retryTick]);
+
+  useEffect(() => {
+    retryCount.current = 0;
+  }, [url]);
 
   const active = flipped ? back : front;
 
@@ -2207,26 +2312,28 @@ function UserTransitionIntro({ intro }: {
     >
       <img className="user-transition-source-icon" src={icon} alt="" />
       <div className="user-transition-card">
-        <div className={`user-transition-person ${intro.avatarUrl ? "with-avatar" : "no-avatar"}`}>
-          {intro.avatarUrl && <img src={mediaUrl(intro.avatarUrl)} alt="" />}
-          <span>{intro.username}</span>
-        </div>
-        <div className="user-transition-verb">{intro.verb}</div>
-        {intro.collectionImages?.length ? (
-          <div className="user-transition-collection-images">
-            {intro.collectionImages.map((image, index) => (
-              <img
-                key={`${image.collectionName}:${image.url}:${index}`}
-                className="user-transition-collection-image"
-                src={mediaUrl(image.url)}
-                alt=""
-                style={{ "--user-transition-collection-image-size": `${image.size}px` } as React.CSSProperties}
-              />
-            ))}
+        <div className="user-transition-card-content">
+          <div className={`user-transition-person ${intro.avatarUrl ? "with-avatar" : "no-avatar"}`}>
+            {intro.avatarUrl && <img src={mediaUrl(intro.avatarUrl)} alt="" />}
+            <span>{intro.username}</span>
           </div>
-        ) : intro.collectionImageUrl ? (
-          <img className="user-transition-collection-image" src={mediaUrl(intro.collectionImageUrl)} alt="" />
-        ) : null}
+          <div className="user-transition-verb">{intro.verb}</div>
+          {intro.collectionImages?.length ? (
+            <div className="user-transition-collection-images">
+              {intro.collectionImages.map((image, index) => (
+                <img
+                  key={`${image.collectionName}:${image.url}:${index}`}
+                  className="user-transition-collection-image"
+                  src={mediaUrl(image.url)}
+                  alt=""
+                  style={{ "--user-transition-collection-image-size": `${image.size}px` } as React.CSSProperties}
+                />
+              ))}
+            </div>
+          ) : intro.collectionImageUrl ? (
+            <img className="user-transition-collection-image" src={mediaUrl(intro.collectionImageUrl)} alt="" />
+          ) : null}
+        </div>
       </div>
     </section>
   );

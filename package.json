@@ -4,6 +4,9 @@
   "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "tsx watch server/index.ts",
     "build": "tsc -p tsconfig.json && vite build",

@@ -2279,7 +2279,7 @@ async function activePlaybackDetails(space: string, displayConfig: DisplayConfig
     selected,
     detectionPending: !selected
       && runtime.playbackPolls < 2
-      && Date.now() - runtime.playbackDetectionStartedAt < 10_000,
+      && Date.now() - runtime.playbackDetectionStartedAt < 15_000,
     soundSessions: publicSoundSessions(space, displayConfig)
   };
 }
