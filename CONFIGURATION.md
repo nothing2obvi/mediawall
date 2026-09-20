@@ -77,6 +77,7 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `playback_source` | Sources watched for Now Playing. | `both` | No | Options: `jellyfin`, `navidrome`, `both`. |
+| `theme` | UI theme for this space. | `All` | No | Use `All` (or omit the setting) for interactive selection, or lock the space to `default`, `Dracula`, `Nord`, `Catppuccin Latte`, `Catppuccin Mocha`, `Gruvbox Dark`, `Gruvbox Light`, `Solarized Dark`, `Solarized Light`, `Tokyo Night`, `One Dark`, `Monokai`, `Rose Pine`, `Everforest`, `Kanagawa`, `Synthwave 84`, `Material Palenight`, `Night Owl`, `Ayu Mirage`, `GitHub Light`, or `Tomorrow Night`. Fixed themes hide and disable interactive controls. The active interactive theme is synchronized and persisted per space. |
 | `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use configured MediaWall user names. Use `All` to allow every configured MediaWall user. If omitted, MediaWall falls back to `playback_user` or the first configured user. |
 | `playback_user` | Legacy single-user selector. | unset | No | Prefer `users`. |
 | `password` | Optional URL password. | unset | No | If omitted or `""`, no `?password=` is required. |
@@ -87,7 +88,8 @@ Per-user sounds override the global tones for any space where that MediaWall use
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `fallback` | What Now Playing shows when nothing is playing. | `mediawall` | No | Options: `mediawall`, `shuffle`. |
+| `fallback` | What Now Playing shows when nothing is playing. | `mediawall` | No | Options: `mediawall`, `shuffle`, `immich_kiosk`. Immich Kiosk is optional and configured per space; it isn't the default. |
+| `immich_kiosk.url` | Full URL handed to Immich Kiosk while this space is idle. | `""` | Required only when fallback is `immich_kiosk` | Prefer an environment reference such as `${HOMELAB_IMMICH_KIOSK_URL}` because Kiosk URLs may contain passwords. The URL must be reachable from both the MediaWall container and display browser. MediaWall's controls are hidden during the handoff. Playback restores normal Now Playing; after the final session and missing-session grace period, the handoff returns. The target and any reverse proxy must permit iframe embedding. Missing, invalid, unreachable, timed-out, or frame-blocked URLs use the ordinary MediaWall idle screen. |
 | `ignored_libraries` | Jellyfin libraries ignored for Now Playing. | `["Feature Pre-Rolls"]` | No | Exact names, case-insensitive. Good for Cinema Mode intro/trailer/pre-roll libraries. |
 | `fallback_shuffle_interval_seconds` | Idle fallback shuffle interval. | `45` | No | Used only when fallback is `shuffle`. |
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
@@ -126,7 +128,7 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | `collections.global.image_size` | Global collection transition image size. | `260` | No | Pixels, constrained responsively. |
 | `collections.groups` | Ordered collection rule list. | `[]` | No | First matching group wins. Keep groups specific if more than one regex could match the same collection. |
 | `collections.groups.name` | Optional label for a collection rule group. | unset | No | For config readability only. |
-| `collections.groups.title_regexes` | Collection title regexes matched by this group. | `[]` | No | Case-insensitive JavaScript regex strings. |
+| `collections.groups.title_regexes` | Collection title regexes matched by this group. | `[]` | No | Case-insensitive JavaScript regex strings. A leading `(?i)` is accepted for compatibility and is otherwise redundant because matching is always case-insensitive. |
 | `collections.groups.title_regex` | Single collection title regex shorthand. | unset | No | Added to `title_regexes` during config loading. |
 | `collections.groups.users` | MediaWall users allowed to use this collection rule. | `["All"]` | No | Use `All` for every MediaWall user, or list user keys from the top-level `users` section. |
 | `collections.groups.sound` | Session-start tone for this collection group. | `toned.mp3` | No | Overrides the user's normal start tone when the played item is in a matching collection. |

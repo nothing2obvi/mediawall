@@ -896,7 +896,8 @@ function collectionGroupAllowsUser(users: string[], mediaWallUser?: string) {
 
 function regexMatches(pattern: string, value: string) {
   try {
-    return new RegExp(pattern, "i").test(value);
+    const normalized = pattern.startsWith("(?i)") ? pattern.slice(4) : pattern;
+    return new RegExp(normalized, "i").test(value);
   } catch {
     logger.warn(`Ignoring invalid collection title regex: ${pattern}`);
     return false;

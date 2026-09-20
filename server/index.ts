@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig, findDisplay } from "./config.js";
+import { loadConfig, findDisplay, themeNames } from "./config.js";
 import { JellyfinClient, fallbackArtwork } from "./jellyfin.js";
 import { NavidromeClient } from "./navidrome.js";
 import { logger } from "./logger.js";
@@ -44,6 +44,7 @@ const libraryScanProgress = new Map<string, PublicLibraryScanProgress>();
 const libraryScanClearTimers = new Map<string, NodeJS.Timeout>();
 const connectionIssueCache = new Map<string, { checkedAt: number; issues: PublicConnectionIssue[] }>();
 const connectionIssueFailures = new Map<string, number>();
+const immichKioskStatusCache = new Map<string, { checkedAt: number; available: boolean; reason?: string }>();
 const controlCommands = new Map<string, PublicControlCommand>();
 const uiIndicators = new Map<string, PublicUiIndicator>();
 const lastLoggedPlaybackBySpace = new Map<string, string>();
@@ -272,6 +273,13 @@ app.get("/api/space/:space", async (req, res) => {
   res.json(snapshot);
 });
 
+app.get("/api/space/:space/immich-kiosk/status", async (req, res) => {
+  const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
+  if (!resolved) return;
+  const parentOrigin = `${req.protocol}://${req.get("host") ?? ""}`;
+  res.json(await immichKioskStatus(resolved.displayConfig.now_playing.immich_kiosk.url, parentOrigin));
+});
+
 app.get("/api/space/:space/sounds", (req, res) => {
   const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
   if (!resolved) return;
@@ -494,7 +502,12 @@ app.post("/api/space/:space/mode", async (req, res) => {
   const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
   if (!resolved) return;
   const state = states.get(req.params.space, undefined, resolved.displayConfig);
-  const mode = req.body.mode === "screensaver" ? "screensaver" : "now-playing";
+  const requestedMode = req.body.mode;
+  const mode = requestedMode === "screensaver"
+    ? "screensaver"
+    : requestedMode === "immich-kiosk" && parseHttpUrl(resolved.displayConfig.now_playing.immich_kiosk.url)
+      ? "immich-kiosk"
+      : "now-playing";
   const resetPatch: Partial<typeof state> = {
     mode,
     currentSequence: emptyArtworkSequence(),
@@ -573,6 +586,21 @@ app.post("/api/space/:space/preferences", (req, res) => {
     showLogo: typeof req.body.showLogo === "boolean" ? req.body.showLogo : undefined
   };
   res.json({ state: states.update(req.params.space, undefined, resolved.displayConfig, patch) });
+});
+
+app.post("/api/space/:space/theme", (req, res) => {
+  const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
+  if (!resolved) return;
+  if (resolved.displayConfig.theme !== "All") {
+    res.status(409).json({ error: "This space uses a fixed theme." });
+    return;
+  }
+  const theme = String(req.body.theme ?? "");
+  if (!themeNames.includes(theme as (typeof themeNames)[number])) {
+    res.status(400).json({ error: "Unknown theme." });
+    return;
+  }
+  res.json({ state: states.update(req.params.space, undefined, resolved.displayConfig, { activeTheme: theme }) });
 });
 
 function normalizeMediaInfoPrefs(value: unknown): DisplaySnapshot["state"]["mediaInfo"] | undefined {
@@ -1115,6 +1143,65 @@ function noteConnectionFailure(source: "jellyfin" | "navidrome") {
 
 function noteConnectionSuccess(source: "jellyfin" | "navidrome") {
   connectionIssueFailures.delete(source);
+}
+
+async function immichKioskStatus(configuredUrl: string, parentOrigin: string) {
+  const target = parseHttpUrl(configuredUrl);
+  if (!target) return { available: false, reason: configuredUrl ? "invalid_url" : "missing_url" };
+  const cacheKey = `${parentOrigin}|${target.toString()}`;
+  const cached = immichKioskStatusCache.get(cacheKey);
+  if (cached && Date.now() - cached.checkedAt < 30_000) {
+    return { available: cached.available, reason: cached.reason };
+  }
+
+  let result: { checkedAt: number; available: boolean; reason?: string };
+  try {
+    const response = await fetch(target, {
+      method: "GET",
+      redirect: "follow",
+      signal: AbortSignal.timeout(6_000),
+      headers: { Accept: "text/html", "User-Agent": "MediaWall/0.3 Immich-Kiosk-Probe" }
+    });
+    void response.body?.cancel();
+    const finalUrl = parseHttpUrl(response.url) ?? target;
+    const frameReason = blockedFrameReason(response.headers, finalUrl.origin, parentOrigin);
+    result = {
+      checkedAt: Date.now(),
+      available: response.ok && !frameReason,
+      reason: !response.ok ? `http_${response.status}` : frameReason
+    };
+  } catch {
+    result = { checkedAt: Date.now(), available: false, reason: "unreachable" };
+  }
+  immichKioskStatusCache.set(cacheKey, result);
+  return { available: result.available, reason: result.reason };
+}
+
+function parseHttpUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function blockedFrameReason(headers: Headers, targetOrigin: string, parentOrigin: string) {
+  const xFrameOptions = headers.get("x-frame-options")?.toLowerCase();
+  if (xFrameOptions?.includes("deny")) return "frame_blocked";
+  if (xFrameOptions?.includes("sameorigin") && targetOrigin !== parentOrigin) return "frame_blocked";
+  const contentSecurityPolicy = headers.get("content-security-policy")?.toLowerCase();
+  const frameAncestors = contentSecurityPolicy
+    ?.split(";")
+    .map((directive) => directive.trim())
+    .find((directive) => directive.startsWith("frame-ancestors"));
+  if (!frameAncestors) return undefined;
+  const sources = frameAncestors.split(/\s+/).slice(1);
+  if (sources.includes("'none'")) return "frame_blocked";
+  if (sources.includes("*")) return undefined;
+  if (sources.includes("'self'") && targetOrigin === parentOrigin) return undefined;
+  if (sources.includes(parentOrigin.toLowerCase())) return undefined;
+  return "frame_blocked";
 }
 
 function publicNowPlaying(nowPlaying: NowPlayingState): PublicNowPlayingState {

@@ -39,7 +39,10 @@ export class StateStore {
     const libraryConfigSignature = configLibrarySignature(config.libraries);
     const shuffleLibraries = reconcileShuffleLibraries(existing?.shuffleLibraries, existing?.libraryConfigSignature, libraryConfigSignature, config.libraries);
     return {
-      mode: existing?.mode ?? "now-playing",
+      mode: existing?.mode === "immich-kiosk" && !config.now_playing.immich_kiosk.url
+        ? "now-playing"
+        : existing?.mode ?? "now-playing",
+      activeTheme: config.theme !== "All" ? config.theme : existing?.activeTheme ?? "default",
       current: existing?.current,
       currentSequence: existing?.currentSequence,
       libraryIndexes: existing?.libraryIndexes ?? {},

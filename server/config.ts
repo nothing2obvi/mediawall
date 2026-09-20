@@ -23,6 +23,11 @@ const transitionStyles = [
 const mediaWallFallbackModes = ["centered", "breathing", "float", "spotlight", "dvd", "minimal"] as const;
 const mediaWallFallbackModeOptions = [...mediaWallFallbackModes, "All"] as const;
 const backdropAnimations = ["breathe", "pan", "kenburns", "drift", "focus", "zoom"] as const;
+export const themeNames = [
+  "default", "Dracula", "Nord", "Catppuccin Latte", "Catppuccin Mocha", "Gruvbox Dark", "Gruvbox Light",
+  "Solarized Dark", "Solarized Light", "Tokyo Night", "One Dark", "Monokai", "Rose Pine", "Everforest",
+  "Kanagawa", "Synthwave 84", "Material Palenight", "Night Owl", "Ayu Mirage", "GitHub Light", "Tomorrow Night"
+] as const;
 
 const collectionGroupSchema = z.object({
   name: z.string().optional(),
@@ -54,6 +59,7 @@ const mediaWallUserSchema = z.object({
 
 const spaceSchema = z.object({
   playback_source: z.enum(["jellyfin", "navidrome", "both"]).default("both"),
+  theme: z.enum([...themeNames, "All"]).default("All"),
   users: z.array(z.string()).default([]),
   playback_user: z.string().optional(),
   libraries: z.array(z.string()).default([]),
@@ -62,8 +68,11 @@ const spaceSchema = z.object({
   now_playing: z.object({
     fallback: z.preprocess(
       (value) => value === "default" ? "mediawall" : value,
-      z.enum(["mediawall", "shuffle"]).default("mediawall")
+      z.enum(["mediawall", "shuffle", "immich_kiosk"]).default("mediawall")
     ),
+    immich_kiosk: z.object({
+      url: z.string().default("")
+    }).default({ url: "" }),
     ignored_libraries: z.array(z.string()).default(["Feature Pre-Rolls"]),
     fallback_shuffle_interval_seconds: z.number().default(45),
     cycle_users: z.boolean().default(false),
@@ -187,6 +196,7 @@ const spaceSchema = z.object({
     })
   }).default({
     fallback: "mediawall",
+    immich_kiosk: { url: "" },
     ignored_libraries: ["Feature Pre-Rolls"],
     fallback_shuffle_interval_seconds: 45,
     cycle_users: false,

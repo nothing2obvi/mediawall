@@ -61,7 +61,7 @@ MediaWall is a display app for Jellyfin and Navidrome built around three main fe
 
 Each display space also has a phone-friendly remote at the same route with `-remote` appended.
 
-The first, and most prominent, is Now Playing. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers, along with artwork, user information, media details, and optional sound notifications when sessions start or end. When nothing's playing in Now Playing mode, you can choose to show shuffled artwork, use the MediaWall fallback with the bundled logo, or use the fallback mode with your own custom logo made for your server.
+The first, and most prominent, is Now Playing. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers, along with artwork, user information, media details, and optional sound notifications when sessions start or end. When nothing's playing in Now Playing mode, you can choose to show shuffled artwork, use the MediaWall fallback with the bundled logo or your own custom logo, or optionally hand the idle display to Immich Kiosk.
 
 The sound system is customizable too. You can use one global sound, assign custom sounds to individual users, and control when sounds should or shouldn't play. This is especially useful with Navidrome or Jellyfin music libraries, where you probably don't want a notification every time the next song starts.
 
@@ -110,7 +110,7 @@ That's really the idea behind MediaWall: it can be a Now Playing display, a home
 - Shows active playback sessions from Jellyfin, Navidrome, or both.
 - Supports multiple MediaWall users per space, including Jellyfin `All` users.
 - Can show a configurable user-intro transition when a Now Playing session first appears.
-- Falls back to a default MediaWall screen or shuffled artwork when nothing is playing.
+- Falls back to a default MediaWall screen, shuffled artwork, or an optional per-space Immich Kiosk display when nothing is playing.
 - Provides a full-screen Wallpaper/Screensaver mode with library browsing, favorites, shuffle, logos, media info, transitions, and subtle backdrop motion.
 - Uses Jellyfin backdrops/logos where available.
 - Can use Navidrome playback for music-focused setups, and Navidrome can use Jellyfin's images when both services are configured.
@@ -191,7 +191,8 @@ These work in both Now Playing and Wallpaper/Screensaver mode unless noted.
 | `ArrowLeft` | Previous session or previous artwork. |
 | `ArrowRight` | Next session or next artwork. |
 | `Space` | Pause or resume the current mode. |
-| `m` | Switch between Now Playing and Wallpaper/Screensaver. |
+| `m` | Cycle through Now Playing, Wallpaper/Screensaver, and Immich Kiosk when that space has a Kiosk URL. |
+| `t` | Cycle themes when the space uses `theme: All` or has no explicit theme. |
 | `y` | Toggle local sound mute when sounds are enabled for the space. |
 | `l` | Toggle logo display. |
 | `i` | Toggle the media-info option for the current media type. |
@@ -269,6 +270,41 @@ The remote controls the same server-owned presentation state as the display. Bro
 Dialogs and the grid can be dismissed by tapping outside them or tapping the same remote button again. The grid uses the same libraries, favorite filtering, and password rules as the display. Remote button presses also show the same brief center-screen feedback icons on the display.
 
 Display and remote routes install as distinct PWAs. A route ending in `-remote` uses the remote icon and its own manifest identity; normal space routes use the MediaWall logo. Query-string passwords are preserved in the launch URL but aren't used when deciding which icon/identity applies.
+
+## Immich Kiosk Fallback
+
+MediaWall v0.3 adds [Immich Kiosk](https://github.com/damongolding/immich-kiosk) as an optional Now Playing fallback. It isn't the default and is configured independently for each space. When a configured space has no active sessions, MediaWall embeds the existing Immich Kiosk application across the full display and hides its own on-screen controls. Immich Kiosk keeps its own slideshow, menus, touch handling, and other interactions; MediaWall doesn't recreate them.
+
+```yaml
+spaces:
+  homelab:
+    now_playing:
+      fallback: immich_kiosk
+      immich_kiosk:
+        url: "${HOMELAB_IMMICH_KIOSK_URL}"
+```
+
+Put the actual URL in `.env`, especially when it contains an Immich Kiosk password:
+
+```env
+HOMELAB_IMMICH_KIOSK_URL=https://immich-kiosk.example.com/?password=replace-me
+```
+
+MediaWall remains loaded behind the handoff and continues checking Jellyfin and Navidrome. When playback becomes active, it smoothly fades the embedded Kiosk out and resumes the normal Now Playing session flow. After the final session ends and MediaWall's normal missing-session grace period expires, the Kiosk fades back in. The iframe stays mounted while Now Playing is visible, so a Kiosk album or link selected by the viewer remains selected when the fallback returns. Other spaces keep their own configured fallback.
+
+When a Kiosk URL is configured, Immich Kiosk also appears as a third top-level mode alongside Now Playing and Wallpaper/Screensaver. In that mode, only MediaWall's mode control appears at the bottom of the screen; Immich Kiosk keeps its own controls and interactions at the top. The third mode is omitted entirely for spaces without a Kiosk URL.
+
+The Kiosk URL must be reachable from both the MediaWall container and the display browser, and the Kiosk server must allow iframe embedding. MediaWall checks reachability and common frame-blocking headers before displaying it. A missing, invalid, unreachable, timed-out, or explicitly frame-blocked Kiosk falls back to the ordinary MediaWall idle screen instead of leaving the display blank. Some upstream proxies add `X-Frame-Options` or Content Security Policy headers even when Immich Kiosk itself doesn't; adjust that proxy if embedding is blocked.
+
+Fullscreen remains owned by the outer MediaWall page, while the iframe is granted fullscreen permission for Kiosk features that request it. In a PWA, iframe navigation stays inside the MediaWall app and doesn't replace the outer space URL or its browser history. Browser security prevents MediaWall from inspecting a cross-origin Kiosk's internal UI, so an unusual frame failure introduced after the initial load may require correcting the Kiosk or reverse-proxy configuration. MediaWall controls intentionally remain unavailable while the Kiosk handoff is active; use the matching MediaWall remote route if you need to control the space during that time.
+
+## Themes
+
+MediaWall v0.3 includes the existing `default` appearance plus 20 selectable themes: Dracula, Nord, Catppuccin Latte, Catppuccin Mocha, Gruvbox Dark, Gruvbox Light, Solarized Dark, Solarized Light, Tokyo Night, One Dark, Monokai, Rose Pine, Everforest, Kanagawa, Synthwave 84, Material Palenight, Night Owl, Ayu Mirage, GitHub Light, and Tomorrow Night.
+
+Set `theme: All` on a space, or omit `theme`, to let viewers change it using the Themes button or the `t` key. The Themes button sits immediately before the version number and stays open while choices are applied, so colors can be compared quickly. The selected theme is stored in the synchronized space state: displays, remotes, reconnects, and refreshes all use the same choice. The remote includes the same selector and an explicit Cancel button. Selecting the current theme again does nothing and doesn't create another toast.
+
+Set a specific theme name to lock that space to it. Fixed-theme spaces hide the Themes button, ignore `t`, and reject interactive theme changes from remotes or browsers. Themes change text, secondary text, accent colors, borders, controls, dialogs, toasts, and avatar outlines. They don't alter media artwork. Existing translucent surfaces, text shadows, and contrast treatments remain in place so both light and dark themes stay legible over changing backdrops.
 
 ## Deployment Notes
 
