@@ -1,5 +1,7 @@
 import type { AppConfig, ArtworkRef, DisplayConfig, NowPlayingState } from "./types.js";
 import { logger } from "./logger.js";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 type JellyfinItem = Record<string, any>;
 
@@ -9,6 +11,8 @@ export class JellyfinClient {
   private libraryNames = new Map<string, string>();
   private missingMusicBackdropWarnings = new Set<string>();
   private collectionCache?: { checkedAt: number; collections: Array<{ id: string; name: string; itemIds: Set<string> }> };
+  private collectionLoad?: Promise<Array<{ id: string; name: string; itemIds: Set<string> }>>;
+  private usersCache?: JellyfinItem[];
 
   constructor(private config: AppConfig) {}
 
@@ -34,6 +38,45 @@ export class JellyfinClient {
     const response = await this.fetchWithFallback("/System/Info");
     if (!response.ok) throw new Error(`Jellyfin ${response.status}`);
     return true;
+  }
+
+  async loadUsers() {
+    if (!this.configured()) return [];
+    let users: JellyfinItem[];
+    try {
+      users = await this.getJson<JellyfinItem[]>("/Users");
+      await this.writeMetadataCache("jellyfin-users.json", users);
+    } catch (error) {
+      const persisted = await this.readMetadataCache<JellyfinItem[]>("jellyfin-users.json");
+      if (!persisted) throw error;
+      users = persisted;
+      logger.warn("Jellyfin user directory refresh failed; using the persisted startup cache", error);
+    }
+    this.usersCache = users;
+    this.userIds.clear();
+    for (const user of users) {
+      if (user.Id && user.Name) this.userIds.set(String(user.Name).toLowerCase(), String(user.Id));
+    }
+    return users.map((user) => ({
+      id: String(user.Id ?? ""),
+      name: String(user.Name ?? ""),
+      primaryImageTag: typeof user.PrimaryImageTag === "string" ? user.PrimaryImageTag : undefined
+    })).filter((user) => user.id && user.name);
+  }
+
+  async warmCollections() {
+    if (!this.configured()) return 0;
+    let collections: Array<{ id: string; name: string; itemIds: Set<string> }>;
+    try {
+      collections = await this.collectionsWithItems(true);
+    } catch (error) {
+      const persisted = await this.readPersistedCollections();
+      if (!persisted) throw error;
+      collections = persisted;
+      this.collectionCache = { checkedAt: Date.now(), collections };
+      logger.warn("Jellyfin collection refresh failed; using the persisted startup cache", error);
+    }
+    return collections.length;
   }
 
   imageUrl(itemId: string, type: "Backdrop" | "Logo" | "Primary", index = 0, tag?: string) {
@@ -304,27 +347,38 @@ export class JellyfinClient {
     return undefined;
   }
 
-  private async collectionsWithItems() {
+  private async collectionsWithItems(force = false) {
     const cached = this.collectionCache;
-    if (cached && Date.now() - cached.checkedAt < 60_000) return cached.collections;
-    const params = new URLSearchParams({
-      IncludeItemTypes: "BoxSet",
-      Recursive: "true",
-      SortBy: "SortName",
-      Fields: "BasicSyncInfo,ChildCount"
-    });
-    const collections = await this.pagedItems("/Items", params, 200);
-    const withItems: Array<{ id: string; name: string; itemIds: Set<string> }> = [];
-    for (const collection of collections) {
-      if (!collection.Id) continue;
-      const itemIds = await this.collectionItemIds(String(collection.Id)).catch((error) => {
-        logger.warn(`Jellyfin collection lookup failed for "${collection.Name ?? collection.Id}"`, error);
-        return new Set<string>();
+    if (!force && cached) return cached.collections;
+    if (this.collectionLoad) return this.collectionLoad;
+    this.collectionLoad = (async () => {
+      const params = new URLSearchParams({
+        IncludeItemTypes: "BoxSet",
+        Recursive: "true",
+        SortBy: "SortName",
+        Fields: "BasicSyncInfo,ChildCount"
       });
-      withItems.push({ id: String(collection.Id), name: String(collection.Name ?? "Collection"), itemIds });
+      const collections = await this.pagedItems("/Items", params, 200);
+      const withItems = await Promise.all(collections.filter((collection) => collection.Id).map(async (collection) => {
+        const itemIds = await this.collectionItemIds(String(collection.Id)).catch((error) => {
+          logger.warn(`Jellyfin collection lookup failed for "${collection.Name ?? collection.Id}"`, error);
+          return new Set<string>();
+        });
+        return { id: String(collection.Id), name: String(collection.Name ?? "Collection"), itemIds };
+      }));
+      this.collectionCache = { checkedAt: Date.now(), collections: withItems };
+      await this.writeMetadataCache("jellyfin-collections.json", withItems.map((collection) => ({
+        id: collection.id,
+        name: collection.name,
+        itemIds: [...collection.itemIds]
+      })));
+      return withItems;
+    })();
+    try {
+      return await this.collectionLoad;
+    } finally {
+      this.collectionLoad = undefined;
     }
-    this.collectionCache = { checkedAt: Date.now(), collections: withItems };
-    return withItems;
   }
 
   private async collectionItemIds(collectionId: string) {
@@ -601,7 +655,7 @@ export class JellyfinClient {
     const cached = this.userIds.get(normalized);
     if (cached) return cached;
 
-    const users = await this.getJson<JellyfinItem[]>("/Users");
+    const users = this.usersCache ?? await this.getJson<JellyfinItem[]>("/Users");
     const user = users.find((entry) => String(entry.Name ?? "").toLowerCase() === normalized);
     if (!user?.Id) throw new Error(`Jellyfin user not found: ${name}`);
     this.userIds.set(normalized, user.Id);
@@ -800,8 +854,30 @@ export class JellyfinClient {
   }
 
   private async userFor(name: string) {
-    const users = await this.getJson<JellyfinItem[]>("/Users");
+    const users = this.usersCache ?? await this.getJson<JellyfinItem[]>("/Users");
     return users.find((entry) => String(entry.Name ?? "").toLowerCase() === name.toLowerCase());
+  }
+
+  private async readPersistedCollections() {
+    const persisted = await this.readMetadataCache<Array<{ id: string; name: string; itemIds: string[] }>>("jellyfin-collections.json");
+    return persisted?.map((collection) => ({
+      id: collection.id,
+      name: collection.name,
+      itemIds: new Set(collection.itemIds)
+    }));
+  }
+
+  private async readMetadataCache<T>(fileName: string): Promise<T | undefined> {
+    try {
+      return JSON.parse(await fs.readFile(path.join(this.config.library_scan.directory, fileName), "utf8")) as T;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async writeMetadataCache(fileName: string, value: unknown) {
+    await fs.mkdir(this.config.library_scan.directory, { recursive: true });
+    await fs.writeFile(path.join(this.config.library_scan.directory, fileName), JSON.stringify(value));
   }
 
   private async fetchWithFallback(path: string): Promise<Response> {

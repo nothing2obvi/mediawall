@@ -187,7 +187,7 @@ app.get("/api/jellyfin/user-image/:userId/Primary", async (req, res) => {
     const result = await cachedImage(
       `jellyfin-user:${userId}:Primary:${query}`,
       () => jellyfin.proxyUserImage(userId, query),
-      { revalidateAfterMs: 60_000, cacheControl: "no-store", allowStaleOnError: false }
+      { cacheControl: "public, max-age=86400", allowStaleOnError: true, persistWhenScanDisabled: true }
     );
     if (!result.buffer) {
       res.sendStatus(result.status);
@@ -943,7 +943,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
         : Math.floor((now - runtime.startedAt) / (Math.max(1, displayConfig.now_playing.multiple_backdrops.interval_seconds) * 1000));
       if (selectedChanged) touchSpace(space);
     }
-    if (sessionKey && !shownRuntimeUserTransitions.has(sessionKey)) {
+    if (sessionKey && !nowPlaying.collectionPresentationPending && !shownRuntimeUserTransitions.has(sessionKey)) {
       shownRuntimeUserTransitions.add(sessionKey);
       runtime.shownUserTransitions.add(sessionKey);
       const duration = Math.max(0.5, displayConfig.now_playing.user_transition.duration_seconds) * 1000;
@@ -1913,9 +1913,9 @@ function sendLocalArtistLogo(artistName: string | undefined, res: express.Respon
 async function cachedImage(
   cacheKey: string,
   fetcher: () => Promise<Response>,
-  options: { revalidateAfterMs?: number; cacheControl?: string; allowStaleOnError?: boolean } = {}
+  options: { revalidateAfterMs?: number; cacheControl?: string; allowStaleOnError?: boolean; persistWhenScanDisabled?: boolean } = {}
 ): Promise<CachedImageResult> {
-  const cached = await readCachedImage(cacheKey);
+  const cached = await readCachedImage(cacheKey, options.persistWhenScanDisabled);
   if (cached && !cacheNeedsRevalidation(cached, options.revalidateAfterMs)) {
     return options.cacheControl ? { ...cached, cacheControl: options.cacheControl } : cached;
   }
@@ -1942,7 +1942,7 @@ async function cachedImage(
     cacheControl: options.cacheControl ?? response.headers.get("cache-control") ?? "public, max-age=86400",
     createdAt: Date.now()
   };
-  await writeCachedImage(cacheKey, result);
+  await writeCachedImage(cacheKey, result, options.persistWhenScanDisabled);
   return result;
 }
 
@@ -1952,8 +1952,8 @@ function cacheNeedsRevalidation(cached: CachedImageResult, revalidateAfterMs: nu
   return Date.now() - cached.createdAt >= revalidateAfterMs;
 }
 
-async function readCachedImage(cacheKey: string): Promise<CachedImageResult | undefined> {
-  if (!config.library_scan.enabled) return undefined;
+async function readCachedImage(cacheKey: string, persistWhenScanDisabled = false): Promise<CachedImageResult | undefined> {
+  if (!config.library_scan.enabled && !persistWhenScanDisabled) return undefined;
   const paths = cachePaths(cacheKey);
   try {
     const meta = JSON.parse(await fs.promises.readFile(paths.meta, "utf8")) as Omit<CachedImageResult, "buffer"> & { createdAt: number };
@@ -1970,8 +1970,8 @@ async function readCachedImage(cacheKey: string): Promise<CachedImageResult | un
   }
 }
 
-async function writeCachedImage(cacheKey: string, result: CachedImageResult) {
-  if (!config.library_scan.enabled || !result.buffer || result.status < 200 || result.status >= 300) return;
+async function writeCachedImage(cacheKey: string, result: CachedImageResult, persistWhenScanDisabled = false) {
+  if ((!config.library_scan.enabled && !persistWhenScanDisabled) || !result.buffer || result.status < 200 || result.status >= 300) return;
   const paths = cachePaths(cacheKey);
   await fs.promises.mkdir(config.library_scan.directory, { recursive: true });
   await fs.promises.writeFile(paths.image, result.buffer);
@@ -2329,9 +2329,14 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
 function applyCollectionPresentation(state: NowPlayingState, displayConfig: DisplayConfig, mediaWallUser: string): NowPlayingState {
   if (state.source !== "jellyfin" || !displayConfig.now_playing.collections.enabled) return state;
   const itemIds = [state.itemId, state.artwork?.itemId, state.artistId].filter((value): value is string => Boolean(value));
-  const cacheKey = `${mediaWallUser}:${itemIds.join(":")}`;
+  const collectionConfigKey = crypto.createHash("sha256")
+    .update(JSON.stringify(displayConfig.now_playing.collections))
+    .digest("hex")
+    .slice(0, 12);
+  const cacheKey = `${collectionConfigKey}:${mediaWallUser}:${itemIds.join(":")}`;
   const cached = collectionPresentationCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
+    if (cached.pending) return { ...state, collectionPresentationPending: true };
     return cached.resolved ? { ...state, ...cached.resolved } : state;
   }
   const entry = { expiresAt: Date.now() + 5 * 60_000 } as {
@@ -2367,7 +2372,7 @@ function applyCollectionPresentation(state: NowPlayingState, displayConfig: Disp
       entry.pending = undefined;
     });
   collectionPresentationCache.set(cacheKey, entry);
-  return state;
+  return { ...state, collectionPresentationPending: true };
 }
 
 function dedupePlaybackCandidates(candidates: NowPlayingState[]) {
@@ -2638,6 +2643,7 @@ function publicSoundSessions(displayKey: string, displayConfig: DisplayConfig): 
     .filter((record) =>
       record.state.playing
       && record.active
+      && !record.state.collectionPresentationPending
       && (record.state.source === "jellyfin" || record.state.source === "navidrome")
     )
     .map((record) => {
@@ -2790,5 +2796,46 @@ function sameWallpaperItem(left: ArtworkRef, right: ArtworkRef) {
 const port = Number(process.env.PORT ?? config.server.port ?? 1221);
 app.listen(port, "0.0.0.0", () => {
   logger.info(`MediaWall listening on http://0.0.0.0:${port} logLevel=${logger.level}`);
-  startGridCacheScans(port);
+  void warmStartupMetadata().finally(() => startGridCacheScans(port));
 });
+
+async function warmStartupMetadata() {
+  if (!jellyfin.configured()) return;
+  try {
+    const users = await jellyfin.loadUsers();
+    const sizes = new Set<number>();
+    for (const space of Object.values(config.spaces)) {
+      const resize = space.display.nowplaying_text.user_avatar_resize;
+      if (resize.enabled) sizes.add(Math.max(16, Math.round(resize.size)));
+    }
+    if (!sizes.size) sizes.add(96);
+    let warmed = 0;
+    for (const user of users) {
+      if (!user.primaryImageTag) continue;
+      for (const size of sizes) {
+        const params = new URLSearchParams({
+          tag: user.primaryImageTag,
+          maxWidth: String(size),
+          maxHeight: String(size),
+          quality: "90"
+        });
+        const query = `?${params}`;
+        const result = await cachedImage(
+          `jellyfin-user:${user.id}:Primary:${query}`,
+          () => jellyfin.proxyUserImage(user.id, query),
+          { revalidateAfterMs: 0, cacheControl: "public, max-age=86400", allowStaleOnError: true, persistWhenScanDisabled: true }
+        );
+        if (result.buffer) warmed += 1;
+      }
+    }
+    logger.info(`Jellyfin avatar startup cache complete: users=${users.length} images=${warmed}`);
+  } catch (error) {
+    logger.warn("Jellyfin avatar startup cache failed", error);
+  }
+  try {
+    const count = await jellyfin.warmCollections();
+    logger.info(`Jellyfin collection startup cache complete: collections=${count}`);
+  } catch (error) {
+    logger.warn("Jellyfin collection startup cache failed", error);
+  }
+}

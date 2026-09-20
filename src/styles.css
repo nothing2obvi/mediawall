@@ -1628,14 +1628,12 @@ body.idle {
 .immich-kiosk-handoff {
   z-index: 10000;
   opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-  transition: opacity 900ms ease, visibility 0s linear 900ms;
+  transition: opacity 900ms ease;
 }
 
 .immich-kiosk-handoff.active {
   opacity: 1;
-  visibility: visible;
   pointer-events: auto;
   transition: opacity 900ms ease;
 }
