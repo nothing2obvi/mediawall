@@ -433,6 +433,7 @@ export interface DisplaySnapshot {
   state: DisplayState;
   mode: DisplayMode;
   nowPlaying?: PublicNowPlayingState;
+  playbackDetectionPending?: boolean;
   soundSessions?: PublicSoundSession[];
   libraryScan?: PublicLibraryScanProgress;
   connectionIssues?: PublicConnectionIssue[];

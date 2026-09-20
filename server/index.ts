@@ -56,6 +56,7 @@ type SpaceRuntime = {
   shownUserTransitions: Set<string>;
   selectedSessionKey?: string;
   sessionBackdropIndexes: Map<string, number>;
+  playbackPolls: number;
   userTransitionEvent?: { id: string; sessionKey: string; startedAt: number; expiresAt: number };
 };
 const spaceRuntimes = new Map<string, SpaceRuntime>();
@@ -514,6 +515,9 @@ app.post("/api/space/:space/mode", async (req, res) => {
     shuffleQueue: [],
     shuffleQueueIndex: 0
   };
+  if (mode === "now-playing" && state.mode !== "now-playing") {
+    spaceRuntime(req.params.space).playbackPolls = 0;
+  }
 
   if (mode === "screensaver" && state.playing) {
     const selectionState = { ...state, ...resetPatch };
@@ -833,6 +837,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     })
     : undefined;
   let nowPlaying = playbackDetails?.selected;
+  const playbackDetectionPending = playbackDetails?.detectionPending === true;
   let activeMediaWallFallbackMode = state.activeMediaWallFallbackMode ?? firstMediaWallFallbackMode(displayConfig);
 
   if (!nowPlaying?.playing && state.mode === "now-playing" && displayConfig.now_playing.fallback === "mediawall" && state.current?.source !== "fallback") {
@@ -926,6 +931,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     state,
     mode,
     nowPlaying: nowPlaying ? publicNowPlaying(nowPlaying) : undefined,
+    playbackDetectionPending,
     soundSessions: playbackDetails?.soundSessions ?? [],
     libraryScan: libraryScanProgress.get(space),
     connectionIssues,
@@ -951,7 +957,8 @@ function spaceRuntime(space: string): SpaceRuntime {
     startedAt: Date.now(),
     backdropIndex: 0,
     shownUserTransitions: new Set(),
-    sessionBackdropIndexes: new Map()
+    sessionBackdropIndexes: new Map(),
+    playbackPolls: 0
   };
   spaceRuntimes.set(space, created);
   return created;
@@ -2221,9 +2228,12 @@ async function activePlaybackDetails(space: string, displayConfig: DisplayConfig
   const candidates = await activePlaybackCandidates(displayConfig);
   logger.debug(`Playback poll on /${space}: candidates=${candidates.length}`);
   const selected = updateRecentPlayback(space, candidates, displayConfig, state, manualDirection);
+  const runtime = spaceRuntime(space);
+  runtime.playbackPolls += 1;
   logPlaybackSelection(space, selected);
   return {
     selected,
+    detectionPending: !selected && runtime.playbackPolls < 2,
     soundSessions: publicSoundSessions(space, displayConfig)
   };
 }
