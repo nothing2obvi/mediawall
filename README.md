@@ -21,11 +21,11 @@ MediaWall is a way to take advantage of an old iPad, a Raspberry Pi with a displ
 
 ## Screenshots
 
+![MediaWall monitor setup](src/screenshots/monitor_3.jpg)
+
 ![MediaWall on a monitor](src/screenshots/monitor_1.jpg)
 
 ![MediaWall monitor detail](src/screenshots/monitor_2.jpg)
-
-![MediaWall monitor setup](src/screenshots/monitor_3.jpg)
 
 <p align="center">
   <img src="src/screenshots/gif_1.gif" alt="MediaWall animated display">
@@ -69,7 +69,7 @@ The second feature is **Screensaver mode**. This is heavily inspired by the Jell
 
 Third is **Wallpaper mode**. If MediaWall lands on something you particularly like, you can pause on that media item and use it as a static wallpaper. You can also choose favorites and have MediaWall cycle through those instead, essentially creating your own curated rotation of artwork.
 
-While nothing is playing, MediaWall can cycle through your library artwork in Screensaver mode, show the bundled MediaWall screensaver or one with your own custom logo, or hand the display over to a configured Immich Kiosk setup. That way, even between playback sessions, the screen can keep working as a digital photo frame.
+While nothing is playing, MediaWall can cycle through your library artwork in Screensaver mode, show the bundled MediaWall screensaver or one with your own custom logo, or hand the display over to a configured **Immich Kiosk** setup. That way, even between playback sessions, the screen can keep working as a digital photo frame.
 
 So depending on how you use it, MediaWall can be a live window into your Jellyfin and Navidrome servers, a Jellyfin-powered digital art display, or basically a very overengineered way to give an old iPad, Raspberry Pi, or spare screen something useful to do.
 
@@ -254,7 +254,7 @@ docker exec mediawall npm run mediawall -- play sounds All on livingroom
 docker exec mediawall npm run mediawall -- play mediawall dvd on livingroom
 docker exec mediawall npm run mediawall -- play screensaver All on livingroom
 docker exec mediawall npm run mediawall -- play user transition on livingroom
-docker exec mediawall npm run mediawall -- play user transition Jon on livingroom
+docker exec mediawall npm run mediawall -- play user transition doug on livingroom
 docker exec mediawall npm run mediawall -- animation pan on livingroom
 docker exec mediawall npm run mediawall -- animation all --random on livingroom
 ```
@@ -290,13 +290,11 @@ Put the actual URL in `.env`, especially when it contains an Immich Kiosk passwo
 HOMELAB_IMMICH_KIOSK_URL=https://immich-kiosk.example.com/?password=replace-me
 ```
 
-MediaWall remains loaded behind the handoff and continues checking Jellyfin and Navidrome. When playback becomes active, it smoothly fades the embedded Kiosk out and resumes the normal Now Playing session flow. After the final session ends and MediaWall's normal missing-session grace period expires, the Kiosk fades back in. The iframe stays mounted while Now Playing is visible, so a Kiosk album or link selected by the viewer remains selected when the fallback returns. That temporary selection doesn't survive a browser or PWA refresh because MediaWall can't inspect navigation inside a cross-origin Kiosk iframe. A container restart only affects it if the display page also reloads. To make an album selection permanent, include that album in the configured Immich Kiosk URL. Other spaces keep their own configured fallback.
+MediaWall keeps checking Jellyfin and Navidrome while Kiosk is visible. Playback automatically brings Now Playing back; when playback ends, Kiosk returns. A configured Kiosk also becomes a third display mode alongside Now Playing and Wallpaper/Screensaver.
 
-When a Kiosk URL is configured, Immich Kiosk also appears as a third top-level mode alongside Now Playing and Wallpaper/Screensaver. In that mode, only MediaWall's mode control appears at the bottom of the screen; Immich Kiosk keeps its own controls and interactions at the top. The third mode is omitted entirely for spaces without a Kiosk URL.
+If you choose a different album from Immich Kiosk's links, that choice survives temporary MediaWall handoffs but not a browser or PWA refresh. A container restart only loses it when the display page reloads. To make an album permanent, use that album as the main `immich_kiosk.url`.
 
-The Kiosk URL must be reachable from both the MediaWall container and the display browser, and the Kiosk server must allow iframe embedding. MediaWall checks reachability and common frame-blocking headers before displaying it. A missing, invalid, unreachable, timed-out, or explicitly frame-blocked Kiosk falls back to the ordinary MediaWall idle screen instead of leaving the display blank. Some upstream proxies add `X-Frame-Options` or Content Security Policy headers even when Immich Kiosk itself doesn't; adjust that proxy if embedding is blocked.
-
-Fullscreen remains owned by the outer MediaWall page, while the iframe is granted fullscreen permission for Kiosk features that request it. In a PWA, iframe navigation stays inside the MediaWall app and doesn't replace the outer space URL or its browser history. Browser security prevents MediaWall from inspecting a cross-origin Kiosk's internal UI, so an unusual frame failure introduced after the initial load may require correcting the Kiosk or reverse-proxy configuration. MediaWall controls intentionally remain unavailable while the Kiosk handoff is active; use the matching MediaWall remote route if you need to control the space during that time.
+The Kiosk URL must be reachable from both the MediaWall container and the display browser, and it must allow iframe embedding. If it can't be loaded, MediaWall uses its normal idle screen. Use the matching MediaWall remote when you need controls while Kiosk is on screen.
 
 ## Themes
 
