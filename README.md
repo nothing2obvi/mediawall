@@ -55,21 +55,19 @@ Like [Pixelfin](https://github.com/nothing2obvi/pixelfin), this project is vibec
 
 In line with my ongoing obsession with the images and artwork in Jellyfin, as seen through my other project, [Pixelfin](https://github.com/nothing2obvi/pixelfin), I wanted to combine my appreciation for the Jellyfin Android TV screensaver with the fact that I also like being able to glance over and see what people are currently watching or listening to on my Jellyfin and Navidrome servers.
 
-Then I realized I had an old iPad laying around doing absolutely nothing. I wanted something that would work on that or something like a Raspberry Pi. MediaWall was born.
+Then I realized I had an old iPad laying around doing absolutely nothing. I wanted something that would work on that, or on something like a Raspberry Pi connected to a display. MediaWall was born.
 
-MediaWall is a display app for Jellyfin and Navidrome built around three main features, and it's meant to work well on things like an old iPad, a Raspberry Pi connected to a monitor, or really any device with a browser.
+MediaWall is a display app for Jellyfin and Navidrome built around three main features, and it's meant to work well on an old iPad, a Raspberry Pi connected to a monitor, or really any device with a browser. Each display space also has a phone-friendly remote at the same route with `-remote` appended, so you can control the display without walking over to it.
 
-Each display space also has a phone-friendly remote at the same route with `-remote` appended.
-
-The first, and most prominent, is Now Playing. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers, along with artwork, user information, media details, and optional sound notifications when sessions start or end. When nothing's playing in Now Playing mode, you can choose to show shuffled artwork, use the MediaWall fallback with the bundled logo or your own custom logo, or optionally hand the idle display to Immich Kiosk.
+The first, and most prominent, is **Now Playing**. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers, along with artwork, user information, media details, and optional sound notifications when sessions start or end. When nothing is playing, you can show shuffled artwork, use the standard MediaWall fallback with the bundled logo, or use your own custom server logo.
 
 The sound system is customizable too. You can use one global sound, assign custom sounds to individual users, and control when sounds should or shouldn't play. This is especially useful with Navidrome or Jellyfin music libraries, where you probably don't want a notification every time the next song starts.
 
-MediaWall can also react to Jellyfin collections. If someone starts media from a configured collection, MediaWall can use a collection-specific sound and show a collection image during the user transition. This is meant for little visual/sound markers around collection groups, not for changing the normal Jellyfin artwork lookup. If multiple collection groups could match the same item, the first matching group in your config wins, so it's best to keep those groups intentionally specific.
+MediaWall can also react to configured Jellyfin collections by using collection-specific sounds and transition images when matching media starts playing.
 
-The second feature is Screensaver mode. This is heavily inspired by the Jellyfin Android TV screensaver and cycles through artwork from your Jellyfin libraries, with some additional options for controlling what appears and how it's displayed. The idea is to turn an otherwise unused screen, whether that's an old iPad or a Raspberry Pi display, into a constantly changing showcase for the artwork already sitting in your media collection. I know that many of you have terabytes of media, but it's all just data. MediaWall allows its viewers to passively browse your libraries.
+The second feature is **Screensaver mode**. This is heavily inspired by the Jellyfin Android TV screensaver and cycles through artwork from your Jellyfin libraries, with additional options for controlling what appears and how it's displayed. The idea is to turn an otherwise unused screen into a constantly changing showcase for the artwork already sitting in your media collection. I know many of you have terabytes of media, but most of the time it's all just data sitting there. MediaWall gives you a way to passively browse your libraries and actually see more of it.
 
-Third is Wallpaper mode. If MediaWall lands on something you particularly like, you can pause on that media item and use it as a static wallpaper. You can also choose favorites and have MediaWall cycle through those instead, essentially creating your own curated rotation of artwork.
+Third is **Wallpaper mode**. If MediaWall lands on something you particularly like, you can pause on that media item and use it as a static wallpaper. You can also choose favorites and have MediaWall cycle through those instead, essentially creating your own curated rotation of artwork.
 
 So depending on how you use it, MediaWall can be a live window into your Jellyfin and Navidrome servers, a Jellyfin-powered digital art display, or basically a very overengineered way to give an old iPad, Raspberry Pi, or spare screen something useful to do.
 

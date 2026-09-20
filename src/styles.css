@@ -1692,10 +1692,6 @@ body.idle {
   background: #3f423e;
 }
 
-.mediawall-loading.embedded {
-  position: absolute;
-}
-
 .mediawall-loading img {
   width: min(72vw, 760px);
   height: auto;
