@@ -335,6 +335,9 @@ export class JellyfinClient {
       if (item.Id) ids.add(String(item.Id));
       if (item.SeriesId) ids.add(String(item.SeriesId));
       if (item.ParentId) ids.add(String(item.ParentId));
+      if ((item.Type === "Movie" || item.Type === "Video") && item.Name) {
+        ids.add(movieCollectionLookupKey(String(item.Name)));
+      }
     }
     return ids;
   }
@@ -913,6 +916,10 @@ function moviePartSearchTitle(name: string) {
 
 function normalizeMovieTitle(name: string) {
   return moviePartSearchTitle(name).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export function movieCollectionLookupKey(name: string) {
+  return `movie-title:${normalizeMovieTitle(name)}`;
 }
 
 function splitArtistCredit(value: unknown) {

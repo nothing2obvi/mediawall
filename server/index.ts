@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, findDisplay, themeNames } from "./config.js";
-import { JellyfinClient, fallbackArtwork } from "./jellyfin.js";
+import { JellyfinClient, fallbackArtwork, movieCollectionLookupKey } from "./jellyfin.js";
 import { NavidromeClient } from "./navidrome.js";
 import { logger } from "./logger.js";
 import { JellyfinCollectionIndex } from "./collection-index.js";
@@ -1681,7 +1681,8 @@ async function controlCommandFromRequest(body: unknown, displayConfig: DisplayCo
   const expiresAt = Date.now() + durationSeconds * 1000;
   if (type === "user_transition") {
     const firstUser = displayConfig.users[0];
-    const username = name || firstUser?.name || displayConfig.playback_user || "MediaWall";
+    const requestedUser = displayConfig.users.find((user) => user.name.toLowerCase() === name.toLowerCase());
+    const username = requestedUser?.name || name || firstUser?.name || displayConfig.playback_user || "MediaWall";
     return {
       ok: true,
       command: {
@@ -2336,6 +2337,11 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
 function applyCollectionPresentation(state: NowPlayingState, space: string, displayConfig: DisplayConfig, mediaWallUser: string): NowPlayingState {
   if (state.source !== "jellyfin" || !displayConfig.now_playing.collections.enabled) return state;
   const itemIds = [state.itemId, state.artwork?.itemId, state.artistId].filter((value): value is string => Boolean(value));
+  if (["movie", "video"].includes(state.artwork?.mediaType?.toLowerCase() ?? "")) {
+    for (const title of [state.artwork?.title, state.title]) {
+      if (title) itemIds.push(movieCollectionLookupKey(title));
+    }
+  }
   const match = collectionIndex.lookup(space, mediaWallUser, itemIds);
   if (!match) return state;
   const images = match.images.filter((image) => {

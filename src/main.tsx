@@ -2318,20 +2318,20 @@ function UserTransitionIntro({ intro }: {
             <span>{intro.username}</span>
           </div>
           <div className="user-transition-verb">{intro.verb}</div>
-          {intro.collectionImages?.length ? (
+          {(intro.collectionImages?.length || intro.collectionImageUrl) ? (
             <div className="user-transition-collection-images">
-              {intro.collectionImages.map((image, index) => (
-                <img
-                  key={`${image.collectionName}:${image.url}:${index}`}
-                  className="user-transition-collection-image"
-                  src={mediaUrl(image.url)}
-                  alt=""
-                  style={{ "--user-transition-collection-image-size": `${image.size}px` } as React.CSSProperties}
-                />
-              ))}
+              {intro.collectionImages?.length
+                ? intro.collectionImages.map((image, index) => (
+                  <img
+                    key={`${image.collectionName}:${image.url}:${index}`}
+                    className="user-transition-collection-image"
+                    src={mediaUrl(image.url)}
+                    alt=""
+                    style={{ "--user-transition-collection-image-size": `${image.size}px` } as React.CSSProperties}
+                  />
+                ))
+                : <img className="user-transition-collection-image" src={mediaUrl(intro.collectionImageUrl)} alt="" />}
             </div>
-          ) : intro.collectionImageUrl ? (
-            <img className="user-transition-collection-image" src={mediaUrl(intro.collectionImageUrl)} alt="" />
           ) : null}
         </div>
       </div>
@@ -2695,6 +2695,7 @@ function RemoteControl(props: {
 }) {
   const snapshot = props.snapshot;
   const wallpaperMode = snapshot?.state.mode === "screensaver";
+  const immichMode = snapshot?.state.mode === "immich-kiosk";
   const customLogoUrl = spaceApi("/custom-logo");
   const disabled = !snapshot;
   const currentSpaceIndex = props.availableSpaces.indexOf(route.space);
@@ -2737,8 +2738,8 @@ function RemoteControl(props: {
           <span>Next</span>
         </button>
         <button disabled={disabled} onClick={() => snapshot && props.onMode(nextDisplayMode(snapshot.state.mode, Boolean(snapshot.config.now_playing.immich_kiosk.url)))}>
-          {snapshot?.state.mode === "immich-kiosk" ? <UsersRound /> : <Image />}
-          <span>Mode</span>
+          {immichMode ? <UsersRound /> : wallpaperMode ? <Image /> : <Radio />}
+          <span>{immichMode ? "Immich" : wallpaperMode ? "Wallpaper" : "Now Playing"}</span>
         </button>
         <button disabled={disabled || !wallpaperMode} onClick={props.onShuffleSettings}>
           <ListFilter />
