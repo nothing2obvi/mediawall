@@ -45,6 +45,12 @@ const libraryScanClearTimers = new Map<string, NodeJS.Timeout>();
 const connectionIssueCache = new Map<string, { checkedAt: number; issues: PublicConnectionIssue[] }>();
 const connectionIssueFailures = new Map<string, number>();
 const immichKioskStatusCache = new Map<string, { checkedAt: number; available: boolean; reason?: string }>();
+type CollectionPresentation = Pick<NowPlayingState, "collectionName" | "collectionTransitionImage" | "collectionTransitionImageSize" | "soundTone">;
+const collectionPresentationCache = new Map<string, {
+  expiresAt: number;
+  resolved?: CollectionPresentation | null;
+  pending?: Promise<void>;
+}>();
 const controlCommands = new Map<string, PublicControlCommand>();
 const uiIndicators = new Map<string, PublicUiIndicator>();
 const lastLoggedPlaybackBySpace = new Map<string, string>();
@@ -57,6 +63,7 @@ type SpaceRuntime = {
   selectedSessionKey?: string;
   sessionBackdropIndexes: Map<string, number>;
   playbackPolls: number;
+  playbackDetectionStartedAt: number;
   userTransitionEvent?: { id: string; sessionKey: string; startedAt: number; expiresAt: number };
 };
 const spaceRuntimes = new Map<string, SpaceRuntime>();
@@ -265,6 +272,33 @@ async function handleImageProxy(req: express.Request, res: express.Response) {
     res.sendStatus(502);
   }
 }
+
+app.get("/api/space/:space/bootstrap", (req, res) => {
+  const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
+  if (!resolved) return;
+  const { displayConfig } = resolved;
+  const state = states.get(req.params.space, undefined, displayConfig);
+  const runtime = spaceRuntime(req.params.space);
+  const now = Date.now();
+  res.json({
+    profile: "",
+    display: req.params.space,
+    config: publicDisplayConfig(displayConfig),
+    state,
+    mode: state.mode,
+    playbackDetectionPending: state.mode === "now-playing",
+    soundSessions: [],
+    connectionIssues: [],
+    activeMediaWallFallbackMode: state.activeMediaWallFallbackMode ?? firstMediaWallFallbackMode(displayConfig),
+    presentation: {
+      revision: runtime.revision,
+      serverNow: now,
+      startedAt: runtime.startedAt,
+      nextTransitionAt: runtime.nextTransitionAt,
+      backdropIndex: runtime.backdropIndex
+    }
+  } satisfies DisplaySnapshot);
+});
 
 app.get("/api/space/:space", async (req, res) => {
   const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
@@ -516,7 +550,9 @@ app.post("/api/space/:space/mode", async (req, res) => {
     shuffleQueueIndex: 0
   };
   if (mode === "now-playing" && state.mode !== "now-playing") {
-    spaceRuntime(req.params.space).playbackPolls = 0;
+    const runtime = spaceRuntime(req.params.space);
+    runtime.playbackPolls = 0;
+    runtime.playbackDetectionStartedAt = Date.now();
   }
 
   if (mode === "screensaver" && state.playing) {
@@ -958,7 +994,8 @@ function spaceRuntime(space: string): SpaceRuntime {
     backdropIndex: 0,
     shownUserTransitions: new Set(),
     sessionBackdropIndexes: new Map(),
-    playbackPolls: 0
+    playbackPolls: 0,
+    playbackDetectionStartedAt: Date.now()
   };
   spaceRuntimes.set(space, created);
   return created;
@@ -2233,7 +2270,9 @@ async function activePlaybackDetails(space: string, displayConfig: DisplayConfig
   logPlaybackSelection(space, selected);
   return {
     selected,
-    detectionPending: !selected && runtime.playbackPolls < 2,
+    detectionPending: !selected
+      && runtime.playbackPolls < 2
+      && Date.now() - runtime.playbackDetectionStartedAt < 10_000,
     soundSessions: publicSoundSessions(space, displayConfig)
   };
 }
@@ -2267,7 +2306,7 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
           playback_user: user.jellyfin_user ?? user.name,
           users: [user]
         })).map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound));
-        candidates.push(...(await Promise.all(playbacks.map((playback) => applyCollectionPresentation(playback, displayConfig, user.name)))));
+        candidates.push(...playbacks.map((playback) => applyCollectionPresentation(playback, displayConfig, user.name)));
       } catch (error) {
         logger.warn("Jellyfin playback source poll failed", error);
       }
@@ -2287,31 +2326,48 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
   return dedupePlaybackCandidates(candidates);
 }
 
-async function applyCollectionPresentation(state: NowPlayingState, displayConfig: DisplayConfig, mediaWallUser: string): Promise<NowPlayingState> {
+function applyCollectionPresentation(state: NowPlayingState, displayConfig: DisplayConfig, mediaWallUser: string): NowPlayingState {
   if (state.source !== "jellyfin" || !displayConfig.now_playing.collections.enabled) return state;
-  const match = await jellyfin.collectionMatchForItem([
-    state.itemId,
-    state.artwork?.itemId,
-    state.artistId
-  ], displayConfig, mediaWallUser).catch((error) => {
-    logger.warn(`Jellyfin collection match failed for "${state.title ?? state.artwork?.title ?? "unknown"}"`, error);
-    return undefined;
-  });
-  if (!match) return state;
-  const imageFile = match.user_transition_image && resolveCollectionImagePath(match.user_transition_image)
-    ? match.user_transition_image
-    : undefined;
-  if (match.user_transition_image && !imageFile) {
-    logger.warn(`Collection transition image "${match.user_transition_image}" was not found in /app/collections`);
+  const itemIds = [state.itemId, state.artwork?.itemId, state.artistId].filter((value): value is string => Boolean(value));
+  const cacheKey = `${mediaWallUser}:${itemIds.join(":")}`;
+  const cached = collectionPresentationCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.resolved ? { ...state, ...cached.resolved } : state;
   }
-  logger.debug(`Collection match for "${state.title ?? state.artwork?.title ?? "unknown"}": ${match.collectionName}`);
-  return {
-    ...state,
-    collectionName: match.collectionName,
-    collectionTransitionImage: imageFile,
-    collectionTransitionImageSize: match.image_size,
-    soundTone: match.sound || state.soundTone
+  const entry = { expiresAt: Date.now() + 5 * 60_000 } as {
+    expiresAt: number;
+    resolved?: CollectionPresentation | null;
+    pending?: Promise<void>;
   };
+  entry.pending = jellyfin.collectionMatchForItem(itemIds, displayConfig, mediaWallUser)
+    .then((match) => {
+      if (!match) {
+        entry.resolved = null;
+        return;
+      }
+      const imageFile = match.user_transition_image && resolveCollectionImagePath(match.user_transition_image)
+        ? match.user_transition_image
+        : undefined;
+      if (match.user_transition_image && !imageFile) {
+        logger.warn(`Collection transition image "${match.user_transition_image}" was not found in /app/collections`);
+      }
+      entry.resolved = {
+        collectionName: match.collectionName,
+        collectionTransitionImage: imageFile,
+        collectionTransitionImageSize: match.image_size,
+        soundTone: match.sound || state.soundTone
+      };
+      logger.debug(`Collection match for "${state.title ?? state.artwork?.title ?? "unknown"}": ${match.collectionName}`);
+    })
+    .catch((error) => {
+      entry.resolved = null;
+      logger.warn(`Jellyfin collection match failed for "${state.title ?? state.artwork?.title ?? "unknown"}"`, error);
+    })
+    .finally(() => {
+      entry.pending = undefined;
+    });
+  collectionPresentationCache.set(cacheKey, entry);
+  return state;
 }
 
 function dedupePlaybackCandidates(candidates: NowPlayingState[]) {

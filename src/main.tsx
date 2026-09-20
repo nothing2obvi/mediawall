@@ -467,6 +467,7 @@ function App() {
   const [soundMuted, setSoundMuted] = useState(() => rememberedSoundMuted(route.space));
   const [soundIndicator, setSoundIndicator] = useState<"on" | "muted">();
   const [actionIndicator, setActionIndicator] = useState<ActionIndicatorKind>();
+  const [initialLoadingExpired, setInitialLoadingExpired] = useState(false);
   const [availableSpaces, setAvailableSpaces] = useState<string[]>([]);
   const [userTransition, setUserTransition] = useState<{
     id: string;
@@ -526,14 +527,15 @@ function App() {
     : snapshot?.state.current;
   const previewArtwork = snapshot?.controlCommand?.type === "animation" ? snapshot.controlCommand.artwork : undefined;
   const showMediaWallPreview = snapshot?.controlCommand?.type === "mediawall";
+  const playbackDetectionPending = snapshot?.playbackDetectionPending === true && !initialLoadingExpired;
   const showMediaWallIdle = showMediaWallPreview || (snapshot?.state.mode === "now-playing"
     && snapshot.config.now_playing.fallback === "mediawall"
-    && !snapshot.playbackDetectionPending
+    && !playbackDetectionPending
     && !snapshot.nowPlaying?.playing);
   const showImmichKioskIdle = !showMediaWallPreview
     && snapshot?.state.mode === "now-playing"
     && snapshot.config.now_playing.fallback === "immich_kiosk"
-    && !snapshot.playbackDetectionPending
+    && !playbackDetectionPending
     && !snapshot.nowPlaying?.playing;
   const showImmichKioskMode = snapshot?.state.mode === "immich-kiosk";
   const immichKioskActive = Boolean(showImmichKioskIdle || showImmichKioskMode);
@@ -629,6 +631,14 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setInitialLoadingExpired(true), 10_000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    void api<Snapshot>(spaceApi("/bootstrap"))
+      .then((bootstrap) => setSnapshot((current) => current ?? bootstrap))
+      .catch(() => undefined);
     void refresh();
     const timer = window.setInterval(refresh, 3500);
     const events = new EventSource(spaceApi("/events"));
@@ -1646,7 +1656,7 @@ function App() {
 
   if (error) return <div className="error">{error}</div>;
 
-  if (!route.remote && (!snapshot || snapshot.playbackDetectionPending)) {
+  if (!route.remote && (!snapshot || playbackDetectionPending)) {
     return <MediaWallLoading />;
   }
 
@@ -1914,10 +1924,10 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
   useEffect(() => {
     setLoaded(false);
     window.clearTimeout(loadTimer.current);
-    if (status !== "available") return;
+    if (!active || !url) return;
     loadTimer.current = window.setTimeout(() => setStatus("unavailable"), 10_000);
     return () => window.clearTimeout(loadTimer.current);
-  }, [status, url]);
+  }, [active, url]);
 
   if ((status === "unavailable" || !url) && active) {
     return (
@@ -1934,12 +1944,11 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
     );
   }
 
-  if (status === "checking" && active) return <section className="immich-kiosk-handoff active"><MediaWallLoading embedded /></section>;
-  if (status !== "available" || !url) return null;
+  if (!url || status === "unavailable") return null;
 
   return (
     <section className={`immich-kiosk-handoff ${active ? "active" : ""}`}>
-      {!loaded && <MediaWallLoading embedded />}
+      {!loaded && <div className="immich-kiosk-loading" aria-label="Loading Immich Kiosk" />}
       <iframe
         className={loaded ? "loaded" : ""}
         src={url}
@@ -1949,6 +1958,7 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
         referrerPolicy="no-referrer"
         onLoad={() => {
           window.clearTimeout(loadTimer.current);
+          setStatus("available");
           setLoaded(true);
         }}
         onError={() => setStatus("unavailable")}
@@ -1957,12 +1967,12 @@ function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: bo
   );
 }
 
-function MediaWallLoading({ embedded = false }: { embedded?: boolean }) {
+function MediaWallLoading() {
   return (
-    <section className={`mediawall-loading ${embedded ? "embedded" : ""}`} aria-label="MediaWall is loading">
+    <section className="mediawall-loading" aria-label="MediaWall is loading">
       <img src={mediaWallBanner} alt="MediaWall" />
       <div className="mediawall-loading-copy">
-        MediaWall is loading<span className="mediawall-loading-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+        is loading<span className="mediawall-loading-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
       </div>
     </section>
   );
