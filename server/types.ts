@@ -1,4 +1,5 @@
 export type PlaybackSource = "jellyfin" | "navidrome" | "both";
+export type DisplayMode = "now-playing" | "screensaver" | "immich-kiosk";
 export type MediaWallFallbackMode = "centered" | "breathing" | "float" | "spotlight" | "dvd" | "minimal";
 
 export interface MediaWallUser {
@@ -12,13 +13,17 @@ export interface MediaWallUser {
 
 export interface DisplayConfig {
   playback_source: PlaybackSource;
+  theme: string;
   users: MediaWallUser[];
   playback_user: string;
   libraries: string[];
   idle_timeout: number;
   password?: string;
   now_playing: {
-    fallback: "mediawall" | "shuffle";
+    fallback: "mediawall" | "shuffle" | "immich_kiosk";
+    immich_kiosk: {
+      url: string;
+    };
     ignored_libraries: string[];
     fallback_shuffle_interval_seconds: number;
     cycle_users: boolean;
@@ -277,6 +282,8 @@ export interface NowPlayingState {
   collectionTransitionImage?: string;
   collectionTransitionImageUrl?: string;
   collectionTransitionImageSize?: number;
+  collectionTransitionImages?: Array<{ collectionName: string; file: string; size: number }>;
+  collectionTransitionImageUrls?: Array<{ collectionName: string; url: string; size: number }>;
   albumArtUrl?: string;
   artwork?: ArtworkRef;
   signature?: string;
@@ -309,6 +316,7 @@ export type PublicNowPlayingState = Pick<
   | "collectionName"
   | "collectionTransitionImageUrl"
   | "collectionTransitionImageSize"
+  | "collectionTransitionImageUrls"
   | "albumArtUrl"
   | "artwork"
   | "publicSessionId"
@@ -378,7 +386,8 @@ export interface PublicUiIndicator {
 }
 
 export interface DisplayState {
-  mode: "now-playing" | "screensaver";
+  mode: DisplayMode;
+  activeTheme: string;
   current?: ArtworkRef;
   currentSequence?: {
     libraryId: string;
@@ -425,8 +434,9 @@ export interface DisplaySnapshot {
     };
   };
   state: DisplayState;
-  mode: "now-playing" | "screensaver";
+  mode: DisplayMode;
   nowPlaying?: PublicNowPlayingState;
+  playbackDetectionPending?: boolean;
   soundSessions?: PublicSoundSession[];
   libraryScan?: PublicLibraryScanProgress;
   connectionIssues?: PublicConnectionIssue[];
