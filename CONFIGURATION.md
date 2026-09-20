@@ -77,6 +77,7 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `playback_source` | Sources watched for Now Playing. | `both` | No | Options: `jellyfin`, `navidrome`, `both`. |
+| `theme` | UI theme for this space. | `All` | No | Use `All` (or omit the setting) for interactive selection, or lock the space to `default`, `Dracula`, `Nord`, `Catppuccin Latte`, `Catppuccin Mocha`, `Gruvbox Dark`, `Gruvbox Light`, `Solarized Dark`, `Solarized Light`, `Tokyo Night`, `One Dark`, `Monokai`, `Rose Pine`, `Everforest`, `Kanagawa`, `Synthwave 84`, `Material Palenight`, `Night Owl`, `Ayu Mirage`, `GitHub Light`, or `Tomorrow Night`. Fixed themes hide and disable interactive controls. The active interactive theme is synchronized and persisted per space. |
 | `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use configured MediaWall user names. Use `All` to allow every configured MediaWall user. If omitted, MediaWall falls back to `playback_user` or the first configured user. |
 | `playback_user` | Legacy single-user selector. | unset | No | Prefer `users`. |
 | `password` | Optional URL password. | unset | No | If omitted or `""`, no `?password=` is required. |
@@ -87,7 +88,8 @@ Per-user sounds override the global tones for any space where that MediaWall use
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `fallback` | What Now Playing shows when nothing is playing. | `mediawall` | No | Options: `mediawall`, `shuffle`. |
+| `fallback` | What Now Playing shows when nothing is playing. | `mediawall` | No | Options: `mediawall`, `shuffle`, `immich_kiosk`. Immich Kiosk is optional and configured per space; it isn't the default. |
+| `immich_kiosk.url` | Full URL handed to Immich Kiosk while this space is idle. | `""` | Required only when fallback is `immich_kiosk` | Prefer an environment reference such as `${HOMELAB_IMMICH_KIOSK_URL}` because Kiosk URLs may contain passwords. The URL must be reachable from both the MediaWall container and display browser. MediaWall's controls are hidden during the handoff. Playback restores normal Now Playing; after the final session and missing-session grace period, the handoff returns. An album or link chosen inside Kiosk remains selected across temporary handoffs, but not across a browser/PWA refresh; a container restart loses it only if the display reloads. Put the desired album in this URL to make it persistent. The target and any reverse proxy must permit iframe embedding. Missing, invalid, unreachable, timed-out, or frame-blocked URLs use the ordinary MediaWall idle screen. |
 | `ignored_libraries` | Jellyfin libraries ignored for Now Playing. | `["Feature Pre-Rolls"]` | No | Exact names, case-insensitive. Good for Cinema Mode intro/trailer/pre-roll libraries. |
 | `fallback_shuffle_interval_seconds` | Idle fallback shuffle interval. | `45` | No | Used only when fallback is `shuffle`. |
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
@@ -126,12 +128,16 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | `collections.global.image_size` | Global collection transition image size. | `260` | No | Pixels, constrained responsively. |
 | `collections.groups` | Ordered collection rule list. | `[]` | No | First matching group wins. Keep groups specific if more than one regex could match the same collection. |
 | `collections.groups.name` | Optional label for a collection rule group. | unset | No | For config readability only. |
-| `collections.groups.title_regexes` | Collection title regexes matched by this group. | `[]` | No | Case-insensitive JavaScript regex strings. |
+| `collections.groups.title_regexes` | Collection title regexes matched by this group. | `[]` | No | Case-insensitive JavaScript regex strings. A leading `(?i)` is accepted for compatibility and is otherwise redundant because matching is always case-insensitive. |
 | `collections.groups.title_regex` | Single collection title regex shorthand. | unset | No | Added to `title_regexes` during config loading. |
 | `collections.groups.users` | MediaWall users allowed to use this collection rule. | `["All"]` | No | Use `All` for every MediaWall user, or list user keys from the top-level `users` section. |
 | `collections.groups.sound` | Session-start tone for this collection group. | `toned.mp3` | No | Overrides the user's normal start tone when the played item is in a matching collection. |
 | `collections.groups.user_transition_image` | Image shown during the user transition for this collection group. | unset | No | Filename from `/app/collections`. |
 | `collections.groups.image_size` | Group collection transition image size. | `260` | No | Pixels, constrained responsively. |
+
+Collection matching is precomputed as part of the existing Jellyfin library scan and saved in the disk-backed SQLite index `/app/data/grid-cache/jellyfin-collection-index.sqlite`. MediaWall queries this indexed file directly for session lookups; it does not retain the full mapping in memory or query Jellyfin for collection membership when playback starts. The index is rebuilt from scratch only during an enabled startup scan or scheduled Jellyfin scan. Each successful build atomically replaces the prior index, so removed items, memberships, collections, and rules disappear on the next scan. If a rebuild fails, MediaWall keeps the last known-good index. Changes remain intentionally stale until the next configured scan.
+
+For one collection, the first eligible group in written config order wins. If an item belongs to several matching collections, the alphabetically first matching collection supplies the session-start sound. Every matching collection contributes its configured transition image, shown in alphabetical collection order at its configured size. Duplicate references to the same image and size are shown once.
 
 ### Space Sounds
 

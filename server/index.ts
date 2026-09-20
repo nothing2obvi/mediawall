@@ -3,10 +3,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig, findDisplay } from "./config.js";
+import { loadConfig, findDisplay, themeNames } from "./config.js";
 import { JellyfinClient, fallbackArtwork } from "./jellyfin.js";
 import { NavidromeClient } from "./navidrome.js";
 import { logger } from "./logger.js";
+import { JellyfinCollectionIndex } from "./collection-index.js";
 import { StateStore } from "./state.js";
 import type { ArtworkRef, BackdropAnimation, DisplayConfig, DisplaySnapshot, NowPlayingState, PublicConnectionIssue, PublicControlCommand, PublicLibraryScanProgress, PublicNowPlayingState, PublicSoundSession, PublicUiIndicator } from "./types.js";
 
@@ -15,6 +16,7 @@ const publicDir = path.resolve(__dirname, "../public");
 const appRoot = path.resolve(__dirname, "../..");
 const config = loadConfig();
 const jellyfin = new JellyfinClient(config);
+const collectionIndex = new JellyfinCollectionIndex(config, jellyfin);
 const navidrome = new NavidromeClient(config, jellyfin);
 const states = new StateStore();
 const app = express();
@@ -44,6 +46,7 @@ const libraryScanProgress = new Map<string, PublicLibraryScanProgress>();
 const libraryScanClearTimers = new Map<string, NodeJS.Timeout>();
 const connectionIssueCache = new Map<string, { checkedAt: number; issues: PublicConnectionIssue[] }>();
 const connectionIssueFailures = new Map<string, number>();
+const immichKioskStatusCache = new Map<string, { checkedAt: number; available: boolean; reason?: string }>();
 const controlCommands = new Map<string, PublicControlCommand>();
 const uiIndicators = new Map<string, PublicUiIndicator>();
 const lastLoggedPlaybackBySpace = new Map<string, string>();
@@ -55,6 +58,8 @@ type SpaceRuntime = {
   shownUserTransitions: Set<string>;
   selectedSessionKey?: string;
   sessionBackdropIndexes: Map<string, number>;
+  playbackPolls: number;
+  playbackDetectionStartedAt: number;
   userTransitionEvent?: { id: string; sessionKey: string; startedAt: number; expiresAt: number };
 };
 const spaceRuntimes = new Map<string, SpaceRuntime>();
@@ -178,7 +183,7 @@ app.get("/api/jellyfin/user-image/:userId/Primary", async (req, res) => {
     const result = await cachedImage(
       `jellyfin-user:${userId}:Primary:${query}`,
       () => jellyfin.proxyUserImage(userId, query),
-      { revalidateAfterMs: 60_000, cacheControl: "no-store", allowStaleOnError: false }
+      { cacheControl: "public, max-age=86400", allowStaleOnError: true, persistWhenScanDisabled: true }
     );
     if (!result.buffer) {
       res.sendStatus(result.status);
@@ -264,12 +269,46 @@ async function handleImageProxy(req: express.Request, res: express.Response) {
   }
 }
 
+app.get("/api/space/:space/bootstrap", (req, res) => {
+  const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
+  if (!resolved) return;
+  const { displayConfig } = resolved;
+  const state = states.get(req.params.space, undefined, displayConfig);
+  const runtime = spaceRuntime(req.params.space);
+  const now = Date.now();
+  res.json({
+    profile: "",
+    display: req.params.space,
+    config: publicDisplayConfig(displayConfig),
+    state,
+    mode: state.mode,
+    playbackDetectionPending: state.mode === "now-playing",
+    soundSessions: [],
+    connectionIssues: [],
+    activeMediaWallFallbackMode: state.activeMediaWallFallbackMode ?? firstMediaWallFallbackMode(displayConfig),
+    presentation: {
+      revision: runtime.revision,
+      serverNow: now,
+      startedAt: runtime.startedAt,
+      nextTransitionAt: runtime.nextTransitionAt,
+      backdropIndex: runtime.backdropIndex
+    }
+  } satisfies DisplaySnapshot);
+});
+
 app.get("/api/space/:space", async (req, res) => {
   const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
   if (!resolved) return;
   const { displayConfig } = resolved;
   const snapshot = await buildSnapshot(req.params.space, displayConfig);
   res.json(snapshot);
+});
+
+app.get("/api/space/:space/immich-kiosk/status", async (req, res) => {
+  const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
+  if (!resolved) return;
+  const parentOrigin = `${req.protocol}://${req.get("host") ?? ""}`;
+  res.json(await immichKioskStatus(resolved.displayConfig.now_playing.immich_kiosk.url, parentOrigin));
 });
 
 app.get("/api/space/:space/sounds", (req, res) => {
@@ -494,13 +533,23 @@ app.post("/api/space/:space/mode", async (req, res) => {
   const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
   if (!resolved) return;
   const state = states.get(req.params.space, undefined, resolved.displayConfig);
-  const mode = req.body.mode === "screensaver" ? "screensaver" : "now-playing";
+  const requestedMode = req.body.mode;
+  const mode = requestedMode === "screensaver"
+    ? "screensaver"
+    : requestedMode === "immich-kiosk" && parseHttpUrl(resolved.displayConfig.now_playing.immich_kiosk.url)
+      ? "immich-kiosk"
+      : "now-playing";
   const resetPatch: Partial<typeof state> = {
     mode,
     currentSequence: emptyArtworkSequence(),
     shuffleQueue: [],
     shuffleQueueIndex: 0
   };
+  if (mode === "now-playing" && state.mode !== "now-playing") {
+    const runtime = spaceRuntime(req.params.space);
+    runtime.playbackPolls = 0;
+    runtime.playbackDetectionStartedAt = Date.now();
+  }
 
   if (mode === "screensaver" && state.playing) {
     const selectionState = { ...state, ...resetPatch };
@@ -573,6 +622,21 @@ app.post("/api/space/:space/preferences", (req, res) => {
     showLogo: typeof req.body.showLogo === "boolean" ? req.body.showLogo : undefined
   };
   res.json({ state: states.update(req.params.space, undefined, resolved.displayConfig, patch) });
+});
+
+app.post("/api/space/:space/theme", (req, res) => {
+  const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
+  if (!resolved) return;
+  if (resolved.displayConfig.theme !== "All") {
+    res.status(409).json({ error: "This space uses a fixed theme." });
+    return;
+  }
+  const theme = String(req.body.theme ?? "");
+  if (!themeNames.includes(theme as (typeof themeNames)[number])) {
+    res.status(400).json({ error: "Unknown theme." });
+    return;
+  }
+  res.json({ state: states.update(req.params.space, undefined, resolved.displayConfig, { activeTheme: theme }) });
 });
 
 function normalizeMediaInfoPrefs(value: unknown): DisplaySnapshot["state"]["mediaInfo"] | undefined {
@@ -805,6 +869,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     })
     : undefined;
   let nowPlaying = playbackDetails?.selected;
+  const playbackDetectionPending = playbackDetails?.detectionPending === true;
   let activeMediaWallFallbackMode = state.activeMediaWallFallbackMode ?? firstMediaWallFallbackMode(displayConfig);
 
   if (!nowPlaying?.playing && state.mode === "now-playing" && displayConfig.now_playing.fallback === "mediawall" && state.current?.source !== "fallback") {
@@ -898,6 +963,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     state,
     mode,
     nowPlaying: nowPlaying ? publicNowPlaying(nowPlaying) : undefined,
+    playbackDetectionPending,
     soundSessions: playbackDetails?.soundSessions ?? [],
     libraryScan: libraryScanProgress.get(space),
     connectionIssues,
@@ -923,7 +989,9 @@ function spaceRuntime(space: string): SpaceRuntime {
     startedAt: Date.now(),
     backdropIndex: 0,
     shownUserTransitions: new Set(),
-    sessionBackdropIndexes: new Map()
+    sessionBackdropIndexes: new Map(),
+    playbackPolls: 0,
+    playbackDetectionStartedAt: Date.now()
   };
   spaceRuntimes.set(space, created);
   return created;
@@ -1117,6 +1185,65 @@ function noteConnectionSuccess(source: "jellyfin" | "navidrome") {
   connectionIssueFailures.delete(source);
 }
 
+async function immichKioskStatus(configuredUrl: string, parentOrigin: string) {
+  const target = parseHttpUrl(configuredUrl);
+  if (!target) return { available: false, reason: configuredUrl ? "invalid_url" : "missing_url" };
+  const cacheKey = `${parentOrigin}|${target.toString()}`;
+  const cached = immichKioskStatusCache.get(cacheKey);
+  if (cached && Date.now() - cached.checkedAt < 30_000) {
+    return { available: cached.available, reason: cached.reason };
+  }
+
+  let result: { checkedAt: number; available: boolean; reason?: string };
+  try {
+    const response = await fetch(target, {
+      method: "GET",
+      redirect: "follow",
+      signal: AbortSignal.timeout(6_000),
+      headers: { Accept: "text/html", "User-Agent": "MediaWall/0.3 Immich-Kiosk-Probe" }
+    });
+    void response.body?.cancel();
+    const finalUrl = parseHttpUrl(response.url) ?? target;
+    const frameReason = blockedFrameReason(response.headers, finalUrl.origin, parentOrigin);
+    result = {
+      checkedAt: Date.now(),
+      available: response.ok && !frameReason,
+      reason: !response.ok ? `http_${response.status}` : frameReason
+    };
+  } catch {
+    result = { checkedAt: Date.now(), available: false, reason: "unreachable" };
+  }
+  immichKioskStatusCache.set(cacheKey, result);
+  return { available: result.available, reason: result.reason };
+}
+
+function parseHttpUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function blockedFrameReason(headers: Headers, targetOrigin: string, parentOrigin: string) {
+  const xFrameOptions = headers.get("x-frame-options")?.toLowerCase();
+  if (xFrameOptions?.includes("deny")) return "frame_blocked";
+  if (xFrameOptions?.includes("sameorigin") && targetOrigin !== parentOrigin) return "frame_blocked";
+  const contentSecurityPolicy = headers.get("content-security-policy")?.toLowerCase();
+  const frameAncestors = contentSecurityPolicy
+    ?.split(";")
+    .map((directive) => directive.trim())
+    .find((directive) => directive.startsWith("frame-ancestors"));
+  if (!frameAncestors) return undefined;
+  const sources = frameAncestors.split(/\s+/).slice(1);
+  if (sources.includes("'none'")) return "frame_blocked";
+  if (sources.includes("*")) return undefined;
+  if (sources.includes("'self'") && targetOrigin === parentOrigin) return undefined;
+  if (sources.includes(parentOrigin.toLowerCase())) return undefined;
+  return "frame_blocked";
+}
+
 function publicNowPlaying(nowPlaying: NowPlayingState): PublicNowPlayingState {
   return {
     source: nowPlaying.source,
@@ -1137,6 +1264,7 @@ function publicNowPlaying(nowPlaying: NowPlayingState): PublicNowPlayingState {
     collectionName: nowPlaying.collectionName,
     collectionTransitionImageUrl: nowPlaying.collectionTransitionImageUrl,
     collectionTransitionImageSize: nowPlaying.collectionTransitionImageSize,
+    collectionTransitionImageUrls: nowPlaying.collectionTransitionImageUrls,
     albumArtUrl: nowPlaying.albumArtUrl,
     artwork: nowPlaying.artwork,
     publicSessionId: nowPlaying.publicSessionId,
@@ -1782,9 +1910,9 @@ function sendLocalArtistLogo(artistName: string | undefined, res: express.Respon
 async function cachedImage(
   cacheKey: string,
   fetcher: () => Promise<Response>,
-  options: { revalidateAfterMs?: number; cacheControl?: string; allowStaleOnError?: boolean } = {}
+  options: { revalidateAfterMs?: number; cacheControl?: string; allowStaleOnError?: boolean; persistWhenScanDisabled?: boolean } = {}
 ): Promise<CachedImageResult> {
-  const cached = await readCachedImage(cacheKey);
+  const cached = await readCachedImage(cacheKey, options.persistWhenScanDisabled);
   if (cached && !cacheNeedsRevalidation(cached, options.revalidateAfterMs)) {
     return options.cacheControl ? { ...cached, cacheControl: options.cacheControl } : cached;
   }
@@ -1811,7 +1939,7 @@ async function cachedImage(
     cacheControl: options.cacheControl ?? response.headers.get("cache-control") ?? "public, max-age=86400",
     createdAt: Date.now()
   };
-  await writeCachedImage(cacheKey, result);
+  await writeCachedImage(cacheKey, result, options.persistWhenScanDisabled);
   return result;
 }
 
@@ -1821,8 +1949,8 @@ function cacheNeedsRevalidation(cached: CachedImageResult, revalidateAfterMs: nu
   return Date.now() - cached.createdAt >= revalidateAfterMs;
 }
 
-async function readCachedImage(cacheKey: string): Promise<CachedImageResult | undefined> {
-  if (!config.library_scan.enabled) return undefined;
+async function readCachedImage(cacheKey: string, persistWhenScanDisabled = false): Promise<CachedImageResult | undefined> {
+  if (!config.library_scan.enabled && !persistWhenScanDisabled) return undefined;
   const paths = cachePaths(cacheKey);
   try {
     const meta = JSON.parse(await fs.promises.readFile(paths.meta, "utf8")) as Omit<CachedImageResult, "buffer"> & { createdAt: number };
@@ -1839,8 +1967,8 @@ async function readCachedImage(cacheKey: string): Promise<CachedImageResult | un
   }
 }
 
-async function writeCachedImage(cacheKey: string, result: CachedImageResult) {
-  if (!config.library_scan.enabled || !result.buffer || result.status < 200 || result.status >= 300) return;
+async function writeCachedImage(cacheKey: string, result: CachedImageResult, persistWhenScanDisabled = false) {
+  if ((!config.library_scan.enabled && !persistWhenScanDisabled) || !result.buffer || result.status < 200 || result.status >= 300) return;
   const paths = cachePaths(cacheKey);
   await fs.promises.mkdir(config.library_scan.directory, { recursive: true });
   await fs.promises.writeFile(paths.image, result.buffer);
@@ -1918,6 +2046,16 @@ async function runGridCacheScan(port: number, reason: string) {
   let scanned = 0;
   let warmed = 0;
   logger.info(`Library scan ${reason} starting`);
+
+  if (Object.values(config.spaces).some((space) =>
+    space.now_playing.collections.enabled
+    && (space.playback_source === "jellyfin" || space.playback_source === "both")
+  )) {
+    logger.info(`Library scan ${reason}: Jellyfin collection index starting`);
+    await collectionIndex.rebuild().catch((error) => {
+      logger.error(`Library scan ${reason}: Jellyfin collection index failed; preserving the last known-good index`, error);
+    });
+  }
 
   for (const [space, displayConfig] of Object.entries(config.spaces)) {
     for (const source of scanSources(displayConfig)) {
@@ -2131,12 +2269,17 @@ async function activePlayback(space: string, displayConfig: DisplayConfig, state
 }
 
 async function activePlaybackDetails(space: string, displayConfig: DisplayConfig, state: DisplaySnapshot["state"], manualDirection?: -1 | 1) {
-  const candidates = await activePlaybackCandidates(displayConfig);
+  const candidates = await activePlaybackCandidates(space, displayConfig);
   logger.debug(`Playback poll on /${space}: candidates=${candidates.length}`);
   const selected = updateRecentPlayback(space, candidates, displayConfig, state, manualDirection);
+  const runtime = spaceRuntime(space);
+  runtime.playbackPolls += 1;
   logPlaybackSelection(space, selected);
   return {
     selected,
+    detectionPending: !selected
+      && runtime.playbackPolls < 2
+      && Date.now() - runtime.playbackDetectionStartedAt < 15_000,
     soundSessions: publicSoundSessions(space, displayConfig)
   };
 }
@@ -2160,7 +2303,7 @@ function logPlaybackSelection(space: string, selected: NowPlayingState | undefin
   }
 }
 
-async function activePlaybackCandidates(displayConfig: DisplayConfig) {
+async function activePlaybackCandidates(space: string, displayConfig: DisplayConfig) {
   const candidates: NowPlayingState[] = [];
   for (const user of displayConfig.users) {
     if (displayConfig.playback_source === "jellyfin" || displayConfig.playback_source === "both") {
@@ -2170,7 +2313,7 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
           playback_user: user.jellyfin_user ?? user.name,
           users: [user]
         })).map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound));
-        candidates.push(...(await Promise.all(playbacks.map((playback) => applyCollectionPresentation(playback, displayConfig, user.name)))));
+        candidates.push(...playbacks.map((playback) => applyCollectionPresentation(playback, space, displayConfig, user.name)));
       } catch (error) {
         logger.warn("Jellyfin playback source poll failed", error);
       }
@@ -2190,29 +2333,21 @@ async function activePlaybackCandidates(displayConfig: DisplayConfig) {
   return dedupePlaybackCandidates(candidates);
 }
 
-async function applyCollectionPresentation(state: NowPlayingState, displayConfig: DisplayConfig, mediaWallUser: string): Promise<NowPlayingState> {
+function applyCollectionPresentation(state: NowPlayingState, space: string, displayConfig: DisplayConfig, mediaWallUser: string): NowPlayingState {
   if (state.source !== "jellyfin" || !displayConfig.now_playing.collections.enabled) return state;
-  const match = await jellyfin.collectionMatchForItem([
-    state.itemId,
-    state.artwork?.itemId,
-    state.artistId
-  ], displayConfig, mediaWallUser).catch((error) => {
-    logger.warn(`Jellyfin collection match failed for "${state.title ?? state.artwork?.title ?? "unknown"}"`, error);
-    return undefined;
-  });
+  const itemIds = [state.itemId, state.artwork?.itemId, state.artistId].filter((value): value is string => Boolean(value));
+  const match = collectionIndex.lookup(space, mediaWallUser, itemIds);
   if (!match) return state;
-  const imageFile = match.user_transition_image && resolveCollectionImagePath(match.user_transition_image)
-    ? match.user_transition_image
-    : undefined;
-  if (match.user_transition_image && !imageFile) {
-    logger.warn(`Collection transition image "${match.user_transition_image}" was not found in /app/collections`);
-  }
-  logger.debug(`Collection match for "${state.title ?? state.artwork?.title ?? "unknown"}": ${match.collectionName}`);
+  const images = match.images.filter((image) => {
+    const found = Boolean(resolveCollectionImagePath(image.file));
+    if (!found) logger.warn(`Collection transition image "${image.file}" was not found in /app/collections`);
+    return found;
+  });
+  logger.debug(`Collection index match for "${state.title ?? state.artwork?.title ?? "unknown"}": ${match.collectionNames.join(", ")}`);
   return {
     ...state,
     collectionName: match.collectionName,
-    collectionTransitionImage: imageFile,
-    collectionTransitionImageSize: match.image_size,
+    collectionTransitionImages: images,
     soundTone: match.sound || state.soundTone
   };
 }
@@ -2439,6 +2574,11 @@ function withPlaybackPosition(
     collectionTransitionImageUrl: state.collectionTransitionImage
       ? collectionImageUrl(space, state.collectionTransitionImage)
       : undefined,
+    collectionTransitionImageUrls: state.collectionTransitionImages?.map((image) => ({
+      collectionName: image.collectionName,
+      url: collectionImageUrl(space, image.file),
+      size: image.size
+    })),
     sessionPosition: sessionPosition > 0 ? sessionPosition : undefined,
     sessionCount: sessionCount || undefined
   };
@@ -2637,5 +2777,40 @@ function sameWallpaperItem(left: ArtworkRef, right: ArtworkRef) {
 const port = Number(process.env.PORT ?? config.server.port ?? 1221);
 app.listen(port, "0.0.0.0", () => {
   logger.info(`MediaWall listening on http://0.0.0.0:${port} logLevel=${logger.level}`);
-  startGridCacheScans(port);
+  void warmStartupMetadata().finally(() => startGridCacheScans(port));
 });
+
+async function warmStartupMetadata() {
+  if (!jellyfin.configured()) return;
+  try {
+    const users = await jellyfin.loadUsers();
+    const sizes = new Set<number>();
+    for (const space of Object.values(config.spaces)) {
+      const resize = space.display.nowplaying_text.user_avatar_resize;
+      if (resize.enabled) sizes.add(Math.max(16, Math.round(resize.size)));
+    }
+    if (!sizes.size) sizes.add(96);
+    let warmed = 0;
+    for (const user of users) {
+      if (!user.primaryImageTag) continue;
+      for (const size of sizes) {
+        const params = new URLSearchParams({
+          tag: user.primaryImageTag,
+          maxWidth: String(size),
+          maxHeight: String(size),
+          quality: "90"
+        });
+        const query = `?${params}`;
+        const result = await cachedImage(
+          `jellyfin-user:${user.id}:Primary:${query}`,
+          () => jellyfin.proxyUserImage(user.id, query),
+          { revalidateAfterMs: 0, cacheControl: "public, max-age=86400", allowStaleOnError: true, persistWhenScanDisabled: true }
+        );
+        if (result.buffer) warmed += 1;
+      }
+    }
+    logger.info(`Jellyfin avatar startup cache complete: users=${users.length} images=${warmed}`);
+  } catch (error) {
+    logger.warn("Jellyfin avatar startup cache failed", error);
+  }
+}

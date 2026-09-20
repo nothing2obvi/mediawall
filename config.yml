@@ -41,6 +41,7 @@ users:
 spaces:
   livingroom:
     playback_source: both
+    theme: All
     users:
       - All
     password: "${LIVINGROOM_PASSWORD}"
@@ -51,6 +52,8 @@ spaces:
     idle_timeout: 30
     now_playing:
       fallback: mediawall
+      immich_kiosk:
+        url: ""
       ignored_libraries:
         - "Feature Pre-Rolls"
       fallback_shuffle_interval_seconds: 45
@@ -179,6 +182,7 @@ spaces:
 
   office:
     playback_source: both
+    theme: All
     users:
       - All
     password: ""
@@ -188,6 +192,8 @@ spaces:
     idle_timeout: 30
     now_playing:
       fallback: mediawall
+      immich_kiosk:
+        url: ""
       ignored_libraries:
         - "Feature Pre-Rolls"
       fallback_shuffle_interval_seconds: 45
@@ -316,6 +322,7 @@ spaces:
 
   homelab:
     playback_source: both
+    theme: All
     users:
       - All
     password: "${HOMELAB_PASSWORD}"
@@ -326,6 +333,8 @@ spaces:
     idle_timeout: 30
     now_playing:
       fallback: mediawall
+      immich_kiosk:
+        url: ""
       ignored_libraries:
         - "Feature Pre-Rolls"
       fallback_shuffle_interval_seconds: 45

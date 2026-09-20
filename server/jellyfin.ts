@@ -1,5 +1,7 @@
 import type { AppConfig, ArtworkRef, DisplayConfig, NowPlayingState } from "./types.js";
 import { logger } from "./logger.js";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 type JellyfinItem = Record<string, any>;
 
@@ -8,7 +10,8 @@ export class JellyfinClient {
   private userIds = new Map<string, string>();
   private libraryNames = new Map<string, string>();
   private missingMusicBackdropWarnings = new Set<string>();
-  private collectionCache?: { checkedAt: number; collections: Array<{ id: string; name: string; itemIds: Set<string> }> };
+  private collectionLoad?: Promise<Array<{ id: string; name: string; itemIds: Set<string> }>>;
+  private usersCache?: JellyfinItem[];
 
   constructor(private config: AppConfig) {}
 
@@ -34,6 +37,30 @@ export class JellyfinClient {
     const response = await this.fetchWithFallback("/System/Info");
     if (!response.ok) throw new Error(`Jellyfin ${response.status}`);
     return true;
+  }
+
+  async loadUsers() {
+    if (!this.configured()) return [];
+    let users: JellyfinItem[];
+    try {
+      users = await this.getJson<JellyfinItem[]>("/Users");
+      await this.writeMetadataCache("jellyfin-users.json", users);
+    } catch (error) {
+      const persisted = await this.readMetadataCache<JellyfinItem[]>("jellyfin-users.json");
+      if (!persisted) throw error;
+      users = persisted;
+      logger.warn("Jellyfin user directory refresh failed; using the persisted startup cache", error);
+    }
+    this.usersCache = users;
+    this.userIds.clear();
+    for (const user of users) {
+      if (user.Id && user.Name) this.userIds.set(String(user.Name).toLowerCase(), String(user.Id));
+    }
+    return users.map((user) => ({
+      id: String(user.Id ?? ""),
+      name: String(user.Name ?? ""),
+      primaryImageTag: typeof user.PrimaryImageTag === "string" ? user.PrimaryImageTag : undefined
+    })).filter((user) => user.id && user.name);
   }
 
   imageUrl(itemId: string, type: "Backdrop" | "Logo" | "Primary", index = 0, tag?: string) {
@@ -272,59 +299,28 @@ export class JellyfinClient {
     return artist ? this.artworkFromItem(artist, artist.Name ?? name ?? "Artist", "MusicArtist") : undefined;
   }
 
-  async collectionMatchForItem(itemIds: Array<string | undefined>, displayConfig: DisplayConfig, mediaWallUser?: string) {
-    const config = displayConfig.now_playing.collections;
-    if (!config.enabled) return undefined;
-    const normalizedIds = itemIds.filter((id): id is string => Boolean(id));
-    if (!normalizedIds.length) return undefined;
-    const collections = await this.collectionsWithItems();
-    const matches = collections.filter((collection) => normalizedIds.some((id) => collection.itemIds.has(id)));
-    if (!matches.length) return undefined;
-    if (config.global.enabled) {
-      return {
-        collectionName: matches[0]?.name,
-        sound: config.global.sound,
-        user_transition_image: config.global.user_transition_image,
-        image_size: config.global.image_size
-      };
-    }
-    for (const group of config.groups) {
-      if (!collectionGroupAllowsUser(group.users, mediaWallUser)) continue;
-      const matchedCollection = matches.find((collection) =>
-        group.title_regexes.some((pattern) => regexMatches(pattern, collection.name))
-      );
-      if (!matchedCollection) continue;
-      return {
-        collectionName: matchedCollection.name,
-        sound: group.sound,
-        user_transition_image: group.user_transition_image,
-        image_size: group.image_size
-      };
-    }
-    return undefined;
-  }
-
-  private async collectionsWithItems() {
-    const cached = this.collectionCache;
-    if (cached && Date.now() - cached.checkedAt < 60_000) return cached.collections;
-    const params = new URLSearchParams({
-      IncludeItemTypes: "BoxSet",
-      Recursive: "true",
-      SortBy: "SortName",
-      Fields: "BasicSyncInfo,ChildCount"
-    });
-    const collections = await this.pagedItems("/Items", params, 200);
-    const withItems: Array<{ id: string; name: string; itemIds: Set<string> }> = [];
-    for (const collection of collections) {
-      if (!collection.Id) continue;
-      const itemIds = await this.collectionItemIds(String(collection.Id)).catch((error) => {
-        logger.warn(`Jellyfin collection lookup failed for "${collection.Name ?? collection.Id}"`, error);
-        return new Set<string>();
+  async collectionMemberships(include: (name: string) => boolean) {
+    if (this.collectionLoad) return this.collectionLoad;
+    this.collectionLoad = (async () => {
+      const params = new URLSearchParams({
+        IncludeItemTypes: "BoxSet",
+        Recursive: "true",
+        SortBy: "SortName",
+        Fields: "BasicSyncInfo,ChildCount"
       });
-      withItems.push({ id: String(collection.Id), name: String(collection.Name ?? "Collection"), itemIds });
+      const collections = await this.pagedItems("/Items", params, 200);
+      const relevant = collections.filter((collection) => collection.Id && include(String(collection.Name ?? "Collection")));
+      const withItems = await Promise.all(relevant.map(async (collection) => {
+        const itemIds = await this.collectionItemIds(String(collection.Id));
+        return { id: String(collection.Id), name: String(collection.Name ?? "Collection"), itemIds };
+      }));
+      return withItems;
+    })();
+    try {
+      return await this.collectionLoad;
+    } finally {
+      this.collectionLoad = undefined;
     }
-    this.collectionCache = { checkedAt: Date.now(), collections: withItems };
-    return withItems;
   }
 
   private async collectionItemIds(collectionId: string) {
@@ -601,7 +597,7 @@ export class JellyfinClient {
     const cached = this.userIds.get(normalized);
     if (cached) return cached;
 
-    const users = await this.getJson<JellyfinItem[]>("/Users");
+    const users = this.usersCache ?? await this.getJson<JellyfinItem[]>("/Users");
     const user = users.find((entry) => String(entry.Name ?? "").toLowerCase() === normalized);
     if (!user?.Id) throw new Error(`Jellyfin user not found: ${name}`);
     this.userIds.set(normalized, user.Id);
@@ -800,8 +796,21 @@ export class JellyfinClient {
   }
 
   private async userFor(name: string) {
-    const users = await this.getJson<JellyfinItem[]>("/Users");
+    const users = this.usersCache ?? await this.getJson<JellyfinItem[]>("/Users");
     return users.find((entry) => String(entry.Name ?? "").toLowerCase() === name.toLowerCase());
+  }
+
+  private async readMetadataCache<T>(fileName: string): Promise<T | undefined> {
+    try {
+      return JSON.parse(await fs.readFile(path.join(this.config.library_scan.directory, fileName), "utf8")) as T;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async writeMetadataCache(fileName: string, value: unknown) {
+    await fs.mkdir(this.config.library_scan.directory, { recursive: true });
+    await fs.writeFile(path.join(this.config.library_scan.directory, fileName), JSON.stringify(value));
   }
 
   private async fetchWithFallback(path: string): Promise<Response> {
@@ -883,24 +892,6 @@ function isAllUsers(name: string) {
 
 function normalizedNameSet(names: string[]) {
   return new Set(names.map((name) => name.trim().toLowerCase()).filter(Boolean));
-}
-
-function collectionGroupAllowsUser(users: string[], mediaWallUser?: string) {
-  if (!users.length) return true;
-  const current = String(mediaWallUser ?? "").trim().toLowerCase();
-  return users.some((user) => {
-    const normalized = user.trim().toLowerCase();
-    return normalized === "all" || normalized === current;
-  });
-}
-
-function regexMatches(pattern: string, value: string) {
-  try {
-    return new RegExp(pattern, "i").test(value);
-  } catch {
-    logger.warn(`Ignoring invalid collection title regex: ${pattern}`);
-    return false;
-  }
 }
 
 function moviePartSearchTitles(name: string) {

@@ -335,11 +335,22 @@ body.idle {
 }
 
 .user-transition-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(86vw, 1100px);
+  max-height: 90vh;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+}
+
+.user-transition-card-content {
   display: grid;
   gap: 16px;
   place-items: center;
   justify-items: center;
-  width: min(86vw, 1100px);
+  width: 100%;
+  box-sizing: border-box;
   text-align: center;
   color: rgba(255, 255, 255, 0.94);
   text-shadow: 0 12px 34px rgba(0, 0, 0, 0.7);
@@ -385,6 +396,16 @@ body.idle {
   filter: drop-shadow(0 18px 44px rgba(0, 0, 0, 0.45));
 }
 
+.user-transition-collection-images {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: min(28px, 2.5vw);
+  width: min(92vw, 1500px);
+  max-height: 30vh;
+}
+
 @keyframes user-transition-backdrop {
   0%,
   62% {
@@ -428,7 +449,7 @@ body.idle {
 
   100% {
     opacity: 0;
-    transform: translate(calc(32vw - 50%), calc(-36vh + 50%)) scale(0.18);
+    transform: translate(32vw, -36vh) scale(0.18);
   }
 }
 
@@ -1612,6 +1633,256 @@ body.idle {
 .empty,
 .error {
   color: rgba(255, 255, 255, 0.78);
+}
+
+.immich-kiosk-handoff,
+.immich-kiosk-safe-idle {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 0;
+  background: #050508;
+}
+
+.immich-kiosk-handoff {
+  z-index: 10000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 900ms ease;
+}
+
+.immich-kiosk-handoff.active {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 900ms ease;
+}
+
+.immich-active .identity,
+.immich-active .session-status,
+.immich-active .now-playing-badge,
+.immich-active .connection-warnings,
+.immich-active .sound-unlock,
+.immich-active .toast,
+.immich-active .scan-progress,
+.immich-active .action-indicator,
+.immich-active .sound-toggle-indicator,
+.immich-active .mediawall-command-label {
+  display: none;
+}
+
+.immich-active .controls {
+  top: auto;
+  bottom: max(calc(16px * var(--ui-scale, 1)), env(safe-area-inset-bottom));
+  z-index: 10003;
+}
+
+.immich-active .panel,
+.immich-active .modal,
+.immich-active .dismiss-layer {
+  z-index: 10004;
+}
+
+.immich-control-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 10002;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.immich-kiosk-handoff iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  opacity: 0;
+  background: #050508;
+  transition: opacity 220ms ease;
+}
+
+.immich-kiosk-handoff iframe.loaded {
+  opacity: 1;
+}
+
+.immich-kiosk-loading {
+  position: absolute;
+  inset: 0;
+  background: #050508;
+}
+
+.mediawall-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  box-sizing: border-box;
+  padding: 32px;
+  color: #fff;
+  background: #3f423e;
+}
+
+.mediawall-loading img {
+  width: min(72vw, 760px);
+  height: auto;
+}
+
+.mediawall-loading-copy {
+  font-size: clamp(18px, 2.2vw, 30px);
+  font-weight: 600;
+}
+
+.mediawall-loading-dots span {
+  opacity: 0.2;
+  animation: mediawall-loading-dot 1.2s infinite;
+}
+
+.mediawall-loading-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.mediawall-loading-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes mediawall-loading-dot {
+  0%, 20% { opacity: 0.2; }
+  45%, 70% { opacity: 1; }
+  100% { opacity: 0.2; }
+}
+
+
+.wall,
+.remote-shell {
+  color: var(--theme-text, #f7f8fb);
+}
+
+.controls,
+.panel,
+.modal,
+.toast,
+.connection-warning,
+.sound-unlock {
+  color: var(--theme-text, #f7f8fb);
+  border-color: var(--theme-border, rgba(255, 255, 255, 0.16));
+  background: var(--theme-surface, rgba(10, 12, 16, 0.82));
+}
+
+.controls button,
+.panel button,
+.modal button,
+.remote-button-grid button,
+.remote-space-row a,
+.remote-space-row span {
+  color: var(--theme-text, #f7f8fb);
+  border-color: var(--theme-border, rgba(255, 255, 255, 0.16));
+}
+
+.controls button.active,
+.remote-button-grid button.active,
+.theme-list button.active {
+  color: var(--theme-accent-text, #061112);
+  background: var(--theme-accent, #7de3d4);
+}
+
+.control-version,
+.remote-version,
+.remote-header,
+.remote-status span,
+.section-label,
+.now-playing-user,
+.music-album {
+  color: var(--theme-secondary, rgba(255, 255, 255, 0.72));
+}
+
+.divider {
+  background: var(--theme-border, rgba(255, 255, 255, 0.16));
+}
+
+.now-playing-badge,
+.identity,
+.session-status,
+.screensaver-label {
+  color: var(--theme-text, #f7f8fb);
+  text-shadow: 0 3px 2px rgba(0, 0, 0, 0.82), 0 4px 16px rgba(0, 0, 0, 0.92);
+}
+
+.now-playing-user img,
+.user-transition-person img {
+  outline: 2px solid var(--theme-accent, #7de3d4);
+  outline-offset: 2px;
+}
+
+.user-transition-person,
+.user-transition-verb {
+  color: var(--theme-text, #f7f8fb);
+  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.88);
+}
+
+.remote-shell {
+  background: var(--theme-accent-text, #080a0e);
+}
+
+.remote-status {
+  color: var(--theme-text, #f7f8fb);
+  border-color: var(--theme-border, rgba(255, 255, 255, 0.12));
+  background: var(--theme-surface, rgba(10, 12, 16, 0.82));
+}
+
+.remote-status strong,
+.remote-space-row strong {
+  color: var(--theme-text, #f7f8fb);
+}
+
+.theme-dialog {
+  width: min(calc(620px * var(--ui-scale, 1)), calc(100vw - 32px));
+}
+
+.theme-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: min(52vh, 480px);
+  overflow: auto;
+}
+
+.theme-list button {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--theme-border, rgba(255, 255, 255, 0.14));
+  border-radius: 7px;
+  color: var(--theme-text, #f7f8fb);
+  background: rgba(127, 127, 127, 0.12);
+  text-align: left;
+}
+
+.theme-swatch {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.44);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.32);
+}
+
+@media (max-width: 520px) {
+  .theme-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.immich-mode-controls svg {
+  width: calc(23px * var(--ui-scale, 1));
+  height: calc(23px * var(--ui-scale, 1));
 }
 
 .error {

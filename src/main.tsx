@@ -14,10 +14,12 @@ import {
   ListFilter,
   Maximize,
   Pause,
+  Palette,
   Play,
   Radio,
   Sparkles,
   Shuffle,
+  UsersRound,
   Volume2,
   VolumeX
 } from "lucide-react";
@@ -61,7 +63,8 @@ type ArtworkRef = {
 };
 
 type DisplayState = {
-  mode: "now-playing" | "screensaver";
+  mode: "now-playing" | "screensaver" | "immich-kiosk";
+  activeTheme: string;
   current?: ArtworkRef;
   currentSequence?: { libraryId: string; items: ArtworkRef[]; index: number };
   libraryIndexes: Record<string, number>;
@@ -95,8 +98,9 @@ const backdropAnimations: BackdropAnimation[] = ["breathe", "pan", "kenburns", "
 type Snapshot = {
   profile: string;
   display: string;
-  mode: "now-playing" | "screensaver";
+  mode: DisplayState["mode"];
   state: DisplayState;
+  playbackDetectionPending?: boolean;
   libraryScan?: {
     active: boolean;
     completed: boolean;
@@ -173,6 +177,7 @@ type Snapshot = {
     collectionName?: string;
     collectionTransitionImageUrl?: string;
     collectionTransitionImageSize?: number;
+    collectionTransitionImageUrls?: Array<{ collectionName: string; url: string; size: number }>;
     albumArtUrl?: string;
     artwork?: ArtworkRef;
     signature?: string;
@@ -194,8 +199,9 @@ type Snapshot = {
     endSoundTone?: string;
   }>;
   config: {
+    theme: string;
     now_playing: {
-      fallback: "mediawall" | "shuffle";
+      fallback: "mediawall" | "shuffle" | "immich_kiosk";
       fallback_shuffle_interval_seconds: number;
       cycle_users: boolean;
       cycle_interval_seconds: number;
@@ -247,6 +253,9 @@ type Snapshot = {
           user_transition_image: string;
           image_size: number;
         }>;
+      };
+      immich_kiosk: {
+        url: string;
       };
       sounds: {
         enabled: boolean;
@@ -371,6 +380,44 @@ const passwordParam = rememberedPasswordParam(route.space);
 const favoritesShuffleLibrary: Library = { id: "__favorites__", name: "Favorites", type: "favorites" };
 const browserScrollPositions = new Map<string, number>();
 
+const themePalette = {
+  default: ["#f7f8fb", "#bdc4cf", "#7de3d4", "rgba(255,255,255,.16)", "rgba(10,12,16,.82)", "#061112"],
+  Dracula: ["#f8f8f2", "#b8b8c7", "#ff79c6", "rgba(255,121,198,.42)", "rgba(40,42,54,.9)", "#282a36"],
+  Nord: ["#eceff4", "#d8dee9", "#88c0d0", "rgba(136,192,208,.42)", "rgba(46,52,64,.9)", "#2e3440"],
+  "Catppuccin Latte": ["#4c4f69", "#6c6f85", "#8839ef", "rgba(136,57,239,.34)", "rgba(239,241,245,.92)", "#eff1f5"],
+  "Catppuccin Mocha": ["#cdd6f4", "#bac2de", "#cba6f7", "rgba(203,166,247,.4)", "rgba(30,30,46,.92)", "#1e1e2e"],
+  "Gruvbox Dark": ["#ebdbb2", "#bdae93", "#fabd2f", "rgba(250,189,47,.4)", "rgba(40,40,40,.92)", "#282828"],
+  "Gruvbox Light": ["#3c3836", "#665c54", "#b57614", "rgba(181,118,20,.36)", "rgba(251,241,199,.92)", "#fbf1c7"],
+  "Solarized Dark": ["#eee8d5", "#93a1a1", "#2aa198", "rgba(42,161,152,.4)", "rgba(0,43,54,.92)", "#002b36"],
+  "Solarized Light": ["#073642", "#586e75", "#268bd2", "rgba(38,139,210,.34)", "rgba(253,246,227,.92)", "#fdf6e3"],
+  "Tokyo Night": ["#c0caf5", "#a9b1d6", "#7aa2f7", "rgba(122,162,247,.42)", "rgba(26,27,38,.92)", "#1a1b26"],
+  "One Dark": ["#abb2bf", "#9da5b4", "#61afef", "rgba(97,175,239,.4)", "rgba(40,44,52,.92)", "#282c34"],
+  Monokai: ["#f8f8f2", "#cfcfc2", "#a6e22e", "rgba(166,226,46,.4)", "rgba(39,40,34,.92)", "#272822"],
+  "Rose Pine": ["#e0def4", "#908caa", "#ebbcba", "rgba(235,188,186,.42)", "rgba(25,23,36,.92)", "#191724"],
+  Everforest: ["#d3c6aa", "#9da9a0", "#a7c080", "rgba(167,192,128,.4)", "rgba(45,53,59,.92)", "#2d353b"],
+  Kanagawa: ["#dcd7ba", "#c8c093", "#7e9cd8", "rgba(126,156,216,.42)", "rgba(31,31,40,.92)", "#1f1f28"],
+  "Synthwave 84": ["#f8f8f2", "#b6a8d9", "#ff7edb", "rgba(255,126,219,.48)", "rgba(38,20,71,.92)", "#261447"],
+  "Material Palenight": ["#a6accd", "#959dcb", "#c792ea", "rgba(199,146,234,.42)", "rgba(41,45,62,.92)", "#292d3e"],
+  "Night Owl": ["#d6deeb", "#7fdbca", "#82aaff", "rgba(130,170,255,.42)", "rgba(1,22,39,.92)", "#011627"],
+  "Ayu Mirage": ["#cccac2", "#b8a88a", "#ffcc66", "rgba(255,204,102,.42)", "rgba(31,36,48,.92)", "#1f2430"],
+  "GitHub Light": ["#24292f", "#57606a", "#0969da", "rgba(9,105,218,.32)", "rgba(255,255,255,.94)", "#ffffff"],
+  "Tomorrow Night": ["#c5c8c6", "#969896", "#81a2be", "rgba(129,162,190,.42)", "rgba(29,31,33,.92)", "#1d1f21"]
+} as const;
+
+const themeNames = Object.keys(themePalette);
+
+function themeVariables(name?: string) {
+  const palette = themePalette[name as keyof typeof themePalette] ?? themePalette.default;
+  return {
+    "--theme-text": palette[0],
+    "--theme-secondary": palette[1],
+    "--theme-accent": palette[2],
+    "--theme-border": palette[3],
+    "--theme-surface": palette[4],
+    "--theme-accent-text": palette[5]
+  } as React.CSSProperties;
+}
+
 function spaceApi(path = "") {
   const query = passwordParam ? `?password=${encodeURIComponent(passwordParam)}` : "";
   return `/api/space/${route.space}${path}${query}`;
@@ -409,6 +456,8 @@ function App() {
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [shuffleOpen, setShuffleOpen] = useState(false);
   const [mediaInfoOpen, setMediaInfoOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const [themePreview, setThemePreview] = useState<string>();
   const [favoritePicker, setFavoritePicker] = useState<{ itemKey: string; backdrops: ArtworkRef[] }>();
   const [backdropStep, setBackdropStep] = useState(0);
   const [nowPlayingBackdropStep, setNowPlayingBackdropStep] = useState(0);
@@ -420,6 +469,7 @@ function App() {
   const [soundMuted, setSoundMuted] = useState(() => rememberedSoundMuted(route.space));
   const [soundIndicator, setSoundIndicator] = useState<"on" | "muted">();
   const [actionIndicator, setActionIndicator] = useState<ActionIndicatorKind>();
+  const [initialLoadingExpired, setInitialLoadingExpired] = useState(false);
   const [availableSpaces, setAvailableSpaces] = useState<string[]>([]);
   const [userTransition, setUserTransition] = useState<{
     id: string;
@@ -435,6 +485,7 @@ function App() {
     sourceIconSize: number;
     collectionImageUrl?: string;
     collectionImageSize?: number;
+    collectionImages?: Array<{ collectionName: string; url: string; size: number }>;
   }>();
   const [viewportSize, setViewportSize] = useState(() => ({
     width: window.innerWidth,
@@ -475,13 +526,24 @@ function App() {
   const activeAnimationRun = useRef<{ key: string; startedAt: number; offset: number; period: number } | undefined>(undefined);
 
   const displayedArtwork = snapshot?.state.mode === "now-playing"
-    ? (snapshot.nowPlaying?.playing ? snapshot.nowPlaying?.artwork : undefined) ?? snapshot.state.current
+    ? snapshot.nowPlaying?.playing
+      ? snapshot.nowPlaying.artwork
+      : snapshot.config.now_playing.fallback === "shuffle" ? snapshot.state.current : undefined
     : snapshot?.state.current;
   const previewArtwork = snapshot?.controlCommand?.type === "animation" ? snapshot.controlCommand.artwork : undefined;
   const showMediaWallPreview = snapshot?.controlCommand?.type === "mediawall";
+  const playbackDetectionPending = snapshot?.playbackDetectionPending === true && !initialLoadingExpired;
   const showMediaWallIdle = showMediaWallPreview || (snapshot?.state.mode === "now-playing"
     && snapshot.config.now_playing.fallback === "mediawall"
+    && !playbackDetectionPending
     && !snapshot.nowPlaying?.playing);
+  const showImmichKioskIdle = !showMediaWallPreview
+    && snapshot?.state.mode === "now-playing"
+    && snapshot.config.now_playing.fallback === "immich_kiosk"
+    && !playbackDetectionPending
+    && !snapshot.nowPlaying?.playing;
+  const showImmichKioskMode = snapshot?.state.mode === "immich-kiosk";
+  const immichKioskActive = Boolean(showImmichKioskIdle || showImmichKioskMode);
   const activeAnimation = activeBackdropAnimation(snapshot);
   const viewportAspect = viewportSize.width / Math.max(viewportSize.height, 1);
   const viewportClass = viewportAspect < 1.45 ? "viewport-squareish" : viewportAspect < 1.75 ? "viewport-balanced" : "viewport-wide";
@@ -512,6 +574,8 @@ function App() {
   );
   const [flash, setFlash] = useState<string>();
   const [animationOffsetSeconds, setAnimationOffsetSeconds] = useState(0);
+  const [immichExitPending, setImmichExitPending] = useState(false);
+  const immichExitTimer = useRef<number | undefined>(undefined);
   const nowPlayingAnimationKey = snapshot?.state.mode === "now-playing"
     && snapshot.nowPlaying?.playing
     && activeAnimation
@@ -574,6 +638,14 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setInitialLoadingExpired(true), 15_000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    void api<Snapshot>(spaceApi("/bootstrap"))
+      .then((bootstrap) => setSnapshot((current) => current ?? bootstrap))
+      .catch(() => undefined);
     void refresh();
     const timer = window.setInterval(refresh, 3500);
     const events = new EventSource(spaceApi("/events"));
@@ -598,8 +670,17 @@ function App() {
       window.clearTimeout(soundIndicatorTimer.current);
       window.clearTimeout(actionIndicatorTimer.current);
       window.clearTimeout(userTransitionTimer.current);
+      window.clearTimeout(immichExitTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!immichExitPending || snapshot?.state.mode !== "now-playing") return;
+    if (cycledArtwork?.backdropUrl) return;
+    window.clearTimeout(immichExitTimer.current);
+    immichExitTimer.current = window.setTimeout(() => setImmichExitPending(false), 250);
+    return () => window.clearTimeout(immichExitTimer.current);
+  }, [cycledArtwork?.backdropUrl, immichExitPending, snapshot?.state.mode]);
 
   useEffect(() => {
     if (!snapshot?.libraryScan) return;
@@ -1060,12 +1141,18 @@ function App() {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!snapshot || shouldIgnoreShortcut(event)) return;
+      if (event.key === "Escape" && themeOpen) {
+        event.preventDefault();
+        setThemePreview(undefined);
+        setThemeOpen(false);
+        return;
+      }
       if (event.key === "Escape" && isFullscreen()) {
         event.preventDefault();
         void exitFullscreen();
         return;
       }
-      if (shuffleOpen || mediaInfoOpen || favoritePicker) return;
+      if (shuffleOpen || mediaInfoOpen || themeOpen || favoritePicker) return;
 
       if (event.key.toLowerCase() === "f") {
         event.preventDefault();
@@ -1075,7 +1162,13 @@ function App() {
 
       if (event.key.toLowerCase() === "m") {
         event.preventDefault();
-        void setMode(snapshot.state.mode === "screensaver" ? "now-playing" : "screensaver");
+        void setMode(nextDisplayMode(snapshot.state.mode, Boolean(snapshot.config.now_playing.immich_kiosk.url)));
+        return;
+      }
+
+      if (event.key.toLowerCase() === "t" && snapshot.config.theme === "All") {
+        event.preventDefault();
+        void selectTheme(nextTheme(snapshot.state.activeTheme));
         return;
       }
 
@@ -1158,7 +1251,7 @@ function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [snapshot, cycledArtwork, panel, shuffleOpen, mediaInfoOpen, favoritePicker]);
+  }, [snapshot, cycledArtwork, panel, shuffleOpen, mediaInfoOpen, themeOpen, favoritePicker]);
 
   async function refresh() {
     try {
@@ -1181,10 +1274,14 @@ function App() {
     }, 4200);
   }
 
-  function closeOverlays(keep?: "browse" | "shuffle" | "mediaInfo" | "favoritePicker") {
+  function closeOverlays(keep?: "browse" | "shuffle" | "mediaInfo" | "theme" | "favoritePicker") {
     if (keep !== "browse") setPanel("none");
     if (keep !== "shuffle") setShuffleOpen(false);
     if (keep !== "mediaInfo") setMediaInfoOpen(false);
+    if (keep !== "theme") {
+      setThemeOpen(false);
+      setThemePreview(undefined);
+    }
     if (keep !== "favoritePicker") setFavoritePicker(undefined);
   }
 
@@ -1324,7 +1421,8 @@ function App() {
       messageFontSize: config.message_font_size ?? 42,
       sourceIconSize: config.source_icon_size ?? 240,
       collectionImageUrl: now.collectionTransitionImageUrl,
-      collectionImageSize: now.collectionTransitionImageSize
+      collectionImageSize: now.collectionTransitionImageSize,
+      collectionImages: now.collectionTransitionImageUrls
     });
     userTransitionTimer.current = window.setTimeout(() => setUserTransition(undefined), durationSeconds * 1000);
     return true;
@@ -1359,16 +1457,55 @@ function App() {
     return Boolean(document.fullscreenElement || fullscreenDocument.webkitFullscreenElement);
   }
 
-  async function setMode(mode: "now-playing" | "screensaver") {
+  async function setMode(mode: "now-playing" | "screensaver" | "immich-kiosk") {
     flashButton("mode");
-    const result = await api<{ state: DisplayState }>(spaceApi("/mode"), {
+    const leavingImmichForNowPlaying = snapshot?.state.mode === "immich-kiosk" && mode === "now-playing";
+    if (leavingImmichForNowPlaying) {
+      setImmichExitPending(true);
+      window.clearTimeout(immichExitTimer.current);
+      immichExitTimer.current = window.setTimeout(() => setImmichExitPending(false), 6500);
+    }
+    try {
+      const result = await api<{ state: DisplayState }>(spaceApi("/mode"), {
+        method: "POST",
+        body: JSON.stringify({ mode }),
+        headers: { "Content-Type": "application/json" }
+      });
+      closeOverlays();
+      if (mode !== "immich-kiosk") void emitActionIndicator(mode === "screensaver" ? "mode-screensaver" : "mode-now-playing");
+      setSnapshot((current) => current ? { ...current, state: result.state, mode: result.state.mode } : current);
+    } catch (error) {
+      setImmichExitPending(false);
+      throw error;
+    }
+  }
+
+  async function selectTheme(theme: string) {
+    if (!snapshot || snapshot.config.theme !== "All" || theme === snapshot.state.activeTheme) return;
+    const result = await api<{ state: DisplayState }>(spaceApi("/theme"), {
       method: "POST",
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ theme }),
       headers: { "Content-Type": "application/json" }
     });
-    closeOverlays();
-    void emitActionIndicator(mode === "screensaver" ? "mode-screensaver" : "mode-now-playing");
-    setSnapshot((current) => current ? { ...current, state: result.state, mode: result.state.mode } : current);
+    setSnapshot((current) => current ? { ...current, state: result.state } : current);
+    showToast(`Theme: ${theme}`);
+  }
+
+  function toggleThemeSelector() {
+    if (themeOpen) {
+      closeOverlays();
+      return;
+    }
+    closeOverlays("theme");
+    setThemePreview(snapshot?.state.activeTheme);
+    setThemeOpen(true);
+  }
+
+  async function saveThemePreview() {
+    if (!themePreview) return;
+    await selectTheme(themePreview);
+    setThemePreview(undefined);
+    setThemeOpen(false);
   }
 
   async function toggleShuffle() {
@@ -1559,11 +1696,16 @@ function App() {
 
   if (error) return <div className="error">{error}</div>;
 
+  if (!route.remote && (!snapshot || playbackDetectionPending)) {
+    return <MediaWallLoading />;
+  }
+
   if (route.remote) {
     return (
       <main
         className="remote-shell"
         style={{
+          ...themeVariables(themePreview ?? snapshot?.state.activeTheme),
           "--ui-scale": String(snapshot?.config.display.ui.scale ?? 1)
         } as React.CSSProperties}
         onPointerDown={revealControls}
@@ -1588,6 +1730,7 @@ function App() {
           onAlbumArt={() => snapshot && setPreference({ showAlbumArt: !snapshot.state.showAlbumArt })}
           onSound={toggleSoundMuted}
           onFullscreen={toggleFullscreen}
+          onThemes={toggleThemeSelector}
         />
         {snapshot && shuffleOpen && (
           <>
@@ -1609,6 +1752,17 @@ function App() {
               onCancel={() => setMediaInfoOpen(false)}
               onChange={(patch) => void setPreference(patch)}
               onSave={() => setMediaInfoOpen(false)}
+            />
+          </>
+        )}
+        {snapshot && themeOpen && snapshot.config.theme === "All" && (
+          <>
+            <button className="remote-dismiss" type="button" aria-label="Close theme selector" onClick={() => closeOverlays()} />
+            <ThemeDialog
+              active={themePreview ?? snapshot.state.activeTheme}
+              onSelect={setThemePreview}
+              onCancel={() => { setThemePreview(undefined); setThemeOpen(false); }}
+              onSave={() => void saveThemePreview()}
             />
           </>
         )}
@@ -1646,8 +1800,9 @@ function App() {
 
   return (
     <main
-      className={`wall ${viewportClass} transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""} ${scanWithAlbumArt ? "scan-with-album-art" : ""}`}
+      className={`wall ${viewportClass} transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""} ${scanWithAlbumArt ? "scan-with-album-art" : ""} ${immichKioskActive ? "immich-active" : ""}`}
       style={{
+        ...themeVariables(themePreview ?? snapshot?.state.activeTheme),
         "--transition-duration": `${snapshot?.config.display.transitions.duration_ms ?? 1200}ms`,
         "--viewport-width": `${viewportSize.width}px`,
         "--viewport-height": `${viewportSize.height}px`,
@@ -1664,7 +1819,11 @@ function App() {
       onPointerMove={revealControls}
       onPointerDown={handleWallPointerDown}
     >
-      {showMediaWallIdle && snapshot ? <MediaWallIdle snapshot={snapshot} /> : <Backdrop artwork={cycledArtwork} />}
+      {showMediaWallIdle && snapshot ? (
+        <MediaWallIdle snapshot={snapshot} />
+      ) : (
+        <Backdrop artwork={cycledArtwork} onReady={() => setImmichExitPending(false)} />
+      )}
       {userTransition && <UserTransitionIntro intro={userTransition} />}
       {!showMediaWallIdle && <div className="shade" />}
       {!showMediaWallIdle && <Identity snapshot={snapshot} artwork={cycledArtwork} />}
@@ -1685,7 +1844,7 @@ function App() {
       <ControlCommandLabel command={snapshot?.controlCommand} />
       <LibraryScanProgress snapshot={snapshot} />
       {toast && <div className={`toast ${toastVisible ? "visible" : ""}`}>{toast}</div>}
-      {visible && (panel !== "none" || shuffleOpen || mediaInfoOpen || favoritePicker) && (
+      {visible && (panel !== "none" || shuffleOpen || mediaInfoOpen || themeOpen || favoritePicker) && (
         <button
           className="dismiss-layer"
           type="button"
@@ -1716,6 +1875,8 @@ function App() {
           onFullscreen={toggleFullscreen}
           onSound={toggleSoundMuted}
           soundMuted={soundMuted}
+          onThemes={toggleThemeSelector}
+          themeOpen={themeOpen}
         />
       )}
       {visible && snapshot && shuffleOpen && (
@@ -1735,6 +1896,14 @@ function App() {
           onSave={() => {
             setMediaInfoOpen(false);
           }}
+        />
+      )}
+      {visible && snapshot && themeOpen && snapshot.config.theme === "All" && (
+        <ThemeDialog
+          active={themePreview ?? snapshot.state.activeTheme}
+          onSelect={setThemePreview}
+          onCancel={() => { setThemePreview(undefined); setThemeOpen(false); }}
+          onSave={() => void saveThemePreview()}
         />
       )}
       {visible && snapshot && favoritePicker && (
@@ -1758,22 +1927,197 @@ function App() {
           onClose={() => closeOverlays()}
         />
       )}
+      {snapshot?.config.now_playing.immich_kiosk.url && (
+        <ImmichKioskLayer snapshot={snapshot} active={immichKioskActive || immichExitPending} />
+      )}
+      {immichKioskActive && !visible && (
+        <button
+          className="immich-control-reveal"
+          type="button"
+          aria-label="Show MediaWall controls"
+          onPointerMove={revealControls}
+          onClick={revealControls}
+        />
+      )}
     </main>
   );
 }
 
-function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
+function ImmichKioskLayer({ snapshot, active }: { snapshot: Snapshot; active: boolean }) {
+  const url = snapshot.config.now_playing.immich_kiosk.url;
+  const storageKey = `mediawall:immich-kiosk-url:${snapshot.profile}/${snapshot.display}`;
+  const [frameUrl, setFrameUrl] = useState(() => rememberedImmichKioskUrl(url, storageKey));
+  const [status, setStatus] = useState<"checking" | "available" | "unavailable">("checking");
+  const [loaded, setLoaded] = useState(false);
+  const loadTimer = useRef<number | undefined>(undefined);
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+
+  useEffect(() => {
+    setFrameUrl(rememberedImmichKioskUrl(url, storageKey));
+    setLoaded(false);
+    setStatus("checking");
+  }, [storageKey, url]);
+
+  useEffect(() => {
+    if (!url) return;
+    const configuredOrigin = safeUrlOrigin(url);
+    function rememberMessage(event: MessageEvent) {
+      if (!configuredOrigin || event.origin !== configuredOrigin || event.source !== frameRef.current?.contentWindow) return;
+      const data = event.data as { type?: string; url?: string } | undefined;
+      if (data?.type !== "mediawall:immich-location" || !data.url) return;
+      rememberImmichKioskUrl(url, data.url, storageKey);
+      setFrameUrl(data.url);
+    }
+    window.addEventListener("message", rememberMessage);
+    return () => window.removeEventListener("message", rememberMessage);
+  }, [storageKey, url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let retryTimer: number | undefined;
+    async function check() {
+      let shouldRetry = true;
+      try {
+        const result = await api<{ available: boolean }>(spaceApi("/immich-kiosk/status"));
+        shouldRetry = !result.available;
+        if (!cancelled && result.available) setStatus("available");
+      } catch {
+        shouldRetry = true;
+      }
+      if (!cancelled && shouldRetry) retryTimer = window.setTimeout(check, 30_000);
+    }
+    void check();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retryTimer);
+    };
+  }, [url]);
+
+  useEffect(() => {
+    window.clearTimeout(loadTimer.current);
+    if (!active || !url || loaded || status === "available") return;
+    loadTimer.current = window.setTimeout(() => setStatus("unavailable"), 10_000);
+    return () => window.clearTimeout(loadTimer.current);
+  }, [active, loaded, status, url]);
+
+  if ((status === "unavailable" || !url) && active) {
+    return (
+      <section
+        className="immich-kiosk-handoff active"
+        style={{
+          "--fallback-background": snapshot.config.now_playing.mediawall_fallback.background_color ?? "#565954",
+          "--fallback-logo-min": `${snapshot.config.now_playing.mediawall_fallback.min_logo_width ?? 260}px`,
+          "--fallback-logo-max": `${snapshot.config.now_playing.mediawall_fallback.max_logo_width ?? 760}px`
+        } as React.CSSProperties}
+      >
+        <MediaWallIdle snapshot={snapshot} />
+      </section>
+    );
+  }
+
+  if (!url || status === "unavailable") return null;
+
+  return (
+    <section className={`immich-kiosk-handoff ${active ? "active" : ""}`}>
+      {!loaded && <div className="immich-kiosk-loading" aria-label="Loading Immich Kiosk" />}
+      <iframe
+        ref={frameRef}
+        className={loaded ? "loaded" : ""}
+        src={frameUrl}
+        title="Immich Kiosk"
+        allow="autoplay; fullscreen; picture-in-picture"
+        allowFullScreen
+        referrerPolicy="no-referrer"
+        onLoad={() => {
+          window.clearTimeout(loadTimer.current);
+          setStatus("available");
+          setLoaded(true);
+          try {
+            const currentUrl = frameRef.current?.contentWindow?.location.href;
+            if (currentUrl) rememberImmichKioskUrl(url, currentUrl, storageKey);
+          } catch {
+            // Cross-origin Kiosk pages must opt into the postMessage hook above.
+          }
+        }}
+        onError={() => setStatus("unavailable")}
+      />
+    </section>
+  );
+}
+
+function safeUrlOrigin(value: string) {
+  try {
+    return new URL(value, window.location.href).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function rememberedImmichKioskUrl(configuredUrl: string, storageKey: string) {
+  if (!configuredUrl) return configuredUrl;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(storageKey) ?? "null") as {
+      configuredUrl?: string;
+      selectedUrl?: string;
+    } | null;
+    if (stored?.configuredUrl !== configuredUrl || !stored.selectedUrl) return configuredUrl;
+    return new URL(stored.selectedUrl).origin === new URL(configuredUrl).origin ? stored.selectedUrl : configuredUrl;
+  } catch {
+    return configuredUrl;
+  }
+}
+
+function rememberImmichKioskUrl(configuredUrl: string, selectedUrl: string, storageKey: string) {
+  try {
+    if (new URL(selectedUrl).origin !== new URL(configuredUrl).origin) return;
+    window.localStorage.setItem(storageKey, JSON.stringify({ configuredUrl, selectedUrl }));
+  } catch {
+    // Storage can be unavailable in private or restricted browser contexts.
+  }
+}
+
+function MediaWallLoading() {
+  return (
+    <section className="mediawall-loading" aria-label="MediaWall is loading">
+      <img src={mediaWallBanner} alt="MediaWall" />
+      <div className="mediawall-loading-copy">
+        is loading<span className="mediawall-loading-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+      </div>
+    </section>
+  );
+}
+
+function Backdrop({ artwork, onReady }: { artwork?: ArtworkRef; onReady?: () => void }) {
   const [front, setFront] = useState<string>();
   const [back, setBack] = useState<string>();
   const [flipped, setFlipped] = useState(false);
   const targetUrl = useRef<string | undefined>(undefined);
+  const retryTimer = useRef<number | undefined>(undefined);
+  const retryCount = useRef(0);
+  const onReadyRef = useRef(onReady);
+  const [retryTick, setRetryTick] = useState(0);
   const url = mediaUrl(artwork?.backdropUrl);
 
   useEffect(() => {
-    if (!url) return;
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
+  useEffect(() => {
+    window.clearTimeout(retryTimer.current);
+    if (!url) {
+      targetUrl.current = undefined;
+      retryCount.current = 0;
+      setFront(undefined);
+      setBack(undefined);
+      setFlipped(false);
+      return;
+    }
     let cancelled = false;
     const activeUrl = flipped ? back : front;
-    if (url === activeUrl) return;
+    if (url === activeUrl) {
+      onReadyRef.current?.();
+      return;
+    }
     if (url === targetUrl.current) return;
     targetUrl.current = url;
     if (url === front || url === back) {
@@ -1784,7 +2128,12 @@ function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
     image.decoding = "async";
     async function swapAfterDecode() {
       try {
-        await image.decode?.();
+        if (image.decode) {
+          await Promise.race([
+            image.decode(),
+            new Promise<void>((resolve) => window.setTimeout(resolve, 900))
+          ]);
+        }
       } catch {
         // Some browsers reject decode for cached/proxied images even after load.
       }
@@ -1792,16 +2141,26 @@ function Backdrop({ artwork }: { artwork?: ArtworkRef }) {
       if (flipped) setFront(url);
       else setBack(url);
       setFlipped((current) => !current);
+      onReadyRef.current?.();
     }
     image.onload = () => void swapAfterDecode();
     image.onerror = () => {
       if (targetUrl.current === url) targetUrl.current = undefined;
+      if (cancelled || retryCount.current >= 4) return;
+      const delay = [250, 700, 1500, 3000][retryCount.current] ?? 3000;
+      retryCount.current += 1;
+      retryTimer.current = window.setTimeout(() => setRetryTick((current) => current + 1), delay);
     };
     image.src = url;
     return () => {
       cancelled = true;
+      window.clearTimeout(retryTimer.current);
     };
-  }, [url, front, back, flipped]);
+  }, [url, front, back, flipped, retryTick]);
+
+  useEffect(() => {
+    retryCount.current = 0;
+  }, [url]);
 
   const active = flipped ? back : front;
 
@@ -1933,6 +2292,7 @@ function UserTransitionIntro({ intro }: {
     sourceIconSize: number;
     collectionImageUrl?: string;
     collectionImageSize?: number;
+    collectionImages?: Array<{ collectionName: string; url: string; size: number }>;
   };
 }) {
   const icon = intro.source === "navidrome" ? navidromeLogo : jellyfinLogo;
@@ -1952,12 +2312,28 @@ function UserTransitionIntro({ intro }: {
     >
       <img className="user-transition-source-icon" src={icon} alt="" />
       <div className="user-transition-card">
-        <div className={`user-transition-person ${intro.avatarUrl ? "with-avatar" : "no-avatar"}`}>
-          {intro.avatarUrl && <img src={mediaUrl(intro.avatarUrl)} alt="" />}
-          <span>{intro.username}</span>
+        <div className="user-transition-card-content">
+          <div className={`user-transition-person ${intro.avatarUrl ? "with-avatar" : "no-avatar"}`}>
+            {intro.avatarUrl && <img src={mediaUrl(intro.avatarUrl)} alt="" />}
+            <span>{intro.username}</span>
+          </div>
+          <div className="user-transition-verb">{intro.verb}</div>
+          {intro.collectionImages?.length ? (
+            <div className="user-transition-collection-images">
+              {intro.collectionImages.map((image, index) => (
+                <img
+                  key={`${image.collectionName}:${image.url}:${index}`}
+                  className="user-transition-collection-image"
+                  src={mediaUrl(image.url)}
+                  alt=""
+                  style={{ "--user-transition-collection-image-size": `${image.size}px` } as React.CSSProperties}
+                />
+              ))}
+            </div>
+          ) : intro.collectionImageUrl ? (
+            <img className="user-transition-collection-image" src={mediaUrl(intro.collectionImageUrl)} alt="" />
+          ) : null}
         </div>
-        <div className="user-transition-verb">{intro.verb}</div>
-        {intro.collectionImageUrl && <img className="user-transition-collection-image" src={mediaUrl(intro.collectionImageUrl)} alt="" />}
       </div>
     </section>
   );
@@ -1975,6 +2351,17 @@ function activeMediaWallCommandMode(command?: Snapshot["controlCommand"]): Media
 
 function mediaWallModeLabel(mode: MediaWallFallbackMode) {
   return mode.replace(/_/g, " ").toLowerCase();
+}
+
+function nextDisplayMode(current: DisplayState["mode"], immichAvailable: boolean): DisplayState["mode"] {
+  if (current === "now-playing") return "screensaver";
+  if (current === "screensaver") return immichAvailable ? "immich-kiosk" : "now-playing";
+  return "now-playing";
+}
+
+function nextTheme(current: string) {
+  const index = themeNames.indexOf(current);
+  return themeNames[(index + 1 + themeNames.length) % themeNames.length] ?? "default";
 }
 
 function firstMediaWallFallbackMode(modes: Array<MediaWallFallbackMode | "All">) {
@@ -2191,7 +2578,7 @@ function ControlBar(props: {
   isFavorite: boolean;
   panel: "none" | "browse";
   onPanel: (panel: "none" | "browse") => void;
-  onMode: (mode: "now-playing" | "screensaver") => void;
+  onMode: (mode: DisplayState["mode"]) => void;
   onPrevious: () => void;
   onToggle: () => void;
   onNext: () => void;
@@ -2208,22 +2595,25 @@ function ControlBar(props: {
   onFullscreen: () => void;
   onSound: () => void;
   soundMuted: boolean;
+  onThemes: () => void;
+  themeOpen: boolean;
 }) {
   const { snapshot } = props;
   const wallpaperMode = snapshot.state.mode === "screensaver";
+  const immichMode = snapshot.state.mode === "immich-kiosk";
   const showPlaybackControls = !wallpaperMode && (snapshot.nowPlaying?.sessionCount ?? 0) > 1;
   const showAlbumArtButton = !wallpaperMode && isMusicArtwork(snapshot.nowPlaying?.artwork ?? snapshot.state.current, snapshot.nowPlaying);
   return (
     <nav className="controls">
       <button
         className="mode-select"
-        onClick={() => props.onMode(wallpaperMode ? "now-playing" : "screensaver")}
-        title={wallpaperMode ? "Switch to Now Playing" : "Switch to Wallpaper / Screensaver"}
-        aria-label={wallpaperMode ? "Switch to Now Playing" : "Switch to Wallpaper / Screensaver"}
+        onClick={() => props.onMode(nextDisplayMode(snapshot.state.mode, Boolean(snapshot.config.now_playing.immich_kiosk.url)))}
+        title="Switch mode"
+        aria-label="Switch mode"
         data-flash={props.flash === "mode" ? "true" : undefined}
       >
-        {wallpaperMode ? <Image /> : <Radio />}
-        <span>{wallpaperMode ? "Wallpaper/Screensaver" : "Now Playing"}</span>
+        {immichMode ? <UsersRound /> : wallpaperMode ? <Image /> : <Radio />}
+        <span>{immichMode ? "Immich Kiosk" : wallpaperMode ? "Wallpaper/Screensaver" : "Now Playing"}</span>
       </button>
       {(wallpaperMode || !showPlaybackControls) && <span className="divider" />}
       {wallpaperMode && (
@@ -2268,6 +2658,12 @@ function ControlBar(props: {
         </IconButton>
       )}
       <span className="divider" />
+      {snapshot.config.theme === "All" && (
+        <>
+          <IconButton label="Themes" active={props.themeOpen} onClick={props.onThemes}><Palette /></IconButton>
+          <span className="divider" />
+        </>
+      )}
       <a className="control-version" href="https://github.com/nothing2obvi/mediawall" target="_blank" rel="noreferrer">
         v{appVersion}
       </a>
@@ -2282,7 +2678,7 @@ function RemoteControl(props: {
   soundMuted: boolean;
   availableSpaces: string[];
   previewArtwork?: ArtworkRef;
-  onMode: (mode: "now-playing" | "screensaver") => void;
+  onMode: (mode: DisplayState["mode"]) => void;
   onPrevious: () => void;
   onToggle: () => void;
   onNext: () => void;
@@ -2295,6 +2691,7 @@ function RemoteControl(props: {
   onAlbumArt: () => void;
   onSound: () => void;
   onFullscreen: () => void;
+  onThemes: () => void;
 }) {
   const snapshot = props.snapshot;
   const wallpaperMode = snapshot?.state.mode === "screensaver";
@@ -2321,7 +2718,7 @@ function RemoteControl(props: {
       </header>
       <div className="remote-status">
         <div>
-          <span>{wallpaperMode ? "Wallpaper/Screensaver" : "Now Playing"}</span>
+          <span>{snapshot?.state.mode === "immich-kiosk" ? "Immich Kiosk" : wallpaperMode ? "Wallpaper/Screensaver" : "Now Playing"}</span>
           {snapshot?.nowPlaying?.playing && <strong>{snapshot.nowPlaying.title ?? snapshot.nowPlaying.album ?? "Active session"}</strong>}
         </div>
         {previewUrl && <img src={previewUrl} alt="" />}
@@ -2339,8 +2736,8 @@ function RemoteControl(props: {
           <ChevronRight />
           <span>Next</span>
         </button>
-        <button disabled={disabled} onClick={() => snapshot && props.onMode(wallpaperMode ? "now-playing" : "screensaver")}>
-          <Image />
+        <button disabled={disabled} onClick={() => snapshot && props.onMode(nextDisplayMode(snapshot.state.mode, Boolean(snapshot.config.now_playing.immich_kiosk.url)))}>
+          {snapshot?.state.mode === "immich-kiosk" ? <UsersRound /> : <Image />}
           <span>Mode</span>
         </button>
         <button disabled={disabled || !wallpaperMode} onClick={props.onShuffleSettings}>
@@ -2377,11 +2774,45 @@ function RemoteControl(props: {
             <span>Sound</span>
           </button>
         )}
+        {snapshot?.config.theme === "All" && (
+          <button disabled={disabled} onClick={props.onThemes}>
+            <Palette />
+            <span>Themes</span>
+          </button>
+        )}
       </div>
       <a className="remote-version" href="https://github.com/nothing2obvi/mediawall" target="_blank" rel="noreferrer">
         MediaWall v{appVersion}
       </a>
     </section>
+  );
+}
+
+function ThemeDialog({ active, onSelect, onCancel, onSave }: {
+  active: string;
+  onSelect: (theme: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <aside className="modal theme-dialog" role="dialog" aria-label="Themes">
+      <div className="modal-title">Themes</div>
+      <div className="theme-list">
+        {themeNames.map((theme) => {
+          const palette = themePalette[theme as keyof typeof themePalette];
+          return (
+            <button key={theme} type="button" className={theme === active ? "active" : ""} onClick={() => onSelect(theme)}>
+              <span className="theme-swatch" style={{ background: palette[2] }} />
+              <span>{theme}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="modal-actions">
+        <button type="button" onClick={onCancel}>Cancel</button>
+        <button className="primary" type="button" onClick={onSave}>Save</button>
+      </div>
+    </aside>
   );
 }
 
