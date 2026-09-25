@@ -25,10 +25,13 @@ import {
 } from "lucide-react";
 import jellyfinLogo from "./logos/jellyfin.svg";
 import navidromeLogo from "./logos/navidrome.svg";
+import spotifyLogo from "./logos/spotify.svg";
+import appleMusicLogo from "./logos/apple_music.svg";
 import mediaWallBanner from "./logos/banner.png";
 import mediaWallBannerWhite from "./logos/banner_white.png";
 import packageInfo from "../package.json";
 import "./styles.css";
+import { nextPageRefresh } from "./page-refresh";
 
 const mediaAssetCacheToken = Date.now().toString(36);
 const appVersion = packageInfo.version;
@@ -45,7 +48,7 @@ function configurePwaIdentity() {
 }
 
 type ArtworkRef = {
-  source: "jellyfin" | "navidrome" | "fallback";
+  source: "jellyfin" | "navidrome" | "fetched" | "fallback";
   itemId: string;
   title: string;
   mediaType: string;
@@ -61,6 +64,8 @@ type ArtworkRef = {
   logoTag?: string;
   groupKey?: string;
 };
+
+type NowPlayingSource = "jellyfin" | "navidrome" | "spotify" | "apple_music" | "external_music";
 
 type DisplayState = {
   mode: "now-playing" | "screensaver" | "immich-kiosk";
@@ -121,7 +126,7 @@ type Snapshot = {
     type: "sound" | "mediawall" | "animation" | "user_transition";
     name: string;
     startedAt: number;
-    source?: "jellyfin" | "navidrome";
+    source?: NowPlayingSource;
     username?: string;
     avatarUrl?: string;
     verb?: string;
@@ -159,13 +164,19 @@ type Snapshot = {
     expiresAt: number;
   };
   nowPlaying?: {
-    source: "jellyfin" | "navidrome";
+    source: NowPlayingSource;
     playing: boolean;
     paused: boolean;
     user?: string;
     title?: string;
     artist?: string;
+    artists?: string[];
+    albumArtist?: string;
+    artworkArtist?: string;
     album?: string;
+    durationSeconds?: number;
+    externalMusicSource?: string;
+    externalIds?: Record<string, unknown>;
     year?: number;
     seasonNumber?: number;
     episodeNumber?: number;
@@ -191,7 +202,7 @@ type Snapshot = {
   };
   soundSessions?: Array<{
     key: string;
-    source: "jellyfin" | "navidrome";
+    source: NowPlayingSource;
     userKey: string;
     libraryName?: string;
     continuous: boolean;
@@ -199,6 +210,7 @@ type Snapshot = {
     endSoundTone?: string;
   }>;
   config: {
+    page_refresh?: { enabled: boolean; time: string };
     theme: string;
     now_playing: {
       fallback: "mediawall" | "shuffle" | "immich_kiosk";
@@ -473,7 +485,7 @@ function App() {
   const [availableSpaces, setAvailableSpaces] = useState<string[]>([]);
   const [userTransition, setUserTransition] = useState<{
     id: string;
-    source: "jellyfin" | "navidrome";
+    source: NowPlayingSource;
     username: string;
     avatarUrl?: string;
     verb: string;
@@ -655,6 +667,28 @@ function App() {
       events.close();
     };
   }, []);
+
+  useEffect(() => {
+    const schedule = snapshot?.config.page_refresh;
+    if (route.remote || !schedule?.enabled) return;
+    const dueAt = nextPageRefresh(new Date(), schedule.time).getTime();
+    let reloading = false;
+    const check = () => {
+      if (!reloading && Date.now() >= dueAt) {
+        reloading = true;
+        window.location.reload();
+      }
+    };
+    const timer = window.setInterval(check, 1000);
+    // Catch a missed deadline when a suspended display wakes up.
+    window.addEventListener("pageshow", check);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("pageshow", check);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [snapshot?.config.page_refresh?.enabled, snapshot?.config.page_refresh?.time]);
 
   useEffect(() => {
     soundMutedRef.current = soundMuted;
@@ -1400,10 +1434,8 @@ function App() {
     const config = snapshot?.config.now_playing.user_transition;
     if (!config?.enabled || !now) return false;
     const id = now.publicSoundSessionKey ?? now.publicSessionId ?? now.signature ?? `${now.source}:${Date.now()}`;
-    const username = now.source === "navidrome"
-      ? now.user ?? now.displayUser ?? now.mediaWallUser ?? "Navidrome"
-      : now.displayUser ?? now.user ?? now.mediaWallUser ?? "Jellyfin";
-    const verb = now.source === "navidrome" || isMusicArtwork(now.artwork, now)
+    const username = now.displayUser ?? now.user ?? now.mediaWallUser ?? sourceDisplayName(now.source);
+    const verb = now.source !== "jellyfin" || isMusicArtwork(now.artwork, now)
       ? "started listening to"
       : "started watching";
     const durationSeconds = Math.max(0.5, config.duration_seconds ?? 3);
@@ -1412,7 +1444,7 @@ function App() {
       id,
       source: now.source,
       username,
-      avatarUrl: now.source === "jellyfin" ? now.displayUserAvatarUrl : undefined,
+      avatarUrl: now.displayUserAvatarUrl,
       verb,
       durationSeconds,
       backgroundColor: config.background_color ?? "#000000",
@@ -1813,7 +1845,7 @@ function App() {
         "--fallback-background": snapshot?.config.now_playing.mediawall_fallback.background_color ?? "#565954",
         "--fallback-logo-min": `${snapshot?.config.now_playing.mediawall_fallback.min_logo_width ?? 260}px`,
         "--fallback-logo-max": `${snapshot?.config.now_playing.mediawall_fallback.max_logo_width ?? 760}px`,
-        "--album-art-size": `${snapshot?.config.display.album_art.size ?? 200}px`,
+        "--album-art-size": `${snapshot?.config.display.album_art.size ?? 300}px`,
         "--ui-scale": String(snapshot?.config.display.ui.scale ?? 1)
       } as React.CSSProperties}
       onPointerMove={revealControls}
@@ -2280,7 +2312,7 @@ function MediaWallIdle({ snapshot }: { snapshot: Snapshot }) {
 
 function UserTransitionIntro({ intro }: {
   intro: {
-    source: "jellyfin" | "navidrome";
+    source: NowPlayingSource;
     username: string;
     avatarUrl?: string;
     verb: string;
@@ -2295,7 +2327,7 @@ function UserTransitionIntro({ intro }: {
     collectionImages?: Array<{ collectionName: string; url: string; size: number }>;
   };
 }) {
-  const icon = intro.source === "navidrome" ? navidromeLogo : jellyfinLogo;
+  const icon = sourceIcon(intro.source);
   return (
     <section
       className="user-transition-intro"
@@ -3190,7 +3222,7 @@ function NowPlayingBadge({ snapshot }: { snapshot?: Snapshot }) {
   const now = snapshot?.nowPlaying;
   if (!config?.enabled || !now) return null;
   const source = now.source;
-  const icon = source === "navidrome" ? navidromeLogo : jellyfinLogo;
+  const icon = sourceIcon(source);
   const showLabel = config.show_text || config.show_source_icon;
   const showAvatar = config.show_user_avatar && Boolean(now.displayUserAvatarUrl);
   const showUsername = (source === "navidrome" ? config.show_navidrome_username : config.show_jellyfin_username) && Boolean(now.displayUser ?? now.user);
@@ -3329,6 +3361,21 @@ function sourceLabel(source: "jellyfin" | "navidrome" | "sounds" | "custom_image
   return "Custom Logo";
 }
 
+function sourceIcon(source: NowPlayingSource | undefined) {
+  if (source === "navidrome") return navidromeLogo;
+  if (source === "spotify") return spotifyLogo;
+  if (source === "apple_music") return appleMusicLogo;
+  return jellyfinLogo;
+}
+
+function sourceDisplayName(source: NowPlayingSource | undefined) {
+  if (source === "navidrome") return "Navidrome";
+  if (source === "spotify") return "Spotify";
+  if (source === "apple_music") return "Apple Music";
+  if (source === "external_music") return "External Music";
+  return "Jellyfin";
+}
+
 function mediaUrl(url: string | undefined) {
   if (!url || !url.startsWith("/api/")) return url;
   const [path, query = ""] = url.split("?");
@@ -3343,9 +3390,10 @@ function safeToneName(tone: string | undefined, available: string[]) {
   return available.includes(tone) ? tone : undefined;
 }
 
-function soundSourceAllowed(source: "jellyfin" | "navidrome", sounds: Snapshot["config"]["now_playing"]["sounds"]) {
+function soundSourceAllowed(source: NowPlayingSource, sounds: Snapshot["config"]["now_playing"]["sounds"]) {
   if (source === "jellyfin") return sounds.jellyfin;
-  return sounds.navidrome;
+  if (source === "navidrome") return sounds.navidrome;
+  return true;
 }
 
 function quietHoursActive(quietHours: Snapshot["config"]["now_playing"]["sounds"]["quiet_hours"]) {
@@ -3438,6 +3486,12 @@ function artworkWithBackdropIndex(artwork: ArtworkRef, imageIndex: number): Artw
       backdropUrl: `/api/navidrome/local-artist/${encodeURIComponent(artwork.itemId)}/${imageIndex}`,
       thumbUrl: `/api/navidrome/local-artist/${encodeURIComponent(artwork.itemId)}/${imageIndex}`
     };
+  }
+  if (artwork.source === "fetched" && artwork.imageType === "Backdrop") {
+    const filename = artwork.backdropTags?.[imageIndex];
+    if (!filename) return { ...artwork, imageIndex };
+    const url = `/api/external-artwork/artists/${encodeURIComponent(artwork.itemId)}/${encodeURIComponent(filename)}`;
+    return { ...artwork, imageIndex, backdropUrl: url, thumbUrl: url };
   }
   return { ...artwork, imageIndex };
 }

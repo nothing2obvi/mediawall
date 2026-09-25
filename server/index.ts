@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, findDisplay, themeNames } from "./config.js";
 import { JellyfinClient, fallbackArtwork, movieCollectionLookupKey } from "./jellyfin.js";
 import { NavidromeClient } from "./navidrome.js";
+import { ExternalMusicReceiver, authorizationToken } from "./external-music.js";
+import { ExternalArtworkResolver } from "./external-artwork.js";
+import { SourceAvatarStore } from "./source-avatars.js";
 import { logger } from "./logger.js";
 import { JellyfinCollectionIndex } from "./collection-index.js";
 import { StateStore } from "./state.js";
@@ -18,6 +21,9 @@ const config = loadConfig();
 const jellyfin = new JellyfinClient(config);
 const collectionIndex = new JellyfinCollectionIndex(config, jellyfin);
 const navidrome = new NavidromeClient(config, jellyfin);
+const externalMusic = new ExternalMusicReceiver(config);
+const externalArtwork = new ExternalArtworkResolver(config, jellyfin, navidrome, appRoot);
+const sourceAvatars = new SourceAvatarStore(appRoot);
 const states = new StateStore();
 const app = express();
 const favoritesShuffleLibrary = "Favorites";
@@ -117,7 +123,41 @@ app.use((req, res, next) => {
 app.use(express.static(publicDir));
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, jellyfinConfigured: jellyfin.configured(), navidromeConfigured: navidrome.configured() });
+  res.json({
+    ok: true,
+    jellyfinConfigured: jellyfin.configured(),
+    navidromeConfigured: navidrome.configured(),
+    externalMusicConfigured: externalMusic.configured()
+  });
+});
+
+// Multi-Scrobbler probes this Koito-specific endpoint before enabling a
+// ListenBrainz client. Keep it out of the SPA fallback so MediaWall is not
+// misidentified as Koito.
+app.get("/apis/web/v1/stats", (_req, res) => {
+  res.status(404).json({ code: 404, error: "Not found" });
+});
+
+app.get(["/apis/listenbrainz/1/validate-token", "/apis/listenbrainz/validate-token"], (req, res) => {
+  const mapping = externalMusic.validateToken(authorizationToken(req.get("authorization")));
+  if (!mapping) {
+    res.status(401).json({ code: 401, error: "Invalid token" });
+    return;
+  }
+  res.json({ valid: true, user_name: mapping.user });
+});
+
+app.post(["/apis/listenbrainz/1/submit-listens", "/apis/listenbrainz/submit-listens"], (req, res) => {
+  const result = externalMusic.receiveSubmitListens(authorizationToken(req.get("authorization")), req.body);
+  if (!result.ok) {
+    res.status(result.status).json({ code: result.status, error: result.error });
+    return;
+  }
+  if (result.accepted > 0) {
+    logger.info(`External music ListenBrainz receive: accepted=${result.accepted} ignored=${result.ignored}`);
+    for (const space of Object.keys(config.spaces)) touchSpace(space);
+  }
+  res.json({ status: "ok" });
 });
 
 app.get("/api/pwa-manifest", (req, res) => {
@@ -160,12 +200,36 @@ app.get("/api/space/:space/events", (req, res) => {
   });
 });
 
-app.use(["/api/jellyfin", "/api/navidrome"], (req, res, next) => {
+app.use(["/api/jellyfin", "/api/navidrome", "/api/external-artwork", "/api/avatars"], (req, res, next) => {
   if (mediaAssetAllowed(req)) {
     next();
     return;
   }
   res.status(401).json({ error: "Space password required" });
+});
+
+app.get("/api/avatars/:source/:username", (req, res) => {
+  const avatarPath = sourceAvatars.avatarPath(String(req.params.source), String(req.params.username));
+  if (!avatarPath) {
+    res.sendStatus(404);
+    return;
+  }
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.sendFile(avatarPath);
+});
+
+app.get("/api/external-artwork/:scope/:key/:filename", (req, res) => {
+  const assetPath = externalArtwork.assetPath(
+    String(req.params.scope),
+    String(req.params.key),
+    String(req.params.filename)
+  );
+  if (!assetPath) {
+    res.sendStatus(404);
+    return;
+  }
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.sendFile(assetPath);
 });
 
 app.get("/api/jellyfin/image/:itemId/:type", async (req, res) => {
@@ -743,6 +807,10 @@ app.get("/api/space/:space/items/:itemId/backdrops", async (req, res) => {
     res.json({ backdrops: navidrome.localArtistArtworks(String(req.query.title ?? req.params.itemId)) });
     return;
   }
+  if (source === "fetched") {
+    res.json({ backdrops: await externalArtwork.cachedArtistArtworks(req.params.itemId) });
+    return;
+  }
   const item = await jellyfin.artworkForItem(req.params.itemId);
   const count = item?.backdropCount ?? 0;
   const backdrops = Array.from({ length: count }, (_, imageIndex) => ({
@@ -955,6 +1023,9 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
   if (runtime.userTransitionEvent && runtime.userTransitionEvent.expiresAt <= now) {
     runtime.userTransitionEvent = undefined;
   }
+
+  externalArtwork.logSelection(`display:${space}`, `space=${JSON.stringify(space)} mode=${mode} source=${nowPlaying?.source ?? state.current?.source ?? "none"}`,
+    nowPlaying?.artwork ?? state.current, nowPlaying?.albumArtUrl);
 
   return {
     profile: "",
@@ -1252,6 +1323,12 @@ function publicNowPlaying(nowPlaying: NowPlayingState): PublicNowPlayingState {
     title: nowPlaying.title,
     artist: nowPlaying.artist,
     album: nowPlaying.album,
+    artists: nowPlaying.artists,
+    albumArtist: nowPlaying.albumArtist,
+    artworkArtist: nowPlaying.artworkArtist,
+    durationSeconds: nowPlaying.durationSeconds,
+    externalMusicSource: nowPlaying.externalMusicSource,
+    externalIds: nowPlaying.externalIds,
     year: nowPlaying.year,
     seasonNumber: nowPlaying.seasonNumber,
     episodeNumber: nowPlaying.episodeNumber,
@@ -1543,6 +1620,12 @@ async function resolveFreshBackdropPolicy(artwork: ArtworkRef, displayConfig: Di
 }
 
 function artworkWithBackdropIndex(artwork: ArtworkRef, imageIndex: number): ArtworkRef {
+  if (artwork.source === "fetched" && artwork.imageType === "Backdrop") {
+    const filename = artwork.backdropTags?.[imageIndex];
+    if (!filename) return { ...artwork, imageIndex };
+    const url = `/api/external-artwork/artists/${encodeURIComponent(artwork.itemId)}/${encodeURIComponent(filename)}`;
+    return { ...artwork, imageIndex, backdropUrl: url, thumbUrl: url };
+  }
   if (artwork.source !== "jellyfin" || artwork.imageType !== "Backdrop") return { ...artwork, imageIndex };
   const tag = artwork.backdropTags?.[imageIndex];
   return {
@@ -2321,14 +2404,35 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
     }
     if (displayConfig.playback_source === "navidrome" || displayConfig.playback_source === "both") {
       try {
-        candidates.push(...(await navidrome.activePlaybacks({
+        const playbacks = await navidrome.activePlaybacks({
           ...displayConfig,
           playback_user: user.navidrome_user ?? user.name,
           users: [user]
-        })).map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound)));
+        });
+        const resolved = await Promise.all(playbacks.map((playback) => externalArtwork.resolveNavidrome(playback)));
+        candidates.push(...resolved.map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound)));
       } catch (error) {
         logger.warn("Navidrome playback source poll failed", error);
       }
+    }
+    if (config.external_music.enabled) {
+      const jellyfinAvatarNames = [
+        user.name,
+        user.jellyfin_user && user.jellyfin_user.toLowerCase() !== "all" ? user.jellyfin_user : undefined
+      ].filter((name, index, names): name is string => Boolean(name) && names.indexOf(name) === index);
+      let jellyfinAvatarUrl: string | undefined;
+      for (const name of jellyfinAvatarNames) {
+        jellyfinAvatarUrl = await jellyfin.userAvatarUrl(name, displayConfig).catch(() => undefined);
+        if (jellyfinAvatarUrl) break;
+      }
+      const playbacks = await Promise.all(externalMusic.activePlaybacks(user.name).map(async (playback) => {
+        const displayUserAvatarUrl = sourceAvatars.avatarUrl(playback.source, user.name) ?? jellyfinAvatarUrl;
+        return {
+          ...await externalArtwork.resolveExternal(playback),
+          displayUserAvatarUrl
+        };
+      }));
+      candidates.push(...playbacks.map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound)));
     }
   }
   return dedupePlaybackCandidates(candidates);
@@ -2631,13 +2735,13 @@ function publicSoundSessions(displayKey: string, displayConfig: DisplayConfig): 
     .filter((record) =>
       record.state.playing
       && record.active
-      && (record.state.source === "jellyfin" || record.state.source === "navidrome")
+      && (record.state.source === "jellyfin" || record.state.source === "navidrome" || record.state.source === "spotify" || record.state.source === "apple_music" || record.state.source === "external_music")
     )
     .map((record) => {
       const identity = soundSessionIdentity(record.state, displayConfig);
       return {
         key: hashPublicKey(identity),
-        source: record.state.source as "jellyfin" | "navidrome",
+        source: record.state.source,
         userKey: hashPublicKey(soundUserIdentity(record.state)),
         libraryName: record.state.libraryName,
         continuous: soundSessionContinuous(record.state, displayConfig),
@@ -2669,6 +2773,9 @@ function soundSessionIdentity(state: NowPlayingState, displayConfig: DisplayConf
   if (state.source === "navidrome" && displayConfig.now_playing.sounds.continuous_sessions.navidrome) {
     return `${user}:continuous:navidrome`;
   }
+  if (state.source === "spotify" || state.source === "apple_music" || state.source === "external_music") {
+    return `${user}:continuous:${state.source}`;
+  }
   if (state.source === "jellyfin" && jellyfinContinuousSessionName(state, displayConfig)) {
     return `${user}:continuous:jellyfin:${jellyfinContinuousSessionName(state, displayConfig)}`;
   }
@@ -2677,6 +2784,7 @@ function soundSessionIdentity(state: NowPlayingState, displayConfig: DisplayConf
 
 function soundSessionContinuous(state: NowPlayingState, displayConfig: DisplayConfig) {
   if (state.source === "navidrome") return displayConfig.now_playing.sounds.continuous_sessions.navidrome;
+  if (state.source === "spotify" || state.source === "apple_music" || state.source === "external_music") return true;
   return Boolean(jellyfinContinuousSessionName(state, displayConfig));
 }
 

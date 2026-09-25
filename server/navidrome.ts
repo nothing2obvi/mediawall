@@ -41,6 +41,12 @@ type ArtistIndexResponse = {
   };
 };
 
+type SearchResponse = {
+  searchResult3?: {
+    album?: Array<{ id?: string; name?: string; artist?: string; coverArt?: string }>;
+  };
+};
+
 type NavidromeArtist = {
   id?: string;
   name?: string;
@@ -152,6 +158,9 @@ export class NavidromeClient {
       playbackPositionTicks: positionMs !== undefined ? Math.round(positionMs * 10_000) : undefined,
       title: entry.title,
       artist: artworkArtist ?? entry.artist,
+      artists: splitArtistCredit(entry.artist),
+      albumArtist: firstArtistCredit(entry.albumArtist),
+      artworkArtist,
       album: entry.album,
       logoText,
       itemId: entry.id,
@@ -197,6 +206,25 @@ export class NavidromeClient {
 
   coverArtUrl(id: string) {
     return `/api/navidrome/cover/${encodeURIComponent(id)}`;
+  }
+
+  async albumCoverForName(albumName?: string, artistName?: string) {
+    if (!albumName || !this.configured()) return undefined;
+    this.authUser = firstNavidromeUser(this.config);
+    const response = await this.getJson<SearchResponse>("/rest/search3.view", new URLSearchParams({
+      query: `${artistName ?? ""} ${albumName}`.trim(),
+      songCount: "0",
+      artistCount: "0",
+      albumCount: "20"
+    })).catch(() => undefined);
+    const normalizedAlbum = albumName.trim().toLowerCase();
+    const normalizedArtist = artistName?.trim().toLowerCase();
+    const candidates = response?.searchResult3?.album ?? [];
+    const album = candidates.find((entry) =>
+      String(entry.name ?? "").trim().toLowerCase() === normalizedAlbum
+      && (!normalizedArtist || String(entry.artist ?? "").trim().toLowerCase() === normalizedArtist)
+    ) ?? candidates.find((entry) => String(entry.name ?? "").trim().toLowerCase() === normalizedAlbum);
+    return album?.coverArt ? this.coverArtUrl(album.coverArt) : undefined;
   }
 
   async proxyCoverArt(id: string) {
@@ -375,8 +403,9 @@ export class NavidromeClient {
     return `/api/navidrome/artist-image?${params}`;
   }
 
-  private async getJson<T>(path: string): Promise<T> {
-    const response = await this.fetchWithFallback(path, new URLSearchParams({ f: "json" }), true);
+  private async getJson<T>(path: string, params = new URLSearchParams()): Promise<T> {
+    params.set("f", "json");
+    const response = await this.fetchWithFallback(path, params, true);
     if (!response.ok) throw new Error(`Navidrome ${response.status} for ${path}`);
     const payload = await response.json() as SubsonicResponse<T>;
     const body = payload["subsonic-response"];

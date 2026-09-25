@@ -299,6 +299,32 @@ export class JellyfinClient {
     return artist ? this.artworkFromItem(artist, artist.Name ?? name ?? "Artist", "MusicArtist") : undefined;
   }
 
+  async albumCoverForName(albumName?: string, artistName?: string) {
+    if (!albumName || !this.configured()) return undefined;
+    const params = new URLSearchParams({
+      SearchTerm: albumName,
+      IncludeItemTypes: "MusicAlbum",
+      Recursive: "true",
+      Limit: "10",
+      Fields: "ImageTags,AlbumArtist,AlbumArtists,Artists"
+    });
+    const response = await this.getJson<{ Items?: JellyfinItem[] }>(`/Items?${params}`).catch(() => undefined);
+    const normalizedAlbum = albumName.trim().toLowerCase();
+    const normalizedArtist = artistName?.trim().toLowerCase();
+    const candidates = response?.Items ?? [];
+    const album = candidates.find((entry) => {
+      if (String(entry.Name ?? "").trim().toLowerCase() !== normalizedAlbum) return false;
+      if (!normalizedArtist) return true;
+      const names = [entry.AlbumArtist, ...(entry.AlbumArtists ?? []), ...(entry.Artists ?? [])]
+        .map((value) => typeof value === "string" ? value : value?.Name)
+        .filter(Boolean)
+        .map((value) => String(value).trim().toLowerCase());
+      return names.includes(normalizedArtist);
+    }) ?? candidates.find((entry) => String(entry.Name ?? "").trim().toLowerCase() === normalizedAlbum);
+    const tag = album?.ImageTags?.Primary;
+    return album?.Id && tag ? this.imageUrl(String(album.Id), "Primary", 0, String(tag)) : undefined;
+  }
+
   async collectionMemberships(include: (name: string) => boolean) {
     if (this.collectionLoad) return this.collectionLoad;
     this.collectionLoad = (async () => {
@@ -652,7 +678,9 @@ export class JellyfinClient {
 
   async userAvatarUrl(name: string, displayConfig: DisplayConfig) {
     const user = await this.userFor(name).catch(() => undefined);
-    return user?.Id ? this.userImageUrl(user.Id, user.PrimaryImageTag, displayConfig.display.nowplaying_text.user_avatar_resize) : undefined;
+    return user?.Id && user.PrimaryImageTag
+      ? this.userImageUrl(user.Id, user.PrimaryImageTag, displayConfig.display.nowplaying_text.user_avatar_resize)
+      : undefined;
   }
 
   private artistName(item: JellyfinItem, role: DisplayConfig["display"]["music_artist_images"]) {

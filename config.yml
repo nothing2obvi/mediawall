@@ -26,15 +26,42 @@ navidrome:
       - navidrome: "/music"
         mediawall: "/navidrome_music"
 
+external_music:
+  enabled: false
+  session_timeout_seconds: 90
+  track_transition_grace_seconds: 10
+  artwork:
+    preference: local
+    minimum_backdrop_resolution: 1920x1080
+    backdrop_count: 3
+    cache_directory: /app/data/external-artwork
+    cache_ttl_days: 30
+  tokens: {}
+
+image_providers:
+  musicbrainz:
+    enabled: true
+    contact: "${MUSICBRAINZ_CONTACT}"
+  fanart:
+    enabled: true
+    api_key: "${FANART_API_KEY}"
+  theaudiodb:
+    enabled: true
+    api_key: "${THEAUDIODB_API_KEY}"
+  cover_art_archive:
+    enabled: true
+
 users:
   primary:
     jellyfin_user: "${JELLYFIN_USER}"
     navidrome_user: "${NAVIDROME_USER}"
     navidrome_password: "${NAVIDROME_PASSWORD}"
+    external_music_token: "${EXTERNAL_MUSIC_PRIMARY_TOKEN}"
   secondary:
     jellyfin_user: "${JELLYFIN_SECONDARY_USER}"
     navidrome_user: "${NAVIDROME_SECONDARY_USER}"
     navidrome_password: "${NAVIDROME_SECONDARY_PASSWORD}"
+    external_music_token: "${EXTERNAL_MUSIC_SECONDARY_TOKEN}"
   jellyfin_all:
     jellyfin_user: "All"
 
@@ -49,6 +76,9 @@ spaces:
       - Music
       - Movies
       - Shows
+    page_refresh:
+      enabled: false
+      time: "06:00" # Daily, in the display browser's local timezone.
     idle_timeout: 30
     now_playing:
       fallback: mediawall
@@ -144,7 +174,7 @@ spaces:
       logo:
         max_width: 520
       album_art:
-        size: 200
+        size: 300
       fallback_title:
         font_size: 86
       nowplaying_text:
@@ -284,7 +314,7 @@ spaces:
       logo:
         max_width: 520
       album_art:
-        size: 200
+        size: 300
       fallback_title:
         font_size: 86
       nowplaying_text:
@@ -425,7 +455,7 @@ spaces:
       logo:
         max_width: 520
       album_art:
-        size: 200
+        size: 300
       fallback_title:
         font_size: 86
       nowplaying_text:
@@ -460,3 +490,8 @@ spaces:
         order: written
         styles:
           - All
+
+aliases:
+  artists:
+    "a子":
+      - "ako"

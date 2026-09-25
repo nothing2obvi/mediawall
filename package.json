@@ -1,6 +1,6 @@
 {
   "name": "mediawall",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
@@ -12,6 +12,7 @@
     "build": "tsc -p tsconfig.json && vite build",
     "mediawall": "node dist/server/cli.js",
     "start": "node dist/server/index.js",
+    "test": "tsx --test server/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

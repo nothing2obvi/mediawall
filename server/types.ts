@@ -1,4 +1,6 @@
 export type PlaybackSource = "jellyfin" | "navidrome" | "both";
+export type NowPlayingSource = "jellyfin" | "navidrome" | "spotify" | "apple_music" | "external_music";
+export type ArtworkSource = "jellyfin" | "navidrome" | "fetched" | "fallback";
 export type DisplayMode = "now-playing" | "screensaver" | "immich-kiosk";
 export type MediaWallFallbackMode = "centered" | "breathing" | "float" | "spotlight" | "dvd" | "minimal";
 
@@ -7,6 +9,7 @@ export interface MediaWallUser {
   jellyfin_user?: string;
   navidrome_user?: string;
   navidrome_password?: string;
+  external_music_token?: string;
   sound?: string;
   end_sound?: string;
 }
@@ -18,6 +21,7 @@ export interface DisplayConfig {
   playback_user: string;
   libraries: string[];
   idle_timeout: number;
+  page_refresh: { enabled: boolean; time: string };
   password?: string;
   now_playing: {
     fallback: "mediawall" | "shuffle" | "immich_kiosk";
@@ -228,16 +232,42 @@ export interface AppConfig {
     artwork: {
       jellyfin_fallback: boolean;
       local_files: boolean;
-      order: Array<"jellyfin" | "local">;
+      order: Array<"jellyfin" | "local" | "fetched">;
       path_mappings: Array<{ navidrome: string; mediawall: string; jellyfin?: string }>;
     };
+  };
+  external_music: {
+    enabled: boolean;
+    session_timeout_seconds: number;
+    track_transition_grace_seconds: number;
+    artwork: {
+      preference: "local" | "fetched";
+      minimum_backdrop_width: number;
+      minimum_backdrop_height: number;
+      backdrop_count: number;
+      cache_directory: string;
+      cache_ttl_days: number;
+    };
+    tokens: Record<string, {
+      user: string;
+      source?: string;
+    }>;
+  };
+  image_providers: {
+    musicbrainz: { enabled: boolean; contact: string };
+    fanart: { enabled: boolean; api_key: string };
+    theaudiodb: { enabled: boolean; api_key: string };
+    cover_art_archive: { enabled: boolean };
+  };
+  aliases: {
+    artists: Record<string, string[]>;
   };
   users: Record<string, MediaWallUser>;
   spaces: Record<string, DisplayConfig>;
 }
 
 export interface ArtworkRef {
-  source: PlaybackSource | "fallback";
+  source: ArtworkSource;
   itemId: string;
   title: string;
   mediaType: string;
@@ -255,7 +285,7 @@ export interface ArtworkRef {
 }
 
 export interface NowPlayingState {
-  source: PlaybackSource;
+  source: NowPlayingSource;
   user: string;
   playing: boolean;
   paused: boolean;
@@ -265,7 +295,13 @@ export interface NowPlayingState {
   playbackPositionTicks?: number;
   title?: string;
   artist?: string;
+  artists?: string[];
+  albumArtist?: string;
+  artworkArtist?: string;
   album?: string;
+  durationSeconds?: number;
+  externalMusicSource?: string;
+  externalIds?: Record<string, unknown>;
   year?: number;
   seasonNumber?: number;
   episodeNumber?: number;
@@ -303,7 +339,13 @@ export type PublicNowPlayingState = Pick<
   | "paused"
   | "title"
   | "artist"
+  | "artists"
+  | "albumArtist"
+  | "artworkArtist"
   | "album"
+  | "durationSeconds"
+  | "externalMusicSource"
+  | "externalIds"
   | "year"
   | "seasonNumber"
   | "episodeNumber"
@@ -330,7 +372,7 @@ export type PublicNowPlayingState = Pick<
 
 export interface PublicSoundSession {
   key: string;
-  source: "jellyfin" | "navidrome";
+  source: NowPlayingSource;
   userKey: string;
   libraryName?: string;
   continuous: boolean;
@@ -360,7 +402,7 @@ export interface PublicControlCommand {
   type: "sound" | "mediawall" | "animation" | "user_transition";
   name: string;
   startedAt: number;
-  source?: "jellyfin" | "navidrome";
+  source?: NowPlayingSource;
   username?: string;
   avatarUrl?: string;
   verb?: string;

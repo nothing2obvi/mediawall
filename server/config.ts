@@ -53,6 +53,7 @@ const mediaWallUserSchema = z.object({
   jellyfin_user: z.string().optional(),
   navidrome_user: z.string().optional(),
   navidrome_password: z.string().optional(),
+  external_music_token: z.string().optional(),
   sound: z.string().optional(),
   end_sound: z.string().optional()
 });
@@ -64,6 +65,10 @@ const spaceSchema = z.object({
   playback_user: z.string().optional(),
   libraries: z.array(z.string()).default([]),
   idle_timeout: z.number().default(30),
+  page_refresh: z.object({
+    enabled: z.boolean().default(false),
+    time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Expected HH:mm (24-hour time)").default("06:00")
+  }).default({ enabled: false, time: "06:00" }),
   password: z.string().optional(),
   now_playing: z.object({
     fallback: z.preprocess(
@@ -278,8 +283,8 @@ const spaceSchema = z.object({
       max_width: z.number().default(520)
     }).default({ max_width: 520 }),
     album_art: z.object({
-      size: z.number().default(200)
-    }).default({ size: 200 }),
+      size: z.number().default(300)
+    }).default({ size: 300 }),
     fallback_title: z.object({
       font_size: z.number().default(86)
     }).default({ font_size: 86 }),
@@ -388,7 +393,7 @@ const spaceSchema = z.object({
     multiple_backdrops: { mode: "single_backdrop", single_backdrop: "random", cycle_order: "numbered" },
     animations: { enabled: true, style: "kenburns", scale: 1.08, duration_seconds: 26 },
     logo: { max_width: 520 },
-    album_art: { size: 200 },
+    album_art: { size: 300 },
     fallback_title: { font_size: 86 },
     nowplaying_text: {
       enabled: false,
@@ -450,7 +455,7 @@ const configSchema = z.object({
     artwork: z.object({
       jellyfin_fallback: z.boolean().default(true),
       local_files: z.boolean().default(true),
-      order: z.array(z.enum(["jellyfin", "local"])).default(["jellyfin", "local"]),
+      order: z.array(z.enum(["jellyfin", "local", "fetched"])).default(["jellyfin", "local"]),
       path_mappings: z.array(z.object({
         navidrome: z.string(),
         mediawall: z.string().optional(),
@@ -466,6 +471,89 @@ const configSchema = z.object({
     url: "",
     artwork: { jellyfin_fallback: true, local_files: true, order: ["jellyfin", "local"], path_mappings: [] }
   }),
+  external_music: z.object({
+    enabled: z.boolean().default(false),
+    session_timeout_seconds: z.number().min(5).default(90),
+    track_transition_grace_seconds: z.number().min(0).max(60).default(10),
+    artwork: z.object({
+      preference: z.enum(["local", "fetched"]).default("local"),
+      minimum_backdrop_resolution: z.string().regex(/^\d+x\d+$/i).default("1920x1080"),
+      backdrop_count: z.number().int().min(1).max(20).default(3),
+      cache_directory: z.string().default("/app/data/external-artwork"),
+      cache_ttl_days: z.number().min(1).default(30)
+    }).transform((artwork) => {
+      const [width, height] = artwork.minimum_backdrop_resolution.toLowerCase().split("x").map(Number);
+      return {
+        preference: artwork.preference,
+        minimum_backdrop_width: width,
+        minimum_backdrop_height: height,
+        backdrop_count: artwork.backdrop_count,
+        cache_directory: artwork.cache_directory,
+        cache_ttl_days: artwork.cache_ttl_days
+      };
+    }).default({
+      preference: "local",
+      minimum_backdrop_width: 1920,
+      minimum_backdrop_height: 1080,
+      backdrop_count: 3,
+      cache_directory: "/app/data/external-artwork",
+      cache_ttl_days: 30
+    }),
+    tokens: z.record(z.string(), z.union([
+      z.string(),
+      z.object({
+        user: z.string(),
+        source: z.string().optional()
+      })
+    ])).default({})
+  }).transform((externalMusic) => ({
+    enabled: externalMusic.enabled,
+    session_timeout_seconds: externalMusic.session_timeout_seconds,
+    track_transition_grace_seconds: externalMusic.track_transition_grace_seconds,
+    artwork: externalMusic.artwork,
+    tokens: Object.fromEntries(Object.entries(externalMusic.tokens).map(([token, mapping]) => [
+      token,
+      typeof mapping === "string" ? { user: mapping } : mapping
+    ]))
+  })).default({
+    enabled: false,
+    session_timeout_seconds: 90,
+    track_transition_grace_seconds: 10,
+    artwork: {
+      preference: "local",
+      minimum_backdrop_width: 1920,
+      minimum_backdrop_height: 1080,
+      backdrop_count: 3,
+      cache_directory: "/app/data/external-artwork",
+      cache_ttl_days: 30
+    },
+    tokens: {}
+  }),
+  image_providers: z.object({
+    musicbrainz: z.object({
+      enabled: z.boolean().default(true),
+      contact: z.string().default("")
+    }).default({ enabled: true, contact: "" }),
+    fanart: z.object({
+      enabled: z.boolean().default(true),
+      api_key: z.string().default("")
+    }).default({ enabled: true, api_key: "" }),
+    theaudiodb: z.object({
+      enabled: z.boolean().default(true),
+      api_key: z.string().default("")
+    }).default({ enabled: true, api_key: "" }),
+    cover_art_archive: z.object({
+      enabled: z.boolean().default(true)
+    }).default({ enabled: true })
+  }).default({
+    musicbrainz: { enabled: true, contact: "" },
+    fanart: { enabled: true, api_key: "" },
+    theaudiodb: { enabled: true, api_key: "" },
+    cover_art_archive: { enabled: true }
+  }),
+  aliases: z.object({
+    artists: z.record(z.string(), z.array(z.string())).default({})
+  }).default({ artists: {} }),
   users: z.record(z.string(), mediaWallUserSchema).default({}),
   spaces: z.record(z.string(), spaceSchema).default({}),
   displays: z.record(z.string(), z.record(z.string(), z.any())).optional(),
@@ -484,6 +572,9 @@ export function loadConfig(): AppConfig {
     library_scan: parsed.library_scan,
     jellyfin: parsed.jellyfin,
     navidrome: parsed.navidrome,
+    external_music: normalizeExternalMusic(parsed.external_music, users),
+    image_providers: parsed.image_providers,
+    aliases: parsed.aliases,
     users,
     spaces
   };
@@ -502,6 +593,7 @@ function normalizeUsers(input: Record<string, z.infer<typeof mediaWallUserSchema
       jellyfin_user: user.jellyfin_user,
       navidrome_user: user.navidrome_user,
       navidrome_password: user.navidrome_password,
+      external_music_token: user.external_music_token,
       sound: user.sound,
       end_sound: user.end_sound
     };
@@ -532,6 +624,19 @@ function normalizeSpaces(input: Record<string, z.infer<typeof spaceSchema>>, use
     };
   }
   return spaces;
+}
+
+function normalizeExternalMusic(
+  input: z.infer<typeof configSchema>["external_music"],
+  users: Record<string, MediaWallUser>
+): AppConfig["external_music"] {
+  const tokens = { ...input.tokens };
+  for (const [userName, user] of Object.entries(users)) {
+    if (user.external_music_token && !tokens[user.external_music_token]) {
+      tokens[user.external_music_token] = { user: userName };
+    }
+  }
+  return { ...input, tokens };
 }
 
 function expandEnv(raw: string) {

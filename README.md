@@ -17,7 +17,7 @@
 
 ## TL;DR
 
-MediaWall is a way to take advantage of an old iPad, a Raspberry Pi with a display, or any spare screen by turning it into a live window into your Jellyfin and Navidrome servers. It can show what you and your users are currently watching or listening to, cycle through artwork from your libraries as a screensaver, or display favorite media as wallpapers. It also supports custom sounds, layouts, and fallback screens. Basically, it's a fun little project that's an overengineered way to view active sessions and make your media library visible instead of leaving all that artwork buried in storage.
+MediaWall is a way to take advantage of an old iPad, a Raspberry Pi with a display, or any spare screen by turning it into a live window into your Jellyfin and Navidrome servers. It can show what you and your users are currently watching or listening to, cycle through artwork from your libraries as a screensaver, or display favorite media as wallpapers. With Multi-Scrobbler, it can also show Now Playing from external music sources such as Spotify. It also supports custom sounds, layouts, and fallback screens. Basically, it's a fun little project that's an overengineered way to view active sessions and make your media library visible instead of leaving all that artwork buried in storage.
 
 ## Screenshots
 
@@ -106,6 +106,8 @@ And if one image looks especially good, just pause the slideshow and leave it th
 That's really the idea behind MediaWall: it can be a Now Playing display, a homelab dashboard, a screensaver, a wallpaper, or some combination of all of them depending on where you put it.
 
 ## What It Does
+
+- Shows Now Playing from external music sources such as Spotify through Multi-Scrobbler.
 
 - Shows active playback sessions from Jellyfin, Navidrome, or both.
 - Supports multiple MediaWall users per space, including Jellyfin `All` users.
@@ -271,6 +273,32 @@ Dialogs and the grid can be dismissed by tapping outside them or tapping the sam
 
 Display and remote routes install as distinct PWAs. A route ending in `-remote` uses the remote icon and its own manifest identity; normal space routes use the MediaWall logo. Query-string passwords are preserved in the launch URL but aren't used when deciding which icon/identity applies.
 
+## Multi-Scrobbler Setup
+
+Connect [Multi-Scrobbler](https://github.com/FoxxMD/multi-scrobbler) to show live playback from external music sources such as Spotify.
+
+1. In MediaWall's `config.yml`, enable external music and map a token to an existing MediaWall user included in your space:
+
+   ```yaml
+   external_music:
+     enabled: true
+     tokens:
+       "${EXTERNAL_MUSIC_TOKEN}":
+         user: primary
+   ```
+
+   Add `EXTERNAL_MUSIC_TOKEN=your-long-random-token` to MediaWall's `.env`, replace `primary` with your user name, and restart MediaWall. Merge these settings into your existing configuration.
+
+2. In Multi-Scrobbler, create a **ListenBrainz client** with the same token and this base URL, using a host and port reachable from Multi-Scrobbler:
+
+   ```text
+   http://mediawall-host:1221/apis/listenbrainz
+   ```
+
+   Multi-Scrobbler appends `/1/submit-listens` itself.
+
+3. Configure your Spotify source to send to that client's ID using its `clients` list, and leave **Now Playing** enabled on the client. MediaWall needs live `playing_now` updates; playback-history-only sources won't appear.
+
 ## Immich Kiosk Fallback
 
 MediaWall v0.3 adds [Immich Kiosk](https://github.com/damongolding/immich-kiosk) as an optional Now Playing fallback. It isn't the default and is configured independently for each space. When a configured space has no active sessions, MediaWall embeds the existing Immich Kiosk application across the full display and hides its own on-screen controls. Immich Kiosk keeps its own slideshow, menus, touch handling, and other interactions; MediaWall doesn't recreate them.
@@ -338,6 +366,45 @@ For Navidrome, configure each Navidrome account you want MediaWall to distinguis
 Password environment variables are per space by convention. In addition to `LIVINGROOM_PASSWORD=` and `HOMELAB_PASSWORD=`, you can create any others you need, such as `OFFICE_PASSWORD=` or `KITCHEN_PASSWORD=`, then reference them from the matching space.
 
 Use `LOG_LEVEL=debug` when troubleshooting playback, session cycling, scans, or artwork behavior. Supported values are `debug`, `info`, `warn`, `error`, and `silent`; the default is `info`.
+
+## External Music
+
+**Spotify**, Plex, Subsonic-compatible servers, Chromecast, Sonos, Kodi, JRiver, Mopidy, MPD, Musikcube, VLC, Yamaha MusicCast, and Yandex Music are expected to work through Multi-Scrobbler. **Only Spotify has been tested with MediaWall so far.**
+
+MediaWall accepts Spotify and other external `playing_now` events through its ListenBrainz-compatible receiver. External sessions map to existing MediaWall users by token, so a separate Spotify user definition is not required.
+
+For setup, see [Multi-Scrobbler Setup](#multi-scrobbler-setup).
+
+### Artwork And Avatars
+
+`external_music.artwork.preference` may be `local` (the default) or `fetched`. Local preference uses matching Jellyfin/Navidrome artist art first; fetched preference uses MediaWall's provider cache first. Album artist is preferred for artist-level artwork. Cache files live under `/app/data/external-artwork`.
+
+For a custom Spotify avatar, place `app/avatars/spotify/<mediawall-user>.png` (or JPG/JPEG/WebP) in the mounted avatars directory. MediaWall falls back to a same-user Jellyfin avatar when no source file exists.
+
+Artist artwork aliases belong under `aliases.artists`. Each relationship works in both directions for Jellyfin, Navidrome/local, and fetched artwork lookup without changing the artist name shown by MediaWall.
+
+### Image Provider API Keys
+
+To fetch artist logos, backdrops, and album covers, add your Fanart.tv and TheAudioDB API keys to MediaWall's `.env`:
+
+```env
+FANART_API_KEY=your-fanart-api-key
+THEAUDIODB_API_KEY=your-theaudiodb-api-key
+```
+
+Reference them under the top-level `image_providers` section in `config.yml` (already included in the example configuration):
+
+```yaml
+image_providers:
+  fanart:
+    enabled: true
+    api_key: "${FANART_API_KEY}"
+  theaudiodb:
+    enabled: true
+    api_key: "${THEAUDIODB_API_KEY}"
+```
+
+Merge these settings into your existing configuration, then recreate the container with `docker compose up -d --force-recreate` to load the environment changes. Both providers are optional; MediaWall does not automatically use Jellyfin's provider keys. MusicBrainz and Cover Art Archive require no API keys. Set `external_music.artwork.preference: fetched` to prefer provider artwork, or leave it as `local` to prefer existing library artwork.
 
 ## Jellyfin And Navidrome Notes
 

@@ -11,6 +11,9 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `library_scan` | Startup and scheduled image-cache warming for grid/backdrop artwork. |
 | `jellyfin` | Jellyfin connection used for playback sessions, users, libraries, and artwork. |
 | `navidrome` | Navidrome connection and artwork fallback/local-file behavior. |
+| `external_music` | ListenBrainz-compatible receiver settings for external music bridges such as Multi-Scrobbler. |
+| `image_providers` | MediaWall-owned metadata and artwork provider settings. |
+| `aliases` | Bidirectional lookup aliases for music artist artwork. |
 | `users` | MediaWall users that map Jellyfin and/or Navidrome accounts together. |
 | `spaces` | Display routes such as `/livingroom`, each with its own users, libraries, Now Playing behavior, and display settings. |
 
@@ -54,10 +57,51 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `url` | Navidrome base URL. | `""` | Required if Navidrome enabled | Use `${NAVIDROME_URL}`. |
 | `artwork.jellyfin_fallback` | Lets Navidrome playback use matching Jellyfin artist artwork. | `true` | No | Requires Jellyfin to be configured. |
 | `artwork.local_files` | Enables local artist artwork for Navidrome-only setups. | `true` | No | If using Navidrome without Jellyfin, enable this for backdrop/logo-based grids. |
-| `artwork.order` | Artwork source priority for Navidrome playback. | `["jellyfin", "local"]` | No | Options are `jellyfin` and `local`. Disabled sources are skipped even if listed. |
+| `artwork.order` | Artwork source priority for Navidrome playback. | `["jellyfin", "local"]` | No | Options are `jellyfin`, `local`, and `fetched`. The first complete source wins; lower-priority sources may fill a missing logo or backdrop. |
 | `artwork.path_mappings` | Maps Navidrome paths to paths visible inside the MediaWall container. | `[]` | No | Each mapping has `navidrome` and `mediawall`. |
 | `path_mappings.navidrome` | Navidrome-side path prefix. | unset | Required per mapping | Example: `/music`. |
 | `path_mappings.mediawall` | MediaWall-container path prefix. | `/navidrome_music` | No | Used for local artist artwork lookup. Older configs using `jellyfin` are still accepted for compatibility. |
+
+### External Music
+
+| Setting | Purpose | Default | Required | Notes |
+| --- | --- | --- | --- | --- |
+| `enabled` | Enables the ListenBrainz-compatible receiver. | `false` | No | Multi-Scrobbler should use the base URL `/apis/listenbrainz`; it appends `/1/submit-listens`. |
+| `track_transition_grace_seconds` | Extra time to retain the current external track while waiting for the next update. | `10` | No | Range: `0`–`60` seconds. Avoids brief fallback between tracks. A new track replaces the old one immediately for the same user/service. Stopping playback also delays fallback by this amount, plus the space's missing-session grace. |
+| `session_timeout_seconds` | Keeps a received `playing_now` event active for this many seconds. | `90` | No | A later `playing_now` refreshes the session. Minimum: `5`. |
+| `artwork.preference` | Orders local-library and independently fetched artwork. | `local` | No | Options: `local`, `fetched`. Lower-priority artwork fills missing pieces. |
+| `artwork.minimum_backdrop_resolution` | Minimum accepted fetched backdrop dimensions. | `1920x1080` | No | This filters candidates; images are not resized down to this value. |
+| `artwork.backdrop_count` | Maximum fetched artist backdrops retained. | `3` | No | Fewer qualifying images are accepted when that is all providers return. |
+| `artwork.cache_directory` | MediaWall-owned fetched artwork cache. | `/app/data/external-artwork` | No | Keep `/app/data` persistent. Remove this directory to clear the cache manually. |
+| `artwork.cache_ttl_days` | Time before provider metadata may be refreshed. | `30` | No | Successful and empty results are cached. |
+| `tokens` | Maps bearer tokens to MediaWall users. | `{}` | Required when enabled | Each value may be a username string or an object with `user` and optional fixed `source`. Send the token as `Authorization: Token <token>`. |
+
+Only `playing_now` submissions create active sessions. Standard ListenBrainz fields and compatible `additional_info` extensions are retained where useful, including track artists, album artist, duration, music service, artwork URL, MusicBrainz IDs, and provider IDs.
+
+Spotify avatars may be placed at `app/avatars/spotify/<username>.png`, `.jpg`, `.jpeg`, or `.webp`. MediaWall uses that file first, then a same-user Jellyfin avatar, then the normal no-avatar fallback. Source images are rendered with a centered circular cover crop and are not modified.
+
+### Image Providers
+
+| Setting | Purpose | Default | Required | Notes |
+| --- | --- | --- | --- | --- |
+| `musicbrainz.enabled` | Resolves canonical artist and release MBIDs. | `true` | No | No API key. Set `contact` to an email or project URL for the request user agent. |
+| `musicbrainz.contact` | Contact included in MusicBrainz requests. | `""` | Recommended | Use `${MUSICBRAINZ_CONTACT}`. |
+| `fanart.enabled` | Enables Fanart.tv artist logos and backdrops. | `true` | No | Skipped when `api_key` is blank. |
+| `fanart.api_key` | MediaWall's Fanart.tv API key. | `""` | Required for Fanart.tv | Use `${FANART_API_KEY}`; Jellyfin keys are never reused. |
+| `theaudiodb.enabled` | Enables TheAudioDB artist and album images. | `true` | No | Skipped when `api_key` is blank. |
+| `theaudiodb.api_key` | MediaWall's TheAudioDB key. | `""` | Required for TheAudioDB | Use `${THEAUDIODB_API_KEY}`. |
+| `cover_art_archive.enabled` | Enables MusicBrainz Cover Art Archive album covers. | `true` | No | No API key required. |
+
+### Artist Aliases
+
+`aliases.artists` maps an artist name to one or more alternate artwork lookup names. Matching ignores surrounding whitespace and case while preserving Unicode names. Relationships are automatically bidirectional and safely de-duplicated, including chained or cyclic entries. Aliases apply to Jellyfin, Navidrome/local, and fetched artist and album artwork lookup only; MediaWall continues to display the originally encountered artist name.
+
+```yaml
+aliases:
+  artists:
+    "a子":
+      - "ako"
+```
 
 ### MediaWall Users
 
@@ -67,6 +111,7 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | `jellyfin_user` | Jellyfin username mapped to this MediaWall user. | unset | Required for Jellyfin user matching | Use `All` to watch all active Jellyfin users. Can reference `${JELLYFIN_USER}`. |
 | `navidrome_user` | Navidrome username mapped to this MediaWall user. | unset | Required for Navidrome user matching | Use `All` to watch all active Navidrome users. |
 | `navidrome_password` | Navidrome password for this user. | unset | Required for Navidrome | Navidrome needs real credentials for API access; configure one MediaWall user per Navidrome listener you want to distinguish. |
+| `external_music_token` | Shorthand token mapping for this MediaWall user. | unset | No | Equivalent to adding this token under `external_music.tokens`. Prefer an environment variable such as `${EXTERNAL_MUSIC_PRIMARY_TOKEN}`. |
 | `sound` | Per-user session-start tone override. | unset | No | Filename from the sounds directory configured for the space. |
 | `end_sound` | Per-user session-ended tone override. | unset | No | Filename from the sounds directory configured for the space. |
 
@@ -83,6 +128,20 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | `password` | Optional URL password. | unset | No | If omitted or `""`, no `?password=` is required. |
 | `libraries` | Libraries shown in grid, selection, shuffle, and Wallpaper/Screensaver. | `[]` | Recommended | Use Jellyfin library names; `All` allows all Jellyfin libraries. |
 | `idle_timeout` | Playback record cleanup window in seconds. | `30` | No | Mostly internal display/session housekeeping. |
+
+### Scheduled page refresh
+
+Each space can opt into a full daily page reload:
+
+```yaml
+spaces:
+  livingroom:
+    page_refresh:
+      enabled: true
+      time: "06:00"
+```
+
+`page_refresh.enabled` defaults to `false`. `page_refresh.time` defaults to `"06:00"` and accepts 24-hour `HH:mm`. The schedule uses the display browser's local timezone, not the container timezone. It reloads the display page, including an embedded Immich Kiosk, but not the remote control page. The current URL and password query are preserved. A suspended display refreshes when it wakes after a missed deadline. Reloading may interrupt playback presentation and resets temporary iframe navigation. Restart the container after editing configuration.
 
 ### Space Now Playing
 
@@ -190,7 +249,7 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 | `animations.scale` | Animation scale. | `1.08` | No | Used by zooming animations; MediaWall adds enough overscan for moving animations to avoid blank edges. |
 | `animations.duration_seconds` | Animation duration. | `26` | No | Duration of one animation direction before it alternates. |
 | `logo.max_width` | Logo image maximum width. | `520` | No | Pixels. |
-| `album_art.size` | Now Playing album cover size. | `200` | No | Pixels. |
+| `album_art.size` | Now Playing album cover size. | `300` | No | Pixels. |
 | `fallback_title.font_size` | Fallback title text size. | `86` | No | Used when title text rendering applies. |
 
 ### Backdrop Animations
@@ -266,3 +325,8 @@ display:
 | `styles` | Transition styles to use. | `["crossfade"]` | No | Options: `crossfade`, `fade`, `slide_left`, `slide_right`, `slide_up`, `slide_down`, `push_left`, `push_right`, `zoom_fade`, `soft_zoom`, `blur_fade`, `wipe_left`, `wipe_right`, `All`. |
 
 For older tablets, `crossfade`, `fade`, and `blur_fade` are usually the safest choices. Directional slide, push, wipe, and zoom transitions can look more dynamic, but may feel heavier on older iPads or low-power kiosk devices.
+
+
+### Artwork source logging
+
+At the default `info` log level, artwork selection changes identify the backdrop, logo, and album-cover sources separately: Jellyfin, Navidrome, local files, a named image provider, or an external image host. External music logs include the service, artist, track, and configured selection order/preference. Provider downloads log saved image counts, provider names, candidate counts, requested backdrop limits, and rejection reasons (HTTP status, size, dimensions, format, or request failure). Fresh provider-cache reuse explicitly reports `downloaded=0`. MusicBrainz supplies lookup IDs, not images. Repeated unchanged selections are suppressed. Source descriptions omit full remote URLs and credentials.
