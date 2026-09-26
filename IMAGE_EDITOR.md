@@ -7,7 +7,7 @@
 ## Implementation details
 
 1. **Features:** display and remote controls share one editor for logos and ordered backdrops, with search, append, replacement, individual deletion, and immediate refresh. Album covers remain automatic and are excluded.
-2. **Icon:** Lucide `ImagePlus` is unique among the existing controls and represents managing an image collection. It follows a divider after the previous last control.
+2. **Icon:** Lucide `ImagePlus` is unique among the existing controls and represents managing an image collection. It appears directly after Themes, with the version link at the far right and no extra divider.
 3. **Button color:** the displayed artwork's source selects orange (`#f3a34b`, fetched), purple (`#ba91ff`, Jellyfin), or blue (`#60baff`, local/Navidrome). Spotify matched to Jellyfin is purple.
 4. **Modal theme:** the backend's captured editor target selects the same source class and CSS accent. Border, header, controls, and focus states use that accent.
 5. **Shared UI:** `src/ImageEditor.tsx` uses a normalized model from `server/image-editor.ts`. It shows previews, dimensions, provenance, and available search ranking/language metadata. Unknown provenance remains unknown. The target stays fixed while playback changes. Escape, outside click, close, and bottom-right Cancel dismiss it; edits save immediately, so Cancel is not Undo. An already submitted mutation may finish after closing.
@@ -28,7 +28,7 @@
 
 ## Validation
 
-- Production TypeScript/Vite build and 40 automated tests passed.
+- Production TypeScript/Vite build and 41 automated tests passed.
 - Adapter tests cover Jellyfin music/movie/series, local filesystem changes, synthetic Spotify and Apple Music sessions, album-artist identity, both external image providers, multiple append operations, reorder, logo replacement/deletion, individual backdrop deletion, metadata, and rejection of unsupported image types.
 - Source mapping tests cover orange/external, purple/Jellyfin, blue/local, and Spotify backed by Jellyfin. All source accents are defined in the shared stylesheet; the orange layout was visually checked in the browser.
 - Controlled-clock tests cover the 18-seconds-remaining example after two minutes editing, including multiple editors and expired leases, for both presentation modes. These are clock/unit checks, not a two-minute live playback test against each real server.
@@ -38,3 +38,5 @@
 - Asset verification checked all 33 scoped files and decoded-content equivalence as described above.
 
 Fixture/mocked provider coverage establishes adapter behavior without claiming destructive end-to-end validation against production Jellyfin, Navidrome, or Apple Music. Apple's history-only ingestion limitations are unchanged by this editor.
+
+Follow-up validation: nested search Cancel, outside-click, and Escape navigation were verified in the browser. Post-edit display references now come directly from the returned image list, without a secondary Jellyfin item-details request. Editor previews include an edit-specific cache-busting value.

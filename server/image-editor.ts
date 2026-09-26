@@ -26,6 +26,17 @@ export function editorTarget(snapshot: DisplaySnapshot): EditorTarget {
   const name = art.mediaType === "MusicArtist" ? (playing?.artworkArtist ?? playing?.albumArtist ?? art.title) : art.title;
   return { source, id: art.itemId, name, kind: art.mediaType };
 }
+export function artworkAfterEdit(model: EditorModel, previous?: ArtworkRef): ArtworkRef {
+  const backdrops = model.images.filter(image => image.type === "Backdrop");
+  const logo = model.images.find(image => image.type === "Logo");
+  return {
+    ...previous, source: model.target.source === "external" ? "fetched" : model.target.source === "local" ? "navidrome" : "jellyfin",
+    itemId: model.target.id, title: model.target.name, mediaType: model.target.kind,
+    imageType: "Backdrop", imageIndex: 0, backdropCount: backdrops.length,
+    backdropUrl: backdrops[0]?.url, thumbUrl: backdrops[0]?.url, logoUrl: logo?.url,
+    backdropTags: undefined, logoTag: undefined, edited: true
+  };
+}
 const revision = (images: EditorImage[]) => crypto.createHash("sha256").update(JSON.stringify(images)).digest("hex");
 export class ImageEditor {
   private sessions = new Map<string, { space: string; target: EditorTarget; candidates: Map<string, EditorImage>; touched: number }>();

@@ -121,3 +121,22 @@ test("cache feedback only sounds after success with global sound enabled",async(
   assert.equal(cacheClearFeedback({id:"success",at:200},"success",100,true).show,false);
   assert.equal(cacheClearFeedback({id:"old",at:50},undefined,100,true).show,false);
 });
+
+test("post-edit artwork uses returned images without a second Jellyfin item request", async () => {
+  const {artworkAfterEdit} = await import("./image-editor.js");
+  const previous = snapshot("jellyfin").nowPlaying!.artwork!;
+  const model = {target:{source:"jellyfin" as const,id:"entity-id",name:"Album Artist",kind:"MusicArtist"},revision:"new",images:[
+    {id:"Logo:0",type:"Logo" as const,url:"/logo?tag=new"},
+    {id:"Backdrop:0",type:"Backdrop" as const,url:"/backdrop?tag=new"},
+    {id:"Backdrop:1",type:"Backdrop" as const,url:"/backdrop2?tag=new"}
+  ]};
+  const updated = artworkAfterEdit(model, previous);
+  assert.equal(updated.logoUrl, "/logo?tag=new");
+  assert.equal(updated.backdropUrl, "/backdrop?tag=new");
+  assert.equal(updated.backdropCount, 2);
+  assert.equal(updated.source, "jellyfin");
+  const empty = artworkAfterEdit({...model,images:[]}, updated);
+  assert.equal(empty.logoUrl, undefined);
+  assert.equal(empty.backdropUrl, undefined);
+  assert.equal(empty.backdropCount, 0);
+});

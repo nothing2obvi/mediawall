@@ -1,6 +1,6 @@
 import express from "express";
 import { clearArtworkCache } from "./artwork-cache.js";
-import { ImageEditor, JellyfinImageAdapter, ExternalImageAdapter, LocalImageAdapter } from "./image-editor.js";
+import { artworkAfterEdit, ImageEditor, JellyfinImageAdapter, ExternalImageAdapter, LocalImageAdapter } from "./image-editor.js";
 import { EditorClock } from "./editor-clock.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -879,11 +879,11 @@ app.post("/api/space/:space/image-editor/:operation", async (req, res) => {
       artworkVersions.set(`${model.target.source}:${model.target.id}`, Date.now());
       const snapshot = editorSnapshots.get(space);
       if (snapshot) {
-        const art = model.target.source === "jellyfin" ? await jellyfin.artworkForItem(model.target.id)
-          : model.target.source === "local" ? navidrome.localArtistArtworks(model.target.id)[0]
-          : await externalArtwork.editorArtwork(model.target.id);
-        const updated = art ?? { source: model.target.source === "external" ? "fetched" : model.target.source === "local" ? "navidrome" : "jellyfin", itemId: model.target.id, title: model.target.name, mediaType: model.target.kind, imageType: "Backdrop", imageIndex: 0, backdropCount: 0, edited: true } as ArtworkRef;
-        if (snapshot.nowPlaying) snapshot.nowPlaying.artwork = updated; else snapshot.state.current = updated;
+        // The mutation already returned the authoritative image list. A secondary
+        // item-details request must not turn a saved edit into an apparent failure.
+        const previous = snapshot.state.mode === "now-playing" ? snapshot.nowPlaying?.artwork : snapshot.state.current;
+        const updated = artworkAfterEdit(model, previous);
+        if (snapshot.state.mode === "now-playing" && snapshot.nowPlaying) snapshot.nowPlaying.artwork = updated; else snapshot.state.current = updated;
         const stored = states.get(space, undefined, resolved.displayConfig);
         if (stored.current?.itemId === updated.itemId) states.update(space, undefined, resolved.displayConfig, {current: updated});
       }

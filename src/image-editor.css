@@ -31,8 +31,9 @@
 .image-editor-modal footer button { border-color:var(--editor-accent); }
 .editor-error,.editor-open-error { color:#ffb2b2; background:#4c202a; padding:10px; border-radius:8px; }
 .editor-open-error { position:fixed; bottom:90px; right:20px; max-width:400px; }
-.remote-button-grid .editor-divider { grid-column:1/-1; width:100%; height:1px; background:#ffffff30; }
 .cache-clear-toast { position:fixed; bottom:24px; right:24px; z-index:2100; padding:16px 22px; background:#192b25; border:1px solid #81c9a4; border-radius:12px; color:#fff; }
 @media(max-width:600px) { .image-editor-overlay { padding:10px; } .image-editor-modal { padding:18px; max-height:94dvh; } .editor-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .image-editor-modal footer { bottom:-18px; margin:18px -18px -18px; padding:14px 18px; } }
 
 .editor-paused .session-timer-progress, .editor-paused .backdrop, .editor-paused .backdrop-image { animation-play-state: paused !important; }
+
+.image-search-overlay { z-index: 2001; background: #05070b88; }

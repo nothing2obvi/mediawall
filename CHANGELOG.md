@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix saved Jellyfin image edits appearing to fail during a secondary metadata refresh; refresh editor previews after changes.
+- Move image editing beside Themes and open search in a nested modal with stepwise dismissal.
+
 - Shared source-aware image editor on display and remote controls, with Jellyfin, local-file, and external-cache adapters.
 - Logo/backdrop search, append, individual deletion, persisted ordering, and presentation timer hold/resume.
 - Confirmed artwork-cache CLI cleanup with success toast and global-sound-aware built-in feedback.

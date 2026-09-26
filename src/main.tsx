@@ -2718,13 +2718,13 @@ function ControlBar(props: {
       {snapshot.config.theme === "All" && (
         <>
           <IconButton label="Themes" active={props.themeOpen} onClick={props.onThemes}><Palette /></IconButton>
-          <span className="divider" />
         </>
       )}
+      <ImageEditorButton source={(snapshot.state.mode === "now-playing" ? snapshot.nowPlaying?.artwork : undefined)?.source ?? snapshot.state.current?.source} endpoint={spaceApi("/image-editor")} mediaUrl={mediaUrl} onChanged={() => window.dispatchEvent(new Event("mediawall-artwork-changed"))} />
       <a className="control-version" href="https://github.com/nothing2obvi/mediawall" target="_blank" rel="noreferrer">
         v{appVersion}
       </a>
-      <ImageEditorButton source={(snapshot.state.mode === "now-playing" ? snapshot.nowPlaying?.artwork : undefined)?.source ?? snapshot.state.current?.source} endpoint={spaceApi("/image-editor")} mediaUrl={mediaUrl} onChanged={() => window.dispatchEvent(new Event("mediawall-artwork-changed"))} />
+
     </nav>
   );
 }
