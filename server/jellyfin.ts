@@ -6,6 +6,13 @@ import path from "node:path";
 type JellyfinItem = Record<string, any>;
 
 export class JellyfinClient {
+  private editedItems = new Set<string>();
+  private editedItemsReady?: Promise<void>;
+  private async loadEditedItems() {
+    this.editedItemsReady ??= fs.readFile(path.join(this.config.library_scan.directory, "image-editor-jellyfin.json"), "utf8")
+      .then(raw => { this.editedItems = new Set(JSON.parse(raw)); }).catch(() => undefined);
+    await this.editedItemsReady;
+  }
   private workingBaseUrl?: string;
   private userIds = new Map<string, string>();
   private libraryNames = new Map<string, string>();
@@ -283,6 +290,24 @@ export class JellyfinClient {
     return configuredUser?.jellyfin_user ?? displayConfig.playback_user;
   }
 
+  async imageEditorRequest(endpoint: string, method = "GET") {
+    // Mutations are never retried against another host: an uncertain response must
+    // not duplicate a backdrop addition.
+    const base = this.workingBaseUrl || this.baseUrl;
+    const response = await fetch(`${base}${endpoint}`, { method, headers: this.headers, signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`Jellyfin image operation failed (HTTP ${response.status})`);
+    if (method !== "GET") {
+      await this.loadEditedItems();
+      const id = endpoint.match(/^\/Items\/([^/]+)/)?.[1];
+      if (id) {
+        this.editedItems.add(decodeURIComponent(id));
+        await fs.mkdir(this.config.library_scan.directory, {recursive:true});
+        await fs.writeFile(path.join(this.config.library_scan.directory, "image-editor-jellyfin.json"), JSON.stringify([...this.editedItems]));
+      }
+    }
+    return response.status === 204 ? undefined : response.json().catch(() => undefined);
+  }
+
   async artworkForItem(itemId: string, imageIndex = 0) {
     const item = await this.getItem(itemId);
     const displayItem = await this.displayItemForVideo(item).catch(() => item);
@@ -418,6 +443,7 @@ export class JellyfinClient {
   }
 
   private async getItem(itemId: string) {
+    await this.loadEditedItems();
     return this.getJson<JellyfinItem>(`/Items/${encodeURIComponent(itemId)}`);
   }
 
@@ -639,10 +665,11 @@ export class JellyfinClient {
     const fallbackPrimary = item.ImageTags?.Primary;
     const logoTag = item.ImageTags?.Logo ?? item.ParentLogoImageTag;
     const logoItemId = item.ImageTags?.Logo ? item.Id : item.ParentLogoItemId;
-    if (!hasBackdrop && !fallbackPrimary && !logoTag) return undefined;
+    if (!hasBackdrop && !fallbackPrimary && !logoTag && !this.editedItems.has(item.Id)) return undefined;
     const chosenIndex = hasBackdrop ? Math.min(imageIndex, backdropTags.length - 1) : 0;
     return {
       source: "jellyfin",
+      edited: this.editedItems.has(item.Id),
       itemId: item.Id,
       title,
       mediaType,

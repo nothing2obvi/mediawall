@@ -1,4 +1,7 @@
 import express from "express";
+import { clearArtworkCache } from "./artwork-cache.js";
+import { ImageEditor, JellyfinImageAdapter, ExternalImageAdapter, LocalImageAdapter } from "./image-editor.js";
+import { EditorClock } from "./editor-clock.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -25,8 +28,24 @@ const externalMusic = new ExternalMusicReceiver(config);
 const externalArtwork = new ExternalArtworkResolver(config, jellyfin, navidrome, appRoot);
 const sourceAvatars = new SourceAvatarStore(appRoot);
 const states = new StateStore();
+const imageEditor = new ImageEditor({ jellyfin: new JellyfinImageAdapter(jellyfin), local: new LocalImageAdapter(externalArtwork, navidrome, config), external: new ExternalImageAdapter(externalArtwork) });
+const editorSnapshots = new Map<string, DisplaySnapshot>();
+const artworkVersions = new Map<string, number>();
+const editorClock = new EditorClock((space, elapsed) => {
+  const runtime = spaceRuntime(space);
+  runtime.startedAt += elapsed;
+  if (runtime.nextTransitionAt) runtime.nextTransitionAt += elapsed;
+  const cycle = recentPlaybackCycles.get(space); if (cycle) cycle.selectedAt += elapsed;
+  const displayConfig = config.spaces[space];
+  if (displayConfig) {
+    const state = states.get(space, undefined, displayConfig);
+    if (state.lastNowPlayingFallbackAt) states.update(space, undefined, displayConfig, { lastNowPlayingFallbackAt: state.lastNowPlayingFallbackAt + elapsed });
+  }
+});
 const app = express();
 const favoritesShuffleLibrary = "Favorites";
+let cacheCleared: {id: string; at: number} | undefined;
+let clearingCache = false;
 const mediaWallFallbackModes = ["centered", "breathing", "float", "spotlight", "dvd", "minimal"] as const;
 const mediaWallFallbackModeOptions = [...mediaWallFallbackModes, "All"] as const;
 const backdropAnimations = ["breathe", "pan", "kenburns", "drift", "focus", "zoom"] as const;
@@ -101,7 +120,7 @@ app.use((req, res, next) => {
 });
 app.use(express.json());
 app.use((req, res, next) => {
-  if (req.method === "POST" && req.path.startsWith("/api/space/")) {
+  if (req.method === "POST" && req.path.startsWith("/api/space/") && !req.path.includes("/image-editor")) {
     res.on("finish", () => {
       if (res.statusCode < 400) {
         const space = req.path.split("/")[3];
@@ -823,11 +842,69 @@ app.get("/api/space/:space/items/:itemId/backdrops", async (req, res) => {
   res.json({ backdrops });
 });
 
+app.post("/api/space/:space/clear-cache", async (req, res) => {
+  if (!isLocalRequest(req)) { res.status(403).json({error: "Cache clearing is only available from the local container or host"}); return; }
+  if (!resolveDisplay(String(req.params.space), undefined, res, req.query.password)) return;
+  if (req.body.confirm !== "clear-mediawall-artwork-cache") { res.status(400).json({error: "Explicit cache-clear confirmation required"}); return; }
+  if (clearingCache || [...libraryScanProgress.values()].some(p => p.active)) { res.status(409).json({error: "A cache operation or scan is active; retry when it finishes"}); return; }
+  clearingCache = true;
+  try {
+    const removed = await clearArtworkCache(config, appRoot);
+    cacheCleared = {id: crypto.randomUUID(), at: Date.now()};
+    artworkVersions.clear();
+    for (const space of Object.keys(config.spaces)) touchSpace(space);
+    res.json({ok: true, removed});
+  } catch { res.status(500).json({error: "Cache clearing failed; check filesystem permissions"}); }
+  finally { clearingCache = false; }
+});
+
+app.post("/api/space/:space/image-editor/:operation", async (req, res) => {
+  const space = String(req.params.space);
+  const resolved = resolveDisplay(space, undefined, res, req.query.password); if (!resolved) return;
+  try {
+    const operation = String(req.params.operation), id = String(req.body.id ?? "");
+    if (operation === "open") {
+      const snapshot = await buildSnapshot(space, resolved.displayConfig);
+      const model = await imageEditor.open(space, snapshot);
+      editorSnapshots.set(space, snapshot); editorClock.hold(space, model.id);
+      res.json(model); return;
+    }
+    imageEditor.session(space, id);
+    if (operation === "close") { imageEditor.close(id); editorClock.release(space, id); res.json({ ok: true }); return; }
+    editorClock.hold(space, id);
+    if (operation === "heartbeat") { res.json({ ok: true }); return; }
+    if (operation === "search") { res.json({ images: await imageEditor.search(space, id, req.body.type) }); return; }
+    if (operation === "mutate") {
+      const model = await imageEditor.mutate(space, id, req.body);
+      artworkVersions.set(`${model.target.source}:${model.target.id}`, Date.now());
+      const snapshot = editorSnapshots.get(space);
+      if (snapshot) {
+        const art = model.target.source === "jellyfin" ? await jellyfin.artworkForItem(model.target.id)
+          : model.target.source === "local" ? navidrome.localArtistArtworks(model.target.id)[0]
+          : await externalArtwork.editorArtwork(model.target.id);
+        const updated = art ?? { source: model.target.source === "external" ? "fetched" : model.target.source === "local" ? "navidrome" : "jellyfin", itemId: model.target.id, title: model.target.name, mediaType: model.target.kind, imageType: "Backdrop", imageIndex: 0, backdropCount: 0, edited: true } as ArtworkRef;
+        if (snapshot.nowPlaying) snapshot.nowPlaying.artwork = updated; else snapshot.state.current = updated;
+        const stored = states.get(space, undefined, resolved.displayConfig);
+        if (stored.current?.itemId === updated.itemId) states.update(space, undefined, resolved.displayConfig, {current: updated});
+      }
+      touchSpace(space); res.json(model); return;
+    }
+    res.status(400).json({error: "Unknown image editor operation"});
+  } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Image edit failed" }); }
+});
+
 app.get(/.*/, (_req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));
 });
 
 async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promise<DisplaySnapshot> {
+  const frozenAt = editorClock.frozenAt(space);
+  const held = editorSnapshots.get(space);
+  if (frozenAt !== undefined && held) {
+    // Continue source monitoring while holding the presentation, never media playback.
+    void activePlaybackCandidates(space, displayConfig).catch(() => undefined);
+    return versionArtwork({ ...held, presentation: { ...held.presentation, paused: true, serverNow: frozenAt } });
+  }
   let state = states.get(space, undefined, displayConfig);
   const runtime = spaceRuntime(space);
   const now = Date.now();
@@ -1027,7 +1104,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
   externalArtwork.logSelection(`display:${space}`, `space=${JSON.stringify(space)} mode=${mode} source=${nowPlaying?.source ?? state.current?.source ?? "none"}`,
     nowPlaying?.artwork ?? state.current, nowPlaying?.albumArtUrl);
 
-  return {
+  return versionArtwork({
     profile: "",
     display: space,
     config: publicDisplayConfig(displayConfig),
@@ -1049,7 +1126,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
       backdropIndex: runtime.backdropIndex
     },
     userTransitionEvent: runtime.userTransitionEvent
-  };
+  });
 }
 
 function spaceRuntime(space: string): SpaceRuntime {
@@ -1119,6 +1196,22 @@ function isUiIndicatorKind(value: string): value is PublicUiIndicator["kind"] {
     "mode-now-playing",
     "mode-screensaver"
   ].includes(value);
+}
+
+function versionArtwork(snapshot: DisplaySnapshot): DisplaySnapshot {
+  const update = (art?: ArtworkRef) => {
+    if (!art) return art;
+    const source = art.source === "fetched" ? "external" : art.source === "navidrome" ? "local" : art.source;
+    const version = artworkVersions.get(`${source}:${art.itemId}`); if (!version) return art;
+    const url = (value?: string) => {
+      if (!value) return undefined;
+      const parsed = new URL(value, "http://mediawall.local"); parsed.searchParams.set("mwedit", String(version));
+      return value.startsWith("/") ? parsed.pathname + parsed.search : parsed.toString();
+    };
+    return { ...art, backdropUrl: url(art.backdropUrl), logoUrl: url(art.logoUrl), thumbUrl: url(art.thumbUrl) };
+  };
+  return { ...snapshot, cacheCleared, state: { ...snapshot.state, current: update(snapshot.state.current) },
+    nowPlaying: snapshot.nowPlaying ? { ...snapshot.nowPlaying, artwork: update(snapshot.nowPlaying.artwork) } : undefined };
 }
 
 function publicDisplayConfig(displayConfig: DisplayConfig): DisplaySnapshot["config"] {
@@ -2052,6 +2145,7 @@ async function readCachedImage(cacheKey: string, persistWhenScanDisabled = false
 }
 
 async function writeCachedImage(cacheKey: string, result: CachedImageResult, persistWhenScanDisabled = false) {
+  if (clearingCache) return;
   if ((!config.library_scan.enabled && !persistWhenScanDisabled) || !result.buffer || result.status < 200 || result.status >= 300) return;
   const paths = cachePaths(cacheKey);
   await fs.promises.mkdir(config.library_scan.directory, { recursive: true });
@@ -2850,7 +2944,14 @@ function resolveSoundPath(displayConfig: DisplayConfig, tone: string) {
   const directory = soundDirectory(displayConfig);
   const resolved = path.resolve(directory, tone);
   if (!resolved.startsWith(`${directory}${path.sep}`)) return undefined;
-  return fs.existsSync(resolved) && fs.statSync(resolved).isFile() ? resolved : undefined;
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) return resolved;
+  // Cache-clear feedback is built in, even with a custom sound directory.
+  if (tone === "trash.mp3") {
+    for (const builtIn of [path.join(appRoot, "sounds", tone), path.join(appRoot, "app/sounds", tone)]) {
+      if (fs.existsSync(builtIn) && fs.statSync(builtIn).isFile()) return builtIn;
+    }
+  }
+  return undefined;
 }
 
 function soundDirectory(displayConfig: DisplayConfig) {

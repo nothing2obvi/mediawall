@@ -1,9 +1,12 @@
+import { createInterface } from "node:readline/promises";
+import { cacheWarning } from "./artwork-cache.js";
 import { loadConfig } from "./config.js";
 
 const mediaWallFallbackModes = ["centered", "breathing", "float", "spotlight", "dvd", "minimal"] as const;
 const backdropAnimations = ["breathe", "pan", "kenburns", "drift", "focus", "zoom"] as const;
 const usage = [
   "Usage:",
+  "  npm run mediawall -- clear cache [--yes]",
   "  npm run mediawall -- animation <animation_name> on <space>",
   "  npm run mediawall -- animation <animation_name> --random on <space>",
   "  npm run mediawall -- animation all on <space>",
@@ -23,7 +26,26 @@ const usage = [
 type CommandType = "sound" | "mediawall" | "animation" | "user_transition";
 
 async function main() {
-  const parsed = parseArgs(process.argv.slice(2));
+  const args = process.argv.slice(2);
+  if (args[0] === "clear" && args[1] === "cache") {
+    console.warn(cacheWarning);
+    if (!args.includes("--yes")) {
+      if (!process.stdin.isTTY) throw new Error("Confirmation required: use an interactive terminal or --yes");
+      const prompt = createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await prompt.question('Type "clear" to confirm: '); prompt.close();
+      if (answer !== "clear") { console.log("Cancelled."); return; }
+    }
+    const config = loadConfig();
+    const entry = Object.entries(config.spaces)[0];
+    if (!entry) throw new Error("No configured space");
+    const url = new URL(`/api/space/${encodeURIComponent(entry[0])}/clear-cache`, `http://127.0.0.1:${process.env.PORT ?? config.server.port}`);
+    if (entry[1].password) url.searchParams.set("password", entry[1].password);
+    const response = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({confirm: "clear-mediawall-artwork-cache"})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error ?? "Cache clearing failed");
+    console.log(`Artwork cache cleared: ${result.removed} cache files removed.`); return;
+  }
+  const parsed = parseArgs(args);
   if (!parsed.ok) {
     console.error(parsed.error);
     console.error(usage);

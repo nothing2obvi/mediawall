@@ -267,6 +267,7 @@ export interface AppConfig {
 }
 
 export interface ArtworkRef {
+  edited?: boolean;
   source: ArtworkSource;
   itemId: string;
   title: string;
@@ -467,6 +468,7 @@ export interface DisplayState {
 }
 
 export interface DisplaySnapshot {
+  cacheCleared?: { id: string; at: number };
   profile: string;
   display: string;
   config: Omit<DisplayConfig, "password" | "users" | "now_playing"> & {
@@ -486,6 +488,7 @@ export interface DisplaySnapshot {
   uiIndicator?: PublicUiIndicator;
   activeMediaWallFallbackMode?: MediaWallFallbackMode;
   presentation: {
+    paused?: boolean;
     revision: number;
     serverNow: number;
     startedAt: number;

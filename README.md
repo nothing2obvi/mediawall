@@ -439,6 +439,30 @@ navidrome:
 
 Older configs using `jellyfin` in a path mapping are still accepted for compatibility, but new configs should use `mediawall`.
 
+## Image Editor
+
+Use **Edit images** after the divider in the display or remote controls to manage the current artist, movie, or TV series. The button and dialog show the artwork source: orange for MediaWall's external cache, purple for Jellyfin, and blue for local/Navidrome files. Music uses the configured canonical artwork artist, including album artist.
+
+Search for logos or backdrops, add backdrops without replacing existing ones, move them with left/right arrows, or delete individual images. Album covers are managed automatically outside this editor. Changes save immediately; **Cancel**, Escape, or clicking outside closes the editor. MediaWall's presentation timer pauses while editing and resumes with its remaining time; media playback continues.
+
+Jellyfin edits are written to the configured server and search its enabled image providers. Local artwork edits change recognized artist image files and save order in `.mediawall-images.json`; the mapped artist directory must be writable. Audio files are untouched. Local and external searches use configured Fanart.tv/TheAudioDB providers. External selections persist in MediaWall's artist cache until explicitly cleared.
+
+### Clear artwork cache
+
+With MediaWall running, use:
+
+```sh
+npm run mediawall -- clear cache
+# Docker: run in an interactive terminal
+docker exec -it mediawall npm run mediawall -- clear cache
+```
+
+Read the warning and type `clear` to confirm. For scripts, `clear cache --yes` explicitly confirms the same operation. This removes recognized MediaWall grid/wallpaper cache files and external artist/album image caches, including saved external artwork selections. It preserves original Jellyfin/local artwork, audio, personal assets, and unrelated files. Active library scans must finish first.
+
+Connected displays show a bottom-right success toast after completion. The built-in `trash.mp3` plays only with global sounds enabled (browser audio permission still applies). No separate sound toggle is needed.
+
+See [image editor implementation and validation](IMAGE_EDITOR.md) for persistence details and limitations.
+
 ## Development
 
 Node.js 22 or later is required. MediaWall's disk-backed Jellyfin collection index uses Node's built-in SQLite support.

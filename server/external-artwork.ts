@@ -16,6 +16,7 @@ type CachedImage = {
 };
 
 type ArtistCache = {
+  edited?: boolean;
   version: 2;
   configuration: string;
   resolvedAt: number;
@@ -27,6 +28,7 @@ type ArtistCache = {
 };
 
 type AlbumCache = {
+  edited?: boolean;
   version: 2;
   configuration: string;
   resolvedAt: number;
@@ -37,7 +39,7 @@ type AlbumCache = {
   cover?: CachedImage;
 };
 
-type ImageCandidate = { url: string; provider: string; score: number };
+type ImageCandidate = { url: string; provider: string; score: number; language?: string; width?: number; height?: number };
 
 export class ExternalArtworkResolver {
   private readonly root: string;
@@ -89,6 +91,8 @@ export class ExternalArtworkResolver {
     if (!artworkArtist) return state;
     const lookupArtists = artistLookupNames(artworkArtist, this.config.aliases.artists);
     const base = { ...state, artworkArtist, logoText: state.logoText ?? artworkArtist };
+    const pinned = await this.editedArtist(lookupArtists);
+    if (pinned) return { ...base, artwork: pinned, albumArtUrl: state.albumArtUrl ?? await this.resolveAlbumCover(lookupArtists, state.album, state.externalIds, this.config.external_music.artwork.preference) };
     const local = () => this.resolveLocalArtist(lookupArtists);
     const fetched = () => this.resolveFetchedArtist(lookupArtists, state.externalIds);
     const artwork = this.config.external_music.artwork.preference === "fetched"
@@ -109,6 +113,8 @@ export class ExternalArtworkResolver {
     const artworkArtist = artworkArtistFor(state);
     if (!artworkArtist) return state;
     const lookupArtists = artistLookupNames(artworkArtist, this.config.aliases.artists);
+    const pinned = await this.editedArtist(lookupArtists);
+    if (pinned) return { ...state, artworkArtist, artwork: pinned };
     let artwork: ArtworkRef | undefined;
     for (const source of this.config.navidrome.artwork.order) {
       let candidate: ArtworkRef | undefined;
@@ -140,6 +146,7 @@ export class ExternalArtworkResolver {
     if (!cache) return [];
     const base = this.artistArtwork(key, cache);
     if (!base) return [];
+    if (!cache.backdrops.length && cache.edited) return [base];
     return cache.backdrops.map((image, imageIndex) => ({
       ...base,
       imageIndex,
@@ -239,10 +246,13 @@ export class ExternalArtworkResolver {
     return this.artistArtwork(key, await pending);
   }
 
-  private async fetchArtist(artist: string, suppliedMbid: string | undefined, key: string): Promise<ArtistCache> {
-    logger.info(`Artwork lookup artist=${JSON.stringify(artist)} reason=no fresh matching cache; fanart.tv=${!this.config.image_providers.fanart.enabled ? "disabled" : !this.config.image_providers.fanart.api_key ? "missing credential" : "enabled"} TheAudioDB=${!this.config.image_providers.theaudiodb.enabled ? "disabled" : !this.config.image_providers.theaudiodb.api_key ? "missing credential" : "enabled"}`);
-    const artistMbid = suppliedMbid ?? await this.resolveArtistMbid(artist);
-    if (!artistMbid) logger.info(`Artwork lookup artist=${JSON.stringify(artist)} fanart.tv skipped: no MusicBrainz artist ID`);
+  async searchArtistImages(artist: string, type: "Logo" | "Backdrop", suppliedMbid?: string) {
+    const mbid = suppliedMbid ?? await this.resolveArtistMbid(artist);
+    const candidates = await this.artistCandidates(artist, mbid);
+    return uniqueCandidates(type === "Logo" ? candidates.logos : candidates.backdrops);
+  }
+
+  private async artistCandidates(artist: string, artistMbid?: string) {
     const logos: ImageCandidate[] = [];
     const backdrops: ImageCandidate[] = [];
     const providers = new Set<string>();
@@ -273,6 +283,51 @@ export class ExternalArtworkResolver {
       }
     }
 
+    return { logos, backdrops, providers };
+  }
+
+  async editorCache(key: string): Promise<ArtistCache> {
+    if (!/^[a-f0-9]{24}$/.test(key)) throw new Error("Invalid artwork key");
+    return JSON.parse(await fsp.readFile(path.join(this.root, "artists", key, "metadata.json"), "utf8"));
+  }
+
+  async editorArtwork(key: string) { return this.artistArtwork(key, await this.editorCache(key)); }
+
+  async editorSave(key: string, cache: ArtistCache) {
+    cache.edited = true;
+    cache.resolvedAt = Date.now();
+    await this.writeCache(await this.cacheDirectory("artists", key), cache);
+  }
+
+  async editorDownload(key: string, candidate: ImageCandidate, type: "Logo" | "Backdrop") {
+    if (!/^[a-f0-9]{24}$/.test(key)) throw new Error("Invalid artwork key");
+    const image = await this.downloadImage(candidate, await this.cacheDirectory("artists", key),
+      `${type.toLowerCase()}-${crypto.randomUUID()}`, type === "Backdrop");
+    if (!image) throw new Error("Image download rejected; check artwork logs for the reason");
+    return image;
+  }
+
+  async editorRemoveFile(key: string, file: string) {
+    const target = this.assetPath("artists", key, file);
+    if (target) await fsp.unlink(target);
+  }
+
+  private async editedArtist(artists: string[]) {
+    const entries = await fsp.readdir(path.join(this.root, "artists")).catch(() => []);
+    for (const key of entries) {
+      if (!/^[a-f0-9]{24}$/.test(key)) continue;
+      const cache = await this.editorCache(key).catch(() => undefined);
+      if (cache?.edited && artists.some(a => a.toLowerCase() === cache.artist.toLowerCase())) return this.artistArtwork(key, cache);
+    }
+    return undefined;
+  }
+
+  private async fetchArtist(artist: string, suppliedMbid: string | undefined, key: string): Promise<ArtistCache> {
+    logger.info(`Artwork lookup artist=${JSON.stringify(artist)} reason=no fresh matching cache; fanart.tv=${!this.config.image_providers.fanart.enabled ? "disabled" : !this.config.image_providers.fanart.api_key ? "missing credential" : "enabled"} TheAudioDB=${!this.config.image_providers.theaudiodb.enabled ? "disabled" : !this.config.image_providers.theaudiodb.api_key ? "missing credential" : "enabled"}`);
+    const artistMbid = suppliedMbid ?? await this.resolveArtistMbid(artist);
+    if (!artistMbid) logger.info(`Artwork lookup artist=${JSON.stringify(artist)} fanart.tv skipped: no MusicBrainz artist ID`);
+    const { logos, backdrops, providers } = await this.artistCandidates(artist, artistMbid);
+
     const directory = await this.cacheDirectory("artists", key);
     const logo = await this.downloadFirst(logos, directory, "logo", false);
     const backdropResults: CachedImage[] = [];
@@ -300,9 +355,10 @@ export class ExternalArtworkResolver {
     for (const image of cache.backdrops) this.rememberImage("artists", key, image);
     this.rememberImage("artists", key, cache.logo);
     const backdrop = cache.backdrops[0];
-    if (!backdrop && !cache.logo) return undefined;
+    if (!backdrop && !cache.logo && !cache.edited) return undefined;
     return {
       source: "fetched",
+      edited: cache.edited,
       itemId: key,
       title: cache.artist,
       mediaType: "MusicArtist",
@@ -502,7 +558,7 @@ export class ExternalArtworkResolver {
     });
   }
 
-  private async readFreshCache<T extends { resolvedAt: number; configuration?: string }>(
+  private async readFreshCache<T extends { resolvedAt: number; configuration?: string; edited?: boolean }>(
     scope: string,
     key: string,
     configuration: string
@@ -511,7 +567,7 @@ export class ExternalArtworkResolver {
     try {
       const cache = JSON.parse(await fsp.readFile(file, "utf8")) as T;
       const ttl = this.config.external_music.artwork.cache_ttl_days * 86_400_000;
-      return cache.configuration === configuration && Date.now() - cache.resolvedAt <= ttl ? cache : undefined;
+      return cache.edited || (cache.configuration === configuration && Date.now() - cache.resolvedAt <= ttl) ? cache : undefined;
     } catch {
       return undefined;
     }
@@ -524,7 +580,9 @@ export class ExternalArtworkResolver {
   }
 
   private async writeCache(directory: string, value: ArtistCache | AlbumCache) {
-    await fsp.writeFile(path.join(directory, "metadata.json"), `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    const temporary = path.join(directory, `metadata-${crypto.randomUUID()}.tmp`);
+    await fsp.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await fsp.rename(temporary, path.join(directory, "metadata.json"));
   }
 
   private trackPending(key: string, promise: Promise<unknown>) {
@@ -597,13 +655,13 @@ function genericAlbumArtist(value: string) {
 
 async function completeArtwork(first: () => Promise<ArtworkRef | undefined>, second: () => Promise<ArtworkRef | undefined>) {
   const primary = await first();
-  if (primary?.backdropUrl && primary.logoUrl) return primary;
+  if (primary?.edited || (primary?.backdropUrl && primary.logoUrl)) return primary;
   return mergeArtwork(primary, await second());
 }
 
 function mergeArtwork(primary: ArtworkRef | undefined, fallback: ArtworkRef | undefined) {
   if (!primary) return fallback;
-  if (!fallback) return primary;
+  if (primary.edited || !fallback) return primary;
   if (primary.backdropUrl) {
     return {
       ...primary,
@@ -666,7 +724,10 @@ function fanartCandidates(payload: Record<string, unknown>, fields: string[], pr
     const entries = Array.isArray(payload[field]) ? payload[field] : [];
     for (const entry of entries) {
       if (!isObject(entry)) continue;
-      addStringCandidate(candidates, entry.url, provider, Number(entry.likes) || 0);
+      if (typeof entry.url === "string" && entry.url.trim()) candidates.push({url:entry.url.trim(), provider, score:Number(entry.likes) || 0,
+        language: typeof entry.lang === "string" ? entry.lang : undefined,
+        width: Number(entry.width) > 0 ? Number(entry.width) : undefined,
+        height: Number(entry.height) > 0 ? Number(entry.height) : undefined});
     }
   }
   return candidates;
@@ -712,7 +773,7 @@ function imageExtension(contentType: string | null, pathname: string, buffer: Bu
   return undefined;
 }
 
-function imageDimensions(buffer: Buffer): { width: number; height: number } | undefined {
+export function imageDimensions(buffer: Buffer): { width: number; height: number } | undefined {
   if (buffer.length >= 24 && buffer.subarray(1, 4).toString("ascii") === "PNG") {
     return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
   }

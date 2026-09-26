@@ -31,6 +31,8 @@ import mediaWallBanner from "./logos/banner.png";
 import mediaWallBannerWhite from "./logos/banner_white.png";
 import packageInfo from "../package.json";
 import "./styles.css";
+import { cacheClearFeedback } from "./cache-feedback";
+import { ImageEditorButton } from "./ImageEditor";
 import { nextPageRefresh } from "./page-refresh";
 
 const mediaAssetCacheToken = Date.now().toString(36);
@@ -101,6 +103,7 @@ type BackdropAnimation = "breathe" | "pan" | "kenburns" | "drift" | "focus" | "z
 const backdropAnimations: BackdropAnimation[] = ["breathe", "pan", "kenburns", "drift", "focus", "zoom"];
 
 type Snapshot = {
+  cacheCleared?: {id: string; at: number};
   profile: string;
   display: string;
   mode: DisplayState["mode"];
@@ -151,6 +154,7 @@ type Snapshot = {
   };
   activeMediaWallFallbackMode?: MediaWallFallbackMode;
   presentation: {
+    paused?: boolean;
     revision: number;
     serverNow: number;
     startedAt: number;
@@ -474,6 +478,9 @@ function App() {
   const [backdropStep, setBackdropStep] = useState(0);
   const [nowPlayingBackdropStep, setNowPlayingBackdropStep] = useState(0);
   const [toast, setToast] = useState<string>();
+  const [cacheToast, setCacheToast] = useState(false);
+  const lastCacheEvent = useRef<string | undefined>(undefined);
+  const mountedAt = useRef(Date.now());
   const [toastVisible, setToastVisible] = useState(false);
   const [error, setError] = useState<string>();
   const [commandTick, setCommandTick] = useState(0);
@@ -659,12 +666,15 @@ function App() {
       .then((bootstrap) => setSnapshot((current) => current ?? bootstrap))
       .catch(() => undefined);
     void refresh();
+    const changed = () => void refresh();
+    window.addEventListener("mediawall-artwork-changed", changed);
     const timer = window.setInterval(refresh, 3500);
     const events = new EventSource(spaceApi("/events"));
     events.addEventListener("sync", () => void refresh());
     return () => {
       window.clearInterval(timer);
       events.close();
+      window.removeEventListener("mediawall-artwork-changed", changed);
     };
   }, []);
 
@@ -755,11 +765,11 @@ function App() {
 
   useEffect(() => {
     window.clearTimeout(advanceTimer.current);
-    const nextAt = snapshot?.presentation.nextTransitionAt;
+    const nextAt = snapshot?.presentation.paused ? undefined : snapshot?.presentation.nextTransitionAt;
     if (!nextAt) return;
     advanceTimer.current = window.setTimeout(() => void refresh(), Math.max(50, nextAt - Date.now() + 25));
     return () => window.clearTimeout(advanceTimer.current);
-  }, [snapshot?.presentation.nextTransitionAt]);
+  }, [snapshot?.presentation.nextTransitionAt, snapshot?.presentation.paused]);
 
   useEffect(() => {
     setBackdropStep(0);
@@ -1044,6 +1054,17 @@ function App() {
     image.src = mediaUrl(avatarUrl) ?? avatarUrl;
   }, [snapshot?.nowPlaying?.displayUserAvatarUrl]);
 
+  useEffect(() => {
+    const event = snapshot?.cacheCleared;
+    const feedback = cacheClearFeedback(event, lastCacheEvent.current, mountedAt.current, snapshot?.config.now_playing.sounds.enabled === true);
+    if (!feedback.show || !event || !snapshot) return;
+    lastCacheEvent.current = event.id;
+    setCacheToast(true);
+    if (feedback.sound) void playSound(feedback.sound, snapshot.config.now_playing.sounds.volume);
+    const timer = window.setTimeout(() => setCacheToast(false), 4500);
+    return () => window.clearTimeout(timer);
+  }, [snapshot?.cacheCleared?.id]);
+
   async function playSound(tone: string, volume: number) {
     if (soundMutedRef.current) {
       pendingSound.current = undefined;
@@ -1174,6 +1195,7 @@ function App() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (document.querySelector(".image-editor-modal")) return;
       if (!snapshot || shouldIgnoreShortcut(event)) return;
       if (event.key === "Escape" && themeOpen) {
         event.preventDefault();
@@ -1302,6 +1324,7 @@ function App() {
     document.body.classList.remove("idle");
     window.clearTimeout(hideTimer.current);
     hideTimer.current = window.setTimeout(() => {
+      if (document.querySelector(".image-editor-modal")) { revealControls(); return; }
       setVisible(false);
       closeOverlays();
       document.body.classList.add("idle");
@@ -1826,13 +1849,14 @@ function App() {
           </>
         )}
         {toast && <div className={`toast ${toastVisible ? "visible" : ""}`}>{toast}</div>}
+        {cacheToast && <div className="cache-clear-toast" role="status">Artwork cache cleared successfully</div>}
       </main>
     );
   }
 
   return (
     <main
-      className={`wall ${viewportClass} transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""} ${scanWithAlbumArt ? "scan-with-album-art" : ""} ${immichKioskActive ? "immich-active" : ""}`}
+      className={`wall ${snapshot?.presentation.paused ? "editor-paused" : ""} ${viewportClass} transition-${snapshot?.state.transitionStyle ?? "crossfade"} ${activeAnimation ? `animation-enabled animation-${activeAnimation}` : ""} ${scanWithAlbumArt ? "scan-with-album-art" : ""} ${immichKioskActive ? "immich-active" : ""}`}
       style={{
         ...themeVariables(themePreview ?? snapshot?.state.activeTheme),
         "--transition-duration": `${snapshot?.config.display.transitions.duration_ms ?? 1200}ms`,
@@ -1876,6 +1900,7 @@ function App() {
       <ControlCommandLabel command={snapshot?.controlCommand} />
       <LibraryScanProgress snapshot={snapshot} />
       {toast && <div className={`toast ${toastVisible ? "visible" : ""}`}>{toast}</div>}
+        {cacheToast && <div className="cache-clear-toast" role="status">Artwork cache cleared successfully</div>}
       {visible && (panel !== "none" || shuffleOpen || mediaInfoOpen || themeOpen || favoritePicker) && (
         <button
           className="dismiss-layer"
@@ -2488,7 +2513,7 @@ function SessionTimer({ snapshot }: { snapshot?: Snapshot }) {
   return (
     <div
       key={`${now?.signature ?? "session"}:${now?.sessionPosition ?? 0}:${now?.sessionCount ?? 0}`}
-      className="session-status"
+      className={`session-status ${snapshot?.presentation.paused ? "editor-paused" : ""}`}
       aria-hidden="true"
       style={{
         "--session-timer-size": `${timerConfig?.size ?? 42}px`,
@@ -2699,6 +2724,7 @@ function ControlBar(props: {
       <a className="control-version" href="https://github.com/nothing2obvi/mediawall" target="_blank" rel="noreferrer">
         v{appVersion}
       </a>
+      <ImageEditorButton source={(snapshot.state.mode === "now-playing" ? snapshot.nowPlaying?.artwork : undefined)?.source ?? snapshot.state.current?.source} endpoint={spaceApi("/image-editor")} mediaUrl={mediaUrl} onChanged={() => window.dispatchEvent(new Event("mediawall-artwork-changed"))} />
     </nav>
   );
 }
@@ -2813,6 +2839,7 @@ function RemoteControl(props: {
             <span>Themes</span>
           </button>
         )}
+        <ImageEditorButton source={props.previewArtwork?.source} endpoint={spaceApi("/image-editor")} mediaUrl={mediaUrl} onChanged={() => window.dispatchEvent(new Event("mediawall-artwork-changed"))} />
       </div>
       <a className="remote-version" href="https://github.com/nothing2obvi/mediawall" target="_blank" rel="noreferrer">
         MediaWall v{appVersion}

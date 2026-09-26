@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Shared source-aware image editor on display and remote controls, with Jellyfin, local-file, and external-cache adapters.
+- Logo/backdrop search, append, individual deletion, persisted ordering, and presentation timer hold/resume.
+- Confirmed artwork-cache CLI cleanup with success toast and global-sound-aware built-in feedback.
+- Static asset metadata sanitization and normalized cache-clear sound.
+
 ## 0.4.0 — 2026-09-25
 
 Local release checkpoint before the image editor work.

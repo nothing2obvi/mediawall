@@ -275,11 +275,30 @@ export class NavidromeClient {
     return this.localArtistImagePaths(artistName)[0];
   }
 
-  localArtistArtworks(artistName: string) {
+  private localImageManifest(artistName: string): { backdrops: string[]; logo?: string } | undefined {
+    for (const mapping of this.config.navidrome.artwork.path_mappings) {
+      const root = path.resolve(mapping.mediawall), dir = path.resolve(root, artistName);
+      if (!dir.startsWith(root + path.sep)) continue;
+      try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(dir, ".mediawall-images.json"), "utf8"));
+        const allowed = (value: unknown): value is string => typeof value === "string" && path.resolve(value).startsWith(root + path.sep)
+          && /\.(png|jpe?g|webp|avif)$/i.test(value) && fs.existsSync(value);
+        return { backdrops: (manifest.backdrops ?? []).filter(allowed), logo: allowed(manifest.logo) ? manifest.logo : undefined };
+      } catch { /* No editor manifest yet. */ }
+    }
+    return undefined;
+  }
+
+  localArtistArtworks(artistName: string): ArtworkRef[] {
     const logoUrl = this.localArtistLogoPath(artistName)
       ? `/api/navidrome/local-artist-logo/${encodeURIComponent(artistName)}`
       : undefined;
-    return this.localArtistImagePaths(artistName).map((imagePath, index, paths) => ({
+    const edited = Boolean(this.localImageManifest(artistName));
+    const images = this.localArtistImagePaths(artistName);
+    if (edited && !images.length) return [{ source: "navidrome" as const, edited: true, itemId: artistName,
+      title: artistName, mediaType: "MusicArtist", imageType: "Backdrop" as const, imageIndex: 0, backdropCount: 0, logoUrl }];
+    return images.map((imagePath, index, paths) => ({
+      edited,
       source: "navidrome" as const,
       itemId: artistName,
       title: artistName,
@@ -296,6 +315,8 @@ export class NavidromeClient {
 
   localArtistLogoPath(artistName: string) {
     if (!this.config.navidrome.artwork.local_files) return undefined;
+    const manifest = this.localImageManifest(artistName);
+    if (manifest) return manifest.logo;
     const roots = this.config.navidrome.artwork.path_mappings.map((mapping) => mapping.mediawall);
     const filenames = [
       "logo.png",
@@ -338,6 +359,8 @@ export class NavidromeClient {
 
   localArtistImagePaths(artistName: string) {
     if (!this.config.navidrome.artwork.local_files) return [];
+    const manifest = this.localImageManifest(artistName);
+    if (manifest) return manifest.backdrops;
     const roots = this.config.navidrome.artwork.path_mappings.map((mapping) => mapping.mediawall);
     const filenames = [
       "fanart.jpg",
