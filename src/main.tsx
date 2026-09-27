@@ -595,6 +595,8 @@ function App() {
   const [animationOffsetSeconds, setAnimationOffsetSeconds] = useState(0);
   const [immichExitPending, setImmichExitPending] = useState(false);
   const immichExitTimer = useRef<number | undefined>(undefined);
+  const hideImageEditor = immichKioskActive || immichExitPending || showMediaWallIdle
+    || (snapshot?.state.mode === "now-playing" && !snapshot.nowPlaying?.playing);
   const nowPlayingAnimationKey = snapshot?.state.mode === "now-playing"
     && snapshot.nowPlaying?.playing
     && activeAnimation
@@ -1766,6 +1768,7 @@ function App() {
         onPointerDown={revealControls}
       >
         <RemoteControl
+          hideImageEditor={hideImageEditor}
           snapshot={snapshot}
           panel={panel}
           isFavorite={isFavorite}
@@ -1911,6 +1914,7 @@ function App() {
       )}
       {visible && snapshot && (
         <ControlBar
+          hideImageEditor={hideImageEditor}
           snapshot={snapshot}
           isFavorite={isFavorite}
           panel={panel}
@@ -2631,6 +2635,7 @@ function actionIndicatorIcon(kind: ActionIndicatorKind) {
 }
 
 function ControlBar(props: {
+  hideImageEditor: boolean;
   snapshot: Snapshot;
   isFavorite: boolean;
   panel: "none" | "browse";
@@ -2720,7 +2725,7 @@ function ControlBar(props: {
           <IconButton label="Themes" active={props.themeOpen} onClick={props.onThemes}><Palette /></IconButton>
         </>
       )}
-      <ImageEditorButton source={(snapshot.state.mode === "now-playing" ? snapshot.nowPlaying?.artwork : undefined)?.source ?? snapshot.state.current?.source} endpoint={spaceApi("/image-editor")} mediaUrl={mediaUrl} onChanged={() => window.dispatchEvent(new Event("mediawall-artwork-changed"))} />
+      <ImageEditorButton hidden={props.hideImageEditor} source={(snapshot.state.mode === "now-playing" ? snapshot.nowPlaying?.artwork : undefined)?.source ?? snapshot.state.current?.source} endpoint={spaceApi("/image-editor")} mediaUrl={mediaUrl} onChanged={() => window.dispatchEvent(new Event("mediawall-artwork-changed"))} />
       <a className="control-version" href="https://github.com/nothing2obvi/mediawall" target="_blank" rel="noreferrer">
         v{appVersion}
       </a>
@@ -2730,6 +2735,7 @@ function ControlBar(props: {
 }
 
 function RemoteControl(props: {
+  hideImageEditor: boolean;
   snapshot?: Snapshot;
   panel: "none" | "browse";
   isFavorite: boolean;
@@ -2839,7 +2845,7 @@ function RemoteControl(props: {
             <span>Themes</span>
           </button>
         )}
-        <ImageEditorButton source={props.previewArtwork?.source} endpoint={spaceApi("/image-editor")} mediaUrl={mediaUrl} onChanged={() => window.dispatchEvent(new Event("mediawall-artwork-changed"))} />
+        <ImageEditorButton hidden={props.hideImageEditor} source={props.previewArtwork?.source} endpoint={spaceApi("/image-editor")} mediaUrl={mediaUrl} onChanged={() => window.dispatchEvent(new Event("mediawall-artwork-changed"))} />
       </div>
       <a className="remote-version" href="https://github.com/nothing2obvi/mediawall" target="_blank" rel="noreferrer">
         MediaWall v{appVersion}

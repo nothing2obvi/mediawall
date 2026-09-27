@@ -6,7 +6,7 @@ import type { EditorModel, EditorImage, ImageType } from "../server/image-editor
 import "./image-editor.css";
 
 type Model = EditorModel & { id: string };
-export function ImageEditorButton(props: { source?: string; endpoint: string; mediaUrl: (url?: string) => string | undefined; onChanged: () => void }) {
+export function ImageEditorButton(props: { hidden?: boolean; source?: string; endpoint: string; mediaUrl: (url?: string) => string | undefined; onChanged: () => void }) {
   const source = props.source === "jellyfin" ? "jellyfin" : props.source === "navidrome" ? "local" : "external";
   const [model, setModel] = useState<Model>();
   const [results, setResults] = useState<EditorImage[]>();
@@ -120,7 +120,7 @@ export function ImageEditorButton(props: { source?: string; endpoint: string; me
     </article>;
   }
   return <>
-    <button ref={trigger} className={`image-editor-trigger editor-source-${source}`} title="Edit images" aria-label="Edit images" disabled={busy || !props.source || props.source === "fallback"} onClick={() => void open()}><ImagePlus/></button>
+    {!props.hidden && props.source && props.source !== "fallback" && (<button ref={trigger} className={`image-editor-trigger editor-source-${source}`} title="Edit images" aria-label="Edit images" disabled={busy || !props.source || props.source === "fallback"} onClick={() => void open()}><ImagePlus/></button>)}
     {openingError && <span role="alert" className="editor-open-error" onClick={() => setOpeningError("")}>{openingError}</span>}
     {model && createPortal(<div className="image-editor-overlay" onClick={event => { if(event.target === event.currentTarget) closeTop(); }}>
       <div ref={dialog} inert={Boolean(searchType) || uploadOpen} aria-hidden={Boolean(searchType) || uploadOpen} tabIndex={-1} role="dialog" aria-modal={!searchType && !uploadOpen} aria-labelledby="image-editor-title" className={`image-editor-modal editor-source-${model.target.source}`}>
