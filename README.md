@@ -447,6 +447,8 @@ Search opens a separate dialog; Cancel, Escape, or an outside click returns to t
 
 Jellyfin edits are written to the configured server and search its enabled image providers. Local artwork edits change recognized artist image files and save order in `.mediawall-images.json`; the mapped artist directory must be writable. Audio files are untouched. Local and external searches use configured Fanart.tv/TheAudioDB providers. External selections persist in MediaWall's artist cache until explicitly cleared.
 
+Use the **+** button in the image editor to upload your own image. Drag and drop a file or choose one from your device, preview it, and select **Logo** (replace) or **Backdrop** (append). PNG, JPEG, WebP, and GIF files up to 10 MB are supported. Uploads save to the active artwork source; local files still require a writable music mount. Cancel, Escape, or clicking outside returns to the image editor.
+
 ### Clear artwork cache
 
 With MediaWall running, use:

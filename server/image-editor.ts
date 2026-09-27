@@ -1,3 +1,5 @@
+import { decodeImageUpload, type ImageUpload } from "./image-upload.js";
+import { logger } from "./logger.js";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -15,6 +17,7 @@ export interface ImageAdapter {
   list(target: EditorTarget): Promise<EditorImage[]>;
   search(target: EditorTarget, type: ImageType): Promise<EditorImage[]>;
   add(target: EditorTarget, image: EditorImage): Promise<void>;
+  upload(target: EditorTarget, type: ImageType, image: ImageUpload): Promise<void>;
   remove(target: EditorTarget, image: EditorImage): Promise<void>;
   move(target: EditorTarget, from: number, to: number): Promise<void>;
 }
@@ -70,7 +73,7 @@ export class ImageEditor {
     for (const image of results) session.candidates.set(image.id, image);
     return results;
   }
-  async mutate(space: string, id: string, body: { revision: string; action: string; imageId: string; direction?: number }) {
+  async mutate(space: string, id: string, body: { revision: string; action: string; imageId?: string; direction?: number; type?: ImageType; data?: string }) {
     const session = this.session(space, id), target = session.target;
     const key = `${target.source}:${target.id}`;
     if (this.locks.has(key)) throw new Error("Another edit is in progress; retry shortly");
@@ -78,8 +81,13 @@ export class ImageEditor {
     try {
       const current = await this.model(target), adapter = this.adapters[target.source];
       if (body.revision !== current.revision) throw new Error("Artwork changed; reopen the editor before editing again");
-      if (body.action === "add") {
-        const candidate = session.candidates.get(body.imageId);
+      if (body.action === "upload") {
+        if (body.type !== "Logo" && body.type !== "Backdrop") throw new Error("Unsupported image type");
+        const upload = decodeImageUpload(body.data);
+        await adapter.upload(target, body.type, upload);
+        logger.info(`Artwork source=Upload destination=${target.source} type=${body.type}: saved 1 uploaded image (${upload.width}x${upload.height}); ${body.type === "Logo" ? "replaced logo" : "appended backdrop"}.`);
+      } else if (body.action === "add") {
+        const candidate = session.candidates.get(body.imageId ?? "");
         if (!candidate) throw new Error("Search result expired; search again");
         await adapter.add(target, candidate);
       } else {
@@ -118,6 +126,9 @@ export class JellyfinImageAdapter implements ImageAdapter {
   async add(t: EditorTarget, image: EditorImage) {
     await this.client.imageEditorRequest(`${this.base(t)}/RemoteImages/Download?${new URLSearchParams({ type: image.type, imageUrl: image.url })}`, "POST");
   }
+  async upload(t: EditorTarget, type: ImageType, image: ImageUpload) {
+    await this.client.imageEditorRequest(`${this.base(t)}/Images/${type}`, "POST", {body: image.buffer.toString("base64"), contentType: image.mime});
+  }
   async remove(t: EditorTarget, image: EditorImage) {
     await this.client.imageEditorRequest(`${this.base(t)}/Images/${image.type}/${image.id.split(":")[1]}`, "DELETE");
   }
@@ -145,6 +156,14 @@ export class ExternalImageAdapter implements ImageAdapter {
     if (image.type === "Logo") cache.logo = downloaded; else cache.backdrops.push(downloaded);
     await this.resolver.editorSave(t.id, cache);
     if (image.type === "Logo" && old) await this.resolver.editorRemoveFile(t.id, old.file);
+  }
+  async upload(t: EditorTarget, type: ImageType, image: ImageUpload) {
+    const cache = await this.resolver.editorCache(t.id);
+    const stored = await this.resolver.editorStoreUpload(t.id, type, image);
+    const old = cache.logo;
+    if (type === "Logo") cache.logo = stored; else cache.backdrops.push(stored);
+    await this.resolver.editorSave(t.id, cache);
+    if (type === "Logo" && old) await this.resolver.editorRemoveFile(t.id, old.file);
   }
   async remove(t: EditorTarget, image: EditorImage) {
     const cache = await this.resolver.editorCache(t.id);
@@ -210,6 +229,15 @@ export class LocalImageAdapter extends ExternalImageAdapter {
     await this.manifest(t, image.type === "Backdrop" ? [...backdrops, target] : backdrops, image.type === "Logo" ? target : oldLogo);
     if (image.type === "Logo" && oldLogo) { await this.safe(oldLogo); await fs.unlink(oldLogo); }
     await this.resolver.editorRemoveFile(key, downloaded.file);
+  }
+  async upload(t: EditorTarget, type: ImageType, image: ImageUpload) {
+    const dir = await this.directory(t);
+    const backdrops = this.navidrome.localArtistImagePaths(t.id), oldLogo = this.navidrome.localArtistLogoPath(t.id);
+    const file = path.join(dir, `${type.toLowerCase()}-${crypto.randomUUID()}.${image.extension}`);
+    await fs.writeFile(file, image.buffer, {flag: "wx"});
+    try { await this.manifest(t, type === "Backdrop" ? [...backdrops, file] : backdrops, type === "Logo" ? file : oldLogo); }
+    catch (error) { await fs.unlink(file).catch(() => undefined); throw error; }
+    if (type === "Logo" && oldLogo) { await this.safe(oldLogo); await fs.unlink(oldLogo); }
   }
   async remove(t: EditorTarget, image: EditorImage) {
     const file = (await this.files(t)).find(f => crypto.createHash("sha256").update(f).digest("hex") === image.id);

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ImagePlus, Search, Trash2, ArrowLeft, ArrowRight, X } from "lucide-react";
+import { ImageUploadDialog } from "./ImageUpload";
+import { Plus, ImagePlus, Search, Trash2, ArrowLeft, ArrowRight, X } from "lucide-react";
 import type { EditorModel, EditorImage, ImageType } from "../server/image-editor";
 import "./image-editor.css";
 
@@ -10,11 +11,14 @@ export function ImageEditorButton(props: { source?: string; endpoint: string; me
   const [model, setModel] = useState<Model>();
   const [results, setResults] = useState<EditorImage[]>();
   const [searchType, setSearchType] = useState<ImageType>();
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const uploadDialog = useRef<HTMLDivElement>(null);
+  const closeUpload = () => {setUploadOpen(false); setError("");};
   const [previewVersion, setPreviewVersion] = useState(0);
   const searchDialog = useRef<HTMLDivElement>(null);
   const searchGeneration = useRef(0);
   const closeSearch = () => { searchGeneration.current++; setSearchType(undefined); setResults(undefined); setError(""); dialog.current?.focus(); };
-  const closeTop = () => searchType ? closeSearch() : close();
+  const closeTop = () => uploadOpen ? closeUpload() : searchType ? closeSearch() : close();
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [openingError, setOpeningError] = useState("");
   const dialog = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
@@ -30,16 +34,16 @@ export function ImageEditorButton(props: { source?: string; endpoint: string; me
   const close = () => {
     const id = session.current; session.current = undefined;
     if (id) void request("close", { id }).catch(() => undefined);
-    setModel(undefined); setSearchType(undefined); setResults(undefined); searchGeneration.current++; setError(""); trigger.current?.focus(); props.onChanged();
+    setModel(undefined); setUploadOpen(false); setSearchType(undefined); setResults(undefined); searchGeneration.current++; setError(""); trigger.current?.focus(); props.onChanged();
   };
   useEffect(() => {
     if (!model) return;
-    const activeDialog = searchType ? searchDialog : dialog;
+    const activeDialog = uploadOpen ? uploadDialog : searchType ? searchDialog : dialog;
     activeDialog.current?.focus();
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); closeTop(); }
       if (event.key === "Tab") {
-        const nodes = activeDialog.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled), [tabindex="0"]');
+        const nodes = activeDialog.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled):not([hidden]), [tabindex="0"]');
         if (!nodes?.length) return;
         const first = nodes[0], last = nodes[nodes.length - 1];
         if (event.shiftKey && (document.activeElement === first || document.activeElement === activeDialog.current)) { event.preventDefault(); last.focus(); }
@@ -49,7 +53,7 @@ export function ImageEditorButton(props: { source?: string; endpoint: string; me
     window.addEventListener("keydown", key, true);
     const timer = window.setInterval(() => void request("heartbeat", {id: model.id}).catch(e => setError(e.message)), 10_000);
     return () => { window.removeEventListener("keydown", key, true); window.clearInterval(timer); };
-  }, [model?.id, searchType]);
+  }, [model?.id, searchType, uploadOpen]);
   useEffect(() => () => { if (session.current) void request("close", {id: session.current}).catch(() => undefined); }, []);
   async function open() {
     setBusy(true); setOpeningError("");
@@ -81,6 +85,19 @@ export function ImageEditorButton(props: { source?: string; endpoint: string; me
     }
     finally { setBusy(false); }
   }
+  async function upload(type: ImageType, data: string) {
+    const id = session.current;
+    if (!id || !model) return;
+    setBusy(true); setError("");
+    try {
+      const updated = await request("mutate", {id, revision: model.revision, action: "upload", type, data});
+      if (session.current === id) {setModel({...updated, id}); setPreviewVersion(Date.now()); closeUpload();}
+      props.onChanged();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Upload failed";
+      if (session.current === id) setError(message); else setOpeningError(message);
+    } finally { setBusy(false); }
+  }
   function card(image: EditorImage, index: number, total: number, result = false) {
     const url = new URL(props.mediaUrl(image.url) ?? image.url, window.location.origin);
     if (!result && previewVersion) url.searchParams.set("mwpreview", String(previewVersion));
@@ -106,10 +123,10 @@ export function ImageEditorButton(props: { source?: string; endpoint: string; me
     <button ref={trigger} className={`image-editor-trigger editor-source-${source}`} title="Edit images" aria-label="Edit images" disabled={busy || !props.source || props.source === "fallback"} onClick={() => void open()}><ImagePlus/></button>
     {openingError && <span role="alert" className="editor-open-error" onClick={() => setOpeningError("")}>{openingError}</span>}
     {model && createPortal(<div className="image-editor-overlay" onClick={event => { if(event.target === event.currentTarget) closeTop(); }}>
-      <div ref={dialog} inert={Boolean(searchType)} aria-hidden={Boolean(searchType)} tabIndex={-1} role="dialog" aria-modal={!searchType} aria-labelledby="image-editor-title" className={`image-editor-modal editor-source-${model.target.source}`}>
-        <header><div><span className="editor-eyebrow">{model.target.source === "jellyfin" ? "Jellyfin library" : model.target.source === "local" ? "Local artist files" : "MediaWall artwork"}</span><h2 id="image-editor-title">{model.target.name}</h2><p>Manage images · {model.target.kind}</p></div><button aria-label="Close image editor" onClick={close}><X/></button></header>
+      <div ref={dialog} inert={Boolean(searchType) || uploadOpen} aria-hidden={Boolean(searchType) || uploadOpen} tabIndex={-1} role="dialog" aria-modal={!searchType && !uploadOpen} aria-labelledby="image-editor-title" className={`image-editor-modal editor-source-${model.target.source}`}>
+        <header><div><span className="editor-eyebrow">{model.target.source === "jellyfin" ? "Jellyfin library" : model.target.source === "local" ? "Local artist files" : "MediaWall artwork"}</span><h2 id="image-editor-title">{model.target.name}</h2><p>Manage images · {model.target.kind}</p></div><div className="editor-header-actions"><button disabled={busy} aria-label="Upload image" title="Upload image" onClick={() => {setError(""); setUploadOpen(true);}}><Plus/></button><button aria-label="Close image editor" onClick={close}><X/></button></div></header>
         <p className="editor-notice">Changes save immediately to {model.target.source === "jellyfin" ? "your Jellyfin server" : model.target.source === "local" ? "your local artwork files" : "MediaWall’s artist cache"}. MediaWall’s display timer is paused while this editor is open.</p>
-        {error && !searchType && <p role="alert" className="editor-error">{error}</p>}
+        {error && !searchType && !uploadOpen && <p role="alert" className="editor-error">{error}</p>}
         {busy && <p role="status">Working…</p>}
         {(["Logo", "Backdrop"] as ImageType[]).map(type => { const images = model.images.filter(i => i.type === type); return <section key={type}><div className="editor-section-title"><h3>{type === "Logo" ? "Logo" : `Backdrops · ${images.length}`}</h3><button disabled={busy} onClick={() => void search(type)}><Search/> Search {type.toLowerCase()}</button></div><div className="editor-grid">{images.map((image,index) => card(image,index,images.length))}</div>{!images.length && <p className="editor-empty">{type === "Logo" ? "No logo. MediaWall uses its text fallback." : "No backdrops selected."}</p>}</section>; })}
 
@@ -128,6 +145,7 @@ export function ImageEditorButton(props: { source?: string; endpoint: string; me
           <footer><span>Return to all image types.</span><button onClick={closeSearch}>Cancel</button></footer>
         </div>
       </div>}
+      {uploadOpen && <ImageUploadDialog source={model.target.source} busy={busy} error={error} dialogRef={uploadDialog} onClose={closeUpload} onUpload={upload}/>}
     </div>, document.body)}
   </>;
 }

@@ -28,7 +28,7 @@
 
 ## Validation
 
-- Production TypeScript/Vite build and 41 automated tests passed.
+- Production TypeScript/Vite build and 45 automated tests passed.
 - Adapter tests cover Jellyfin music/movie/series, local filesystem changes, synthetic Spotify and Apple Music sessions, album-artist identity, both external image providers, multiple append operations, reorder, logo replacement/deletion, individual backdrop deletion, metadata, and rejection of unsupported image types.
 - Source mapping tests cover orange/external, purple/Jellyfin, blue/local, and Spotify backed by Jellyfin. All source accents are defined in the shared stylesheet; the orange layout was visually checked in the browser.
 - Controlled-clock tests cover the 18-seconds-remaining example after two minutes editing, including multiple editors and expired leases, for both presentation modes. These are clock/unit checks, not a two-minute live playback test against each real server.
@@ -40,3 +40,13 @@
 Fixture/mocked provider coverage establishes adapter behavior without claiming destructive end-to-end validation against production Jellyfin, Navidrome, or Apple Music. Apple's history-only ingestion limitations are unchanged by this editor.
 
 Follow-up validation: nested search Cancel, outside-click, and Escape navigation were verified in the browser. Post-edit display references now come directly from the returned image list, without a secondary Jellyfin item-details request. Editor previews include an edit-specific cache-busting value.
+
+## Uploads
+
+The plus button opens a nested upload dialog with drag-and-drop, a device file picker, preview, and Logo/Backdrop selector. Uploading a logo replaces it; uploading a backdrop appends without removing existing images. Cancel, Escape, and outside click return to image management. Only MediaWall-supported image types are offered.
+
+Uploads are limited to 10 MB and PNG/JPEG/WebP/GIF. The server validates the file signature and dimensions, generates its own filename, checks the editor session and revision, and uses the same per-item mutation lock. External metadata records Upload as provenance; logs report the upload source, destination, count, type, and replace/append outcome. Local writes use the existing checked artist directory and ordering manifest. No runtime dependencies or configuration keys were added.
+
+Jellyfin uploads use the server's base64 image endpoint with the detected content type, following its [image controller implementation](https://github.com/jellyfin/jellyfin/blob/master/Jellyfin.Api/Controllers/ImageController.cs). The mutation's image list refreshes both editor and display.
+
+Validation: source-adapter tests cover repeated backdrop uploads, preserving existing images, logo replacement, provenance, and unrelated local media preservation. Tests verify Jellyfin request paths/body/content type and reject unsupported image types, invalid files, oversized payloads, invalid dimensions, and stale revisions before mutation. Browser validation used a bundled test image in the isolated fixture: file selection, preview, successful upload, return to image management, and the new backdrop with its dimensions and Upload provenance. Native drag-and-drop and uploads into the actual Jellyfin library were not separately exercised.

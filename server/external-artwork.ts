@@ -307,6 +307,13 @@ export class ExternalArtworkResolver {
     return image;
   }
 
+  async editorStoreUpload(key: string, type: "Logo" | "Backdrop", image: {buffer: Buffer; extension: string; width: number; height: number}) {
+    if (!/^[a-f0-9]{24}$/.test(key) || !["png", "jpg", "webp", "gif"].includes(image.extension)) throw new Error("Invalid artwork upload");
+    const file = `${type.toLowerCase()}-${crypto.randomUUID()}.${image.extension}`;
+    await fsp.writeFile(path.join(await this.cacheDirectory("artists", key), file), image.buffer, {flag: "wx"});
+    return {file, provider: "Upload", sourceUrl: "upload", width: image.width, height: image.height};
+  }
+
   async editorRemoveFile(key: string, file: string) {
     const target = this.assetPath("artists", key, file);
     if (target) await fsp.unlink(target);

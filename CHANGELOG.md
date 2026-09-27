@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add image uploads with drag-and-drop, file selection, preview, and Logo/Backdrop type selection for Jellyfin, local files, and external cache.
+
 - Fix saved Jellyfin image edits appearing to fail during a secondary metadata refresh; refresh editor previews after changes.
 - Move image editing beside Themes and open search in a nested modal with stepwise dismissal.
 

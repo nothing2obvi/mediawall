@@ -290,11 +290,11 @@ export class JellyfinClient {
     return configuredUser?.jellyfin_user ?? displayConfig.playback_user;
   }
 
-  async imageEditorRequest(endpoint: string, method = "GET") {
+  async imageEditorRequest(endpoint: string, method = "GET", upload?: {body: string; contentType: string}) {
     // Mutations are never retried against another host: an uncertain response must
     // not duplicate a backdrop addition.
     const base = this.workingBaseUrl || this.baseUrl;
-    const response = await fetch(`${base}${endpoint}`, { method, headers: this.headers, signal: AbortSignal.timeout(30_000) });
+    const response = await fetch(`${base}${endpoint}`, { method, headers: {...this.headers, ...(upload ? {"Content-Type": upload.contentType} : {})}, body: upload?.body, signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`Jellyfin image operation failed (HTTP ${response.status})`);
     if (method !== "GET") {
       await this.loadEditedItems();

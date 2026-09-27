@@ -82,7 +82,7 @@ test("local adapter touches only selected artwork and persists order across inst
   const fresh=new NavidromeClient(f.cfg,new JellyfinClient(f.cfg));assert.deepEqual(fresh.localArtistImagePaths(local.id),f.nav.localArtistImagePaths(local.id));
 });
 test("editor rejects stale revisions, unknown search results, unsupported types and cross-space sessions",async()=>{
-  const adapter={list:async()=>[],search:async()=>[],add:async()=>{},remove:async()=>{},move:async()=>{}};
+  const adapter={list:async()=>[],search:async()=>[],add:async()=>{},upload:async()=>{},remove:async()=>{},move:async()=>{}};
   const editor=new ImageEditor({jellyfin:adapter,local:adapter,external:adapter});const model=await editor.open("room",snapshot());
   await assert.rejects(editor.search("room",model.id,"Primary" as never),/Unsupported/);
   await assert.rejects(editor.mutate("room",model.id,{revision:"old",action:"delete",imageId:"x"}),/changed/);
@@ -139,4 +139,51 @@ test("post-edit artwork uses returned images without a second Jellyfin item requ
   assert.equal(empty.logoUrl, undefined);
   assert.equal(empty.backdropUrl, undefined);
   assert.equal(empty.backdropCount, 0);
+});
+
+for (const source of ["external", "local"] as const) test(`${source} uploads append backdrops and replace only the logo`, async t => {
+  const {decodeImageUpload} = await import("./image-upload.js");
+  const f = await fixture(t);
+  const image = decodeImageUpload(png().toString("base64"));
+  const dir = path.join(f.root, "music", "Album Artist");
+  await fs.mkdir(dir, {recursive:true});
+  for (const name of ["backdrop.png", "logo.png", "track.flac"]) await fs.writeFile(path.join(dir,name), png());
+  const adapter = source === "local" ? new LocalImageAdapter(f.resolver,f.nav,f.cfg) : new ExternalImageAdapter(f.resolver);
+  const entity = {...target, source, id: source === "local" ? "Album Artist" : key};
+  const before = await adapter.list(entity);
+  await adapter.upload(entity, "Backdrop", image);
+  await adapter.upload(entity, "Backdrop", image);
+  let after = await adapter.list(entity);
+  assert.equal(after.filter(i=>i.type==="Backdrop").length, before.filter(i=>i.type==="Backdrop").length + 2);
+  assert.ok(before.every(i=>after.some(j=>j.id===i.id)));
+  await adapter.upload(entity, "Logo", image);
+  after = await adapter.list(entity);
+  assert.equal(after.filter(i=>i.type==="Logo").length, 1);
+  assert.notEqual(after.find(i=>i.type==="Logo")!.id,before.find(i=>i.type==="Logo")!.id);
+  assert.equal(after.filter(i=>i.type==="Backdrop").length, before.filter(i=>i.type==="Backdrop").length + 2);
+  assert.ok(await fs.stat(path.join(dir,"track.flac")));
+  if (source === "external") assert.equal(after.find(i=>i.type==="Logo")!.provider,"Upload");
+});
+test("Jellyfin uploads use its base64 image endpoint with detected content type",async()=>{
+  const {decodeImageUpload} = await import("./image-upload.js");
+  const image=decodeImageUpload(png().toString("base64"));
+  const calls: unknown[][]=[];
+  const adapter=new JellyfinImageAdapter({imageEditorRequest:async(...args:unknown[])=>{calls.push(args);}} as never);
+  for(const type of ["Logo","Backdrop"] as const)await adapter.upload({...target,source:"jellyfin",id:"item"},type,image);
+  assert.deepEqual(calls, ["Logo","Backdrop"].map(type=>[`/Items/item/Images/${type}`,"POST",{body:png().toString("base64"),contentType:"image/png"}]));
+});
+test("uploads reject unsupported image types, invalid data and stale revisions before writing", async()=>{
+  const {decodeImageUpload,maxUploadBytes}=await import("./image-upload.js");
+  assert.throws(()=>decodeImageUpload(Buffer.from("<svg>not a raster image</svg>").toString("base64")),/Unsupported/);
+  assert.throws(()=>decodeImageUpload("not base64!"));
+  assert.throws(()=>decodeImageUpload(Buffer.alloc(maxUploadBytes+1).toString("base64")),/10 MB/);
+  const bad=png();bad.writeUInt32BE(0,16);assert.throws(()=>decodeImageUpload(bad.toString("base64")),/dimensions/);
+  let writes=0;
+  const adapter={list:async()=>[],search:async()=>[],add:async()=>{},upload:async()=>{writes++;},remove:async()=>{},move:async()=>{}};
+  const editor=new ImageEditor({jellyfin:adapter,local:adapter,external:adapter});const model=await editor.open("room",snapshot());
+  await assert.rejects(editor.mutate("room",model.id,{revision:model.revision,action:"upload",type:"Primary" as never,data:png().toString("base64")}),/Unsupported/);
+  await assert.rejects(editor.mutate("room",model.id,{revision:"stale",action:"upload",type:"Logo",data:png().toString("base64")}),/changed/);
+  assert.equal(writes,0);
+  await editor.mutate("room",model.id,{revision:model.revision,action:"upload",type:"Logo",data:png().toString("base64")});
+  assert.equal(writes,1);
 });

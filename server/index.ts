@@ -118,6 +118,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+app.use("/api/space/:space/image-editor/mutate", express.json({limit: "15mb"}));
 app.use(express.json());
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path.startsWith("/api/space/") && !req.path.includes("/image-editor")) {

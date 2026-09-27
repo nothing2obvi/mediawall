@@ -37,3 +37,13 @@
 .editor-paused .session-timer-progress, .editor-paused .backdrop, .editor-paused .backdrop-image { animation-play-state: paused !important; }
 
 .image-search-overlay { z-index: 2001; background: #05070b88; }
+
+.editor-header-actions { display:flex; gap:8px; }
+.image-upload-modal { max-width:640px; }
+.image-upload-drop { border:2px dashed #ffffff40; border-radius:12px; padding:24px; text-align:center; background:#090d14; }
+.image-upload-drop.dragging { border-color:var(--editor-accent); background:#ffffff12; }
+.image-upload-drop>svg { width:36px; height:36px; color:var(--editor-accent); }
+.image-upload-drop img { display:block; max-width:100%; max-height:250px; object-fit:contain; margin:auto; }
+.image-upload-drop p { overflow-wrap:anywhere; }
+.image-upload-type { display:flex; align-items:center; gap:16px; margin:20px 0 10px; }
+.image-upload-type select { background:#202632; color:#fff; border:1px solid var(--editor-accent); border-radius:8px; padding:10px; font:inherit; }
