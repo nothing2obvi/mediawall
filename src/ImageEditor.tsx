@@ -11,6 +11,8 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
   const [model, setModel] = useState<Model>();
   const [results, setResults] = useState<EditorImage[]>();
   const [searchType, setSearchType] = useState<ImageType>();
+  const [enlarged, setEnlarged] = useState<{url: string; label: string; image: EditorImage}>();
+  const enlargedDialog = useRef<HTMLDivElement>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const uploadDialog = useRef<HTMLDivElement>(null);
   const closeUpload = () => {setUploadOpen(false); setError("");};
@@ -18,7 +20,7 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
   const searchDialog = useRef<HTMLDivElement>(null);
   const searchGeneration = useRef(0);
   const closeSearch = () => { searchGeneration.current++; setSearchType(undefined); setResults(undefined); setError(""); dialog.current?.focus(); };
-  const closeTop = () => uploadOpen ? closeUpload() : searchType ? closeSearch() : close();
+  const closeTop = () => enlarged ? setEnlarged(undefined) : uploadOpen ? closeUpload() : searchType ? closeSearch() : close();
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [openingError, setOpeningError] = useState("");
   const dialog = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
@@ -34,11 +36,11 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
   const close = () => {
     const id = session.current; session.current = undefined;
     if (id) void request("close", { id }).catch(() => undefined);
-    setModel(undefined); setUploadOpen(false); setSearchType(undefined); setResults(undefined); searchGeneration.current++; setError(""); trigger.current?.focus(); props.onChanged();
+    setModel(undefined); setEnlarged(undefined); setUploadOpen(false); setSearchType(undefined); setResults(undefined); searchGeneration.current++; setError(""); trigger.current?.focus(); props.onChanged();
   };
   useEffect(() => {
     if (!model) return;
-    const activeDialog = uploadOpen ? uploadDialog : searchType ? searchDialog : dialog;
+    const activeDialog = enlarged ? enlargedDialog : uploadOpen ? uploadDialog : searchType ? searchDialog : dialog;
     activeDialog.current?.focus();
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); closeTop(); }
@@ -53,7 +55,7 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
     window.addEventListener("keydown", key, true);
     const timer = window.setInterval(() => void request("heartbeat", {id: model.id}).catch(e => setError(e.message)), 10_000);
     return () => { window.removeEventListener("keydown", key, true); window.clearInterval(timer); };
-  }, [model?.id, searchType, uploadOpen]);
+  }, [model?.id, searchType, uploadOpen, enlarged]);
   useEffect(() => () => { if (session.current) void request("close", {id: session.current}).catch(() => undefined); }, []);
   async function open() {
     setBusy(true); setOpeningError("");
@@ -102,12 +104,12 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
     const url = new URL(props.mediaUrl(image.url) ?? image.url, window.location.origin);
     if (!result && previewVersion) url.searchParams.set("mwpreview", String(previewVersion));
     return <article className="editor-image" key={image.id}>
-      <div className={`editor-preview ${image.type === "Logo" ? "logo" : ""}`}><img src={url.toString()} alt={`${image.type} ${index+1}`} loading="lazy" onLoad={event => {
+      <button type="button" className={`editor-preview editor-preview-button ${image.type === "Logo" ? "logo" : ""}`} aria-label={`Enlarge ${image.type.toLowerCase()} ${index+1}`} onClick={() => setEnlarged({url: url.toString(), label: `${image.type} ${index+1}`, image})}><img src={url.toString()} alt={`${image.type} ${index+1}`} loading="lazy" onLoad={event => {
         if (!image.width || !image.height) {
           const node = event.currentTarget;
           node.closest("article")?.querySelector(".editor-resolution")?.replaceChildren(`${node.naturalWidth} × ${node.naturalHeight}`);
         }
-      }}/></div>
+      }}/></button>
       <strong>{image.type}{image.type === "Backdrop" ? ` ${index+1}` : ""}</strong>
       <span className="editor-resolution">{image.width && image.height ? `${image.width} × ${image.height}` : "Resolution unavailable"}</span>
       <span>{image.provider ?? "Provider unknown"}{image.language ? ` · ${image.language}` : ""}{image.rating !== undefined ? ` · Score ${image.rating}` : ""}</span>
@@ -123,7 +125,7 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
     {!props.hidden && props.source && props.source !== "fallback" && (<button ref={trigger} className={`image-editor-trigger editor-source-${source}`} title="Edit images" aria-label="Edit images" disabled={busy || !props.source || props.source === "fallback"} onClick={() => void open()}><ImagePlus/></button>)}
     {openingError && <span role="alert" className="editor-open-error" onClick={() => setOpeningError("")}>{openingError}</span>}
     {model && createPortal(<div className="image-editor-overlay" onClick={event => { if(event.target === event.currentTarget) closeTop(); }}>
-      <div ref={dialog} inert={Boolean(searchType) || uploadOpen} aria-hidden={Boolean(searchType) || uploadOpen} tabIndex={-1} role="dialog" aria-modal={!searchType && !uploadOpen} aria-labelledby="image-editor-title" className={`image-editor-modal editor-source-${model.target.source}`}>
+      <div ref={dialog} inert={Boolean(searchType) || uploadOpen || Boolean(enlarged)} aria-hidden={Boolean(searchType) || uploadOpen || Boolean(enlarged)} tabIndex={-1} role="dialog" aria-modal={!searchType && !uploadOpen && !enlarged} aria-labelledby="image-editor-title" className={`image-editor-modal editor-source-${model.target.source}`}>
         <header><div><span className="editor-eyebrow">{model.target.source === "jellyfin" ? "Jellyfin library" : model.target.source === "local" ? "Local artist files" : "MediaWall artwork"}</span><h2 id="image-editor-title">{model.target.name}</h2><p>Manage images · {model.target.kind}</p></div><div className="editor-header-actions"><button disabled={busy} aria-label="Upload image" title="Upload image" onClick={() => {setError(""); setUploadOpen(true);}}><Plus/></button><button aria-label="Close image editor" onClick={close}><X/></button></div></header>
         <p className="editor-notice">Changes save immediately to {model.target.source === "jellyfin" ? "your Jellyfin server" : model.target.source === "local" ? "your local artwork files" : "MediaWall’s artist cache"}. MediaWall’s display timer is paused while this editor is open.</p>
         {error && !searchType && !uploadOpen && <p role="alert" className="editor-error">{error}</p>}
@@ -135,7 +137,7 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
       {searchType && <div className="image-editor-overlay image-search-overlay" onClick={event => {
         event.stopPropagation(); if (event.target === event.currentTarget) closeSearch();
       }}>
-        <div ref={searchDialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="image-search-title" className={`image-editor-modal editor-source-${model.target.source}`}>
+        <div ref={searchDialog} inert={Boolean(enlarged)} aria-hidden={Boolean(enlarged)} tabIndex={-1} role="dialog" aria-modal={!enlarged} aria-labelledby="image-search-title" className={`image-editor-modal editor-source-${model.target.source}`}>
           <header><h2 id="image-search-title">Search {searchType.toLowerCase()}</h2><button aria-label="Close image search" onClick={closeSearch}><X/></button></header>
           <p className="editor-notice">{model.target.name} · {searchType === "Backdrop" ? "Add images to your existing backdrops." : "Choose a logo to replace the current one."}</p>
           {error && <p role="alert" className="editor-error">{error}</p>}
@@ -143,6 +145,15 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
           <div className="editor-grid">{results?.map((image,index) => card(image,index,results.length,true))}</div>
           {results?.length === 0 && <p>No images returned by the configured providers.</p>}
           <footer><span>Return to all image types.</span><button onClick={closeSearch}>Cancel</button></footer>
+        </div>
+      </div>}
+      {enlarged && <div className="image-editor-overlay image-enlarged-overlay" onClick={event => {
+        event.stopPropagation(); if (event.target === event.currentTarget) setEnlarged(undefined);
+      }}>
+        <div ref={enlargedDialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="image-enlarged-title" className={`image-editor-modal image-enlarged-modal editor-source-${model.target.source}`}>
+          <header><h2 id="image-enlarged-title">{enlarged.label}</h2><button aria-label="Close enlarged image" onClick={() => setEnlarged(undefined)}><X/></button></header>
+          <div className={`image-enlarged-canvas ${enlarged.image.type === "Logo" ? "image-enlarged-logo" : ""}`}><img src={enlarged.url} alt={enlarged.label}/></div>
+          <footer><span>{enlarged.image.width && enlarged.image.height ? `${enlarged.image.width} × ${enlarged.image.height} · ` : ""}{enlarged.image.provider ?? "Provider unknown"}</span><button onClick={() => setEnlarged(undefined)}>Close</button></footer>
         </div>
       </div>}
       {uploadOpen && <ImageUploadDialog source={model.target.source} busy={busy} error={error} dialogRef={uploadDialog} onClose={closeUpload} onUpload={upload}/>}
