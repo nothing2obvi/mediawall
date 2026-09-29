@@ -1,4 +1,5 @@
 import express from "express";
+import { holdMissingLiveTv } from "./live-tv-grace.js";
 import { clearArtworkCache } from "./artwork-cache.js";
 import { artworkAfterEdit, ImageEditor, JellyfinImageAdapter, ExternalImageAdapter, LocalImageAdapter } from "./image-editor.js";
 import { EditorClock } from "./editor-clock.js";
@@ -54,6 +55,7 @@ type RecentPlaybackRecord = {
   firstSeenAt: number;
   seenAt: number;
   refreshedAt: number;
+  missingSince?: number;
   activityAt: number;
   playbackPositionTicks?: number;
   progressConfirmed: boolean;
@@ -2642,12 +2644,18 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
     });
   }
 
-  if (missingSessionGraceMs > 0) {
+  {
     const cycle = recentPlaybackCycles.get(displayKey);
     const intervalMs = Math.max(1, displayConfig.now_playing.cycle_interval_seconds) * 1000;
     const freshActiveCount = [...records.entries()].filter(([sessionKey, record]) => seenThisPoll.has(sessionKey) && record.active).length;
     for (const [sessionKey, record] of records.entries()) {
       if (seenThisPoll.has(sessionKey) || !previouslyActive.get(sessionKey)) continue;
+      if (record.state.source === "jellyfin" && record.state.artwork?.mediaType === "TvChannel") {
+        record.missingSince ??= now;
+        record.active = holdMissingLiveTv(record.missingSince, now, freshActiveCount);
+        continue;
+      }
+      if (missingSessionGraceMs <= 0) continue;
       const finishVisibleCycle = freshActiveCount > 0
         && cycle?.selectedKey === sessionKey
         && !state.nowPlayingCyclePaused
@@ -2665,6 +2673,7 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
   }
 
   for (const [sessionKey, record] of records.entries()) {
+    if (record.active && record.missingSince !== undefined && record.state.artwork?.mediaType === "TvChannel") continue;
     if (record.pausedSince && now - record.pausedSince >= pausedSessionGraceMs) records.delete(sessionKey);
     if (record.stalledSince && now - record.stalledSince >= pausedSessionGraceMs) records.delete(sessionKey);
     if (record.state.source === "jellyfin" && record.state.playbackPositionTicks !== undefined && !record.progressConfirmed && now - record.firstSeenAt >= pausedSessionGraceMs) records.delete(sessionKey);

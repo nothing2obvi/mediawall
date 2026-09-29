@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Hold disappearing Live TV sessions for a fixed 15 seconds during channel switches; fresh playback takes over immediately.
+
 - Apply visual effects to centered Live TV channel images, increase their default size to 713 pixels, and add independent channel/title-label media information controls and shortcut cycling.
 
 - Detect Jellyfin TV/radio channel sessions and display centered channel images with configurable size and text titles.
