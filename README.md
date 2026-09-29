@@ -441,14 +441,14 @@ Older configs using `jellyfin` in a path mapping are still accepted for compatib
 
 ## Jellyfin Live Channels
 
-Active Jellyfin TV/radio channels appear as Now Playing sessions. MediaWall centers the channel image on the display and uses the channel name as text, without a separate title logo. Missing channel images leave the text visible. Set the image bounding-box size per space (pixels; default 480):
+Active Jellyfin TV/radio channels appear as Now Playing sessions. MediaWall centers the channel image on the display and uses the channel name as text with “Live TV” beneath it, without a separate title logo. Missing channel images leave the text visible. Set the image bounding-box size per space (pixels; default 648):
 
 ```yaml
 spaces:
   living_room:
     display:
       live_tv:
-        channel_image_size: 480
+        channel_image_size: 648
 ```
 
 The image retains its aspect ratio and fits smaller screens. Live channel sessions use Jellyfin's channel image, including live programs that reference a channel. Recorded movies/episodes keep their normal presentation.

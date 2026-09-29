@@ -33,5 +33,5 @@ test("a live channel without an image still produces a text-only session",async 
   t.mock.method(globalThis,"fetch",async(input:unknown)=>new URL(String(input)).pathname==="/Sessions" ? Response.json([{Id:"s",UserName:"viewer",NowPlayingItem:{Id:"channel",Type:"TvChannel",Name:"Radio"}}]) : new Response("",{status:404}));
   const [playing]=await new JellyfinClient(cfg).activePlaybacks(display);
   assert.equal(playing.playing,true);assert.equal(playing.logoText,"Radio");assert.equal(playing.artwork?.backdropUrl,undefined);
-  assert.equal(display.display.live_tv.channel_image_size,480);
+  assert.equal(display.display.live_tv.channel_image_size,648);
 });

@@ -1882,7 +1882,7 @@ function App() {
       {showMediaWallIdle && snapshot ? (
         <MediaWallIdle snapshot={snapshot} />
       ) : cycledArtwork?.mediaType === "TvChannel" ? (
-        <ChannelBackdrop artwork={cycledArtwork} size={snapshot?.config.display.live_tv?.channel_image_size ?? 480} onReady={() => setImmichExitPending(false)} />
+        <ChannelBackdrop artwork={cycledArtwork} size={snapshot?.config.display.live_tv?.channel_image_size ?? 648} onReady={() => setImmichExitPending(false)} />
       ) : (
         <Backdrop artwork={cycledArtwork} onReady={() => setImmichExitPending(false)} />
       )}
@@ -2499,6 +2499,7 @@ function Identity({ snapshot, artwork }: { snapshot?: Snapshot; artwork?: Artwor
       {state?.showLogo && (!artwork?.logoUrl || artwork.mediaType === "TvChannel") && (
         <div className="text-logo">{now?.logoText ?? artwork?.title ?? "MediaWall"}</div>
       )}
+      {state?.showLogo && artwork?.mediaType === "TvChannel" && <div className="channel-type-label">Live TV</div>}
       {showInfo && (
         <div className="now">
           <MediaInfo now={now} artwork={artwork} prefs={mediaInfoPrefs!} />
