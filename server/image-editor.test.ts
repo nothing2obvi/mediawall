@@ -187,3 +187,15 @@ test("uploads reject unsupported image types, invalid data and stale revisions b
   await editor.mutate("room",model.id,{revision:model.revision,action:"upload",type:"Logo",data:png().toString("base64")});
   assert.equal(writes,1);
 });
+
+test("local editing refuses audio/video files and files disguised as artwork", async t => {
+  const f=await fixture(t),dir=path.join(f.root,"music","Album Artist");await fs.mkdir(dir,{recursive:true});
+  const local={...target,source:"local" as const,id:"Album Artist"};
+  const adapter=new LocalImageAdapter(f.resolver,f.nav,f.cfg);
+  for(const name of ["song.flac","song.mp3","movie.mkv","movie.mp4","logo.png"]){
+    const file=path.join(dir,name),content=Buffer.from("original audio or video bytes");await fs.writeFile(file,content);
+    const mock=t.mock.method(f.nav,"localArtistLogoPath",()=>file);
+    await assert.rejects(adapter.remove(local,{id:crypto.createHash("sha256").update(file).digest("hex"),type:"Logo",url:"unused"}),/protected|not a supported artwork/);
+    assert.deepEqual(await fs.readFile(file),content);mock.mock.restore();
+  }
+});

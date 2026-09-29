@@ -14,6 +14,8 @@ export class JellyfinClient {
     await this.editedItemsReady;
   }
   private workingBaseUrl?: string;
+  private channelItems = new Map<string, {at: number; item: JellyfinItem}>();
+  private channelArtworkLogs = new Set<string>();
   private userIds = new Map<string, string>();
   private libraryNames = new Map<string, string>();
   private missingMusicBackdropWarnings = new Set<string>();
@@ -118,7 +120,7 @@ export class JellyfinClient {
     const playbacks: NowPlayingState[] = [];
     for (const session of activeSessions) {
       const item = session.NowPlayingItem as JellyfinItem;
-      const libraryName = await this.nowPlayingLibraryName(item);
+      const libraryName = isLiveChannel(item) ? "Live TV" : await this.nowPlayingLibraryName(item);
       if (libraryName && normalizedNameSet(displayConfig.now_playing.ignored_libraries).has(libraryName.toLowerCase())) {
         const userName = String(session.UserName ?? session.User?.Name ?? displayConfig.playback_user);
         const title = String(item.Name ?? "Unknown item");
@@ -142,10 +144,40 @@ export class JellyfinClient {
       session.DeviceId,
       session.Client,
       session.DeviceName,
-      item.Id
+      item.Type === "Program" && isLiveChannel(item) ? item.ChannelId : item.Id
     ].filter(Boolean).join(":");
     const activityAt = jellyfinTimestamp(session.LastActivityDate ?? session.LastPlaybackCheckIn ?? session.NowPlayingItem?.DateCreated);
     const playbackPositionTicks = numberOrUndefined(session.PlayState?.PositionTicks);
+    if (isLiveChannel(item)) {
+      const channelId = String(item.Type === "Program" ? item.ChannelId : item.Id);
+      let channel = item.Type === "Program" ? {Id: channelId, Name: item.ChannelName, ImageTags: {Primary: item.ChannelPrimaryImageTag}} : item;
+      if (!channel.Name || !channel.ImageTags?.Primary) {
+        let cached = this.channelItems.get(channelId);
+        if (!cached || Date.now() - cached.at > 60_000) {
+          const details = await this.getJson<JellyfinItem>(`/LiveTv/Channels/${encodeURIComponent(channelId)}`).catch(() => undefined);
+          cached = {at: Date.now(), item: details ?? channel}; this.channelItems.set(channelId, cached);
+        }
+        channel = {...channel, ...cached.item};
+      }
+      const name = String(channel.Name ?? item.ChannelName ?? item.Name ?? "Live channel");
+      const type = channel.ImageTags?.Primary ? "Primary" : channel.ImageTags?.Logo ? "Logo" : undefined;
+      const image = type ? this.imageUrl(channelId, type, 0, channel.ImageTags[type]) : undefined;
+      const logKey = `${channelId}:${image ?? "none"}`;
+      if (!this.channelArtworkLogs.has(logKey)) {
+        this.channelArtworkLogs.add(logKey);
+        logger.info(`Live channel artwork source=Jellyfin channel="${name}" image=${type ?? "none"}; centered channel image, text title; downloaded=0 (Jellyfin image proxy).`);
+      }
+      return {
+        source: "jellyfin", user: jellyfinUser, displayUser: mediaWallUser,
+        displayUserAvatarUrl: await this.userAvatarUrl(jellyfinUser, displayConfig),
+        playing: true, paused: Boolean(session.PlayState?.IsPaused), sessionKey,
+        activityAt, playbackPositionTicks, title: name, logoText: name,
+        itemId: channelId, libraryName,
+        artwork: {source: "jellyfin", itemId: channelId, title: name, mediaType: "TvChannel",
+          imageType: "Primary", imageIndex: 0, backdropCount: 1, backdropUrl: image, thumbUrl: image},
+        signature: `channel:${channelId}`
+      };
+    }
     const isAudio = item.MediaType === "Audio" || item.Type === "Audio";
     if (!isAudio) {
       const displayItem = await this.displayItemForVideo(item).catch(() => item);
@@ -1009,4 +1041,8 @@ function fallbackArtworkForTitle(title: string, mediaType: string): ArtworkRef {
     backdropCount: 1,
     backdropUrl: "/fallback.svg"
   };
+}
+
+function isLiveChannel(item: JellyfinItem) {
+  return item.Type === "TvChannel" || item.Type === "Channel" || (item.Type === "Program" && Boolean(item.ChannelId));
 }

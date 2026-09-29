@@ -1960,3 +1960,6 @@ body.idle {
     display: none;
   }
 }
+
+.channel-backdrop { position:fixed; inset:0; display:grid; place-items:center; background:var(--backdrop-background, #050508); }
+.channel-backdrop img { width:min(var(--channel-image-size,480px),80vw); height:min(var(--channel-image-size,480px),65vh); object-fit:contain; }

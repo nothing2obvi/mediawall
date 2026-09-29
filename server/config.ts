@@ -279,6 +279,7 @@ const spaceSchema = z.object({
       scale: z.number().default(1.08),
       duration_seconds: z.number().default(26)
     }).optional(),
+    live_tv: z.object({ channel_image_size: z.number().int().min(32).max(4096).default(480) }).default({channel_image_size: 480}),
     logo: z.object({
       max_width: z.number().default(520)
     }).default({ max_width: 520 }),
@@ -393,6 +394,7 @@ const spaceSchema = z.object({
     multiple_backdrops: { mode: "single_backdrop", single_backdrop: "random", cycle_order: "numbered" },
     animations: { enabled: true, style: "kenburns", scale: 1.08, duration_seconds: 26 },
     logo: { max_width: 520 },
+    live_tv: { channel_image_size: 480 },
     album_art: { size: 300 },
     fallback_title: { font_size: 86 },
     nowplaying_text: {

@@ -305,6 +305,7 @@ type Snapshot = {
       screensaver_interval: number;
       require_logos: boolean;
       backdrop_background_color: string;
+      live_tv?: { channel_image_size: number };
       logo: { max_width: number };
       album_art: { size: number };
       fallback_title: { font_size: number };
@@ -1880,11 +1881,13 @@ function App() {
     >
       {showMediaWallIdle && snapshot ? (
         <MediaWallIdle snapshot={snapshot} />
+      ) : cycledArtwork?.mediaType === "TvChannel" ? (
+        <ChannelBackdrop artwork={cycledArtwork} size={snapshot?.config.display.live_tv?.channel_image_size ?? 480} onReady={() => setImmichExitPending(false)} />
       ) : (
         <Backdrop artwork={cycledArtwork} onReady={() => setImmichExitPending(false)} />
       )}
       {userTransition && <UserTransitionIntro intro={userTransition} />}
-      {!showMediaWallIdle && <div className="shade" />}
+      {!showMediaWallIdle && cycledArtwork?.mediaType !== "TvChannel" && <div className="shade" />}
       {!showMediaWallIdle && <Identity snapshot={snapshot} artwork={cycledArtwork} />}
       <SessionTimer snapshot={snapshot} />
       <TopRightBadge snapshot={snapshot} />
@@ -2146,6 +2149,12 @@ function MediaWallLoading() {
       </div>
     </section>
   );
+}
+
+function ChannelBackdrop({artwork, size, onReady}: {artwork: ArtworkRef; size: number; onReady: () => void}) {
+  return <div className="channel-backdrop" style={{"--channel-image-size": `${size}px`} as React.CSSProperties}>
+    {artwork.backdropUrl && <img key={artwork.backdropUrl} src={mediaUrl(artwork.backdropUrl)} alt="" onLoad={onReady} onError={event => {event.currentTarget.style.visibility = "hidden"; onReady();}}/>}
+  </div>;
 }
 
 function Backdrop({ artwork, onReady }: { artwork?: ArtworkRef; onReady?: () => void }) {
@@ -2484,10 +2493,10 @@ function Identity({ snapshot, artwork }: { snapshot?: Snapshot; artwork?: Artwor
         "--music-song-title-font-size": `${snapshot?.config.display.media_info.music_song_title_font_size ?? 40}px`
       } as React.CSSProperties}
     >
-      {state?.showLogo && artwork?.logoUrl && (
+      {state?.showLogo && artwork?.logoUrl && artwork.mediaType !== "TvChannel" && (
         <img className="logo" src={mediaUrl(artwork.logoUrl)} alt={artwork.title} />
       )}
-      {state?.showLogo && !artwork?.logoUrl && (
+      {state?.showLogo && (!artwork?.logoUrl || artwork.mediaType === "TvChannel") && (
         <div className="text-logo">{now?.logoText ?? artwork?.title ?? "MediaWall"}</div>
       )}
       {showInfo && (

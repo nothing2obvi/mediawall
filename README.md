@@ -142,7 +142,7 @@ services:
       - ./app/custom_logo:/app/custom_logo:ro
       - ./app/collections:/app/collections:ro
       # Only needed when using Navidrome with local artist backdrop/logo files.
-      # - /path/to/your/navidrome/music:/navidrome_music:ro
+      # - /path/to/your/navidrome/music:/navidrome_music:rw
 ```
 
 Then:
@@ -439,13 +439,27 @@ navidrome:
 
 Older configs using `jellyfin` in a path mapping are still accepted for compatibility, but new configs should use `mediawall`.
 
+## Jellyfin Live Channels
+
+Active Jellyfin TV/radio channels appear as Now Playing sessions. MediaWall centers the channel image on the display and uses the channel name as text, without a separate title logo. Missing channel images leave the text visible. Set the image bounding-box size per space (pixels; default 480):
+
+```yaml
+spaces:
+  living_room:
+    display:
+      live_tv:
+        channel_image_size: 480
+```
+
+The image retains its aspect ratio and fits smaller screens. Live channel sessions use Jellyfin's channel image, including live programs that reference a channel. Recorded movies/episodes keep their normal presentation.
+
 ## Image Editor
 
 Use **Edit images** beside Themes in the display or remote controls to manage the current artist, movie, or TV series. The button and dialog show the artwork source: orange for MediaWall's external cache, purple for Jellyfin, and blue for local/Navidrome files. Music uses the configured canonical artwork artist, including album artist.
 
-Search opens a separate dialog; Cancel, Escape, or an outside click returns to the image editor, and repeating the action exits the editor. Search for logos or backdrops, add backdrops without replacing existing ones, move them with left/right arrows, or delete individual images. Album covers are managed automatically outside this editor. Changes save immediately; **Cancel**, Escape, or clicking outside closes the editor. MediaWall's presentation timer pauses while editing and resumes with its remaining time; media playback continues.
+Search opens a separate dialog; Cancel, Escape, or an outside click returns to the image editor, and using the editor’s close button, Escape, or outside click exits the editor. Search for logos or backdrops, add backdrops without replacing existing ones, move them with left/right arrows, or delete individual images. Album covers are managed automatically outside this editor. Changes save immediately; the close button, Escape, or clicking outside closes the editor. MediaWall's presentation timer pauses while editing and resumes with its remaining time; media playback continues.
 
-Jellyfin edits are written to the configured server and search its enabled image providers. Local artwork edits change recognized artist image files and save order in `.mediawall-images.json`; the mapped artist directory must be writable. Audio files are untouched. Local and external searches use configured Fanart.tv/TheAudioDB providers. External selections persist in MediaWall's artist cache until explicitly cleared.
+Jellyfin edits are written to the configured server and search its enabled image providers. Local artwork edits change recognized artist image files and save order in `.mediawall-images.json`; the mapped artist directory must be writable. Audio and video files are never edited by the artwork editor: mutations require a supported image extension and image signature inside the configured music root. Local and external searches use configured Fanart.tv/TheAudioDB providers. External selections persist in MediaWall's artist cache until explicitly cleared.
 
 Use the **+** button in the image editor to upload your own image. Drag and drop a file or choose one from your device, preview it, and select **Logo** (replace) or **Backdrop** (append). PNG, JPEG, WebP, and GIF files up to 10 MB are supported. Uploads save to the active artwork source; local files still require a writable music mount. Cancel, Escape, or clicking outside returns to the image editor.
 

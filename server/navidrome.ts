@@ -282,7 +282,7 @@ export class NavidromeClient {
       try {
         const manifest = JSON.parse(fs.readFileSync(path.join(dir, ".mediawall-images.json"), "utf8"));
         const allowed = (value: unknown): value is string => typeof value === "string" && path.resolve(value).startsWith(root + path.sep)
-          && /\.(png|jpe?g|webp|avif)$/i.test(value) && fs.existsSync(value);
+          && /\.(png|jpe?g|webp|gif|avif)$/i.test(value) && fs.existsSync(value);
         return { backdrops: (manifest.backdrops ?? []).filter(allowed), logo: allowed(manifest.logo) ? manifest.logo : undefined };
       } catch { /* No editor manifest yet. */ }
     }

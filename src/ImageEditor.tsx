@@ -132,7 +132,7 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
         {busy && <p role="status">Working…</p>}
         {(["Logo", "Backdrop"] as ImageType[]).map(type => { const images = model.images.filter(i => i.type === type); return <section key={type}><div className="editor-section-title"><h3>{type === "Logo" ? "Logo" : `Backdrops · ${images.length}`}</h3><button disabled={busy} onClick={() => void search(type)}><Search/> Search {type.toLowerCase()}</button></div><div className="editor-grid">{images.map((image,index) => card(image,index,images.length))}</div>{!images.length && <p className="editor-empty">{type === "Logo" ? "No logo. MediaWall uses its text fallback." : "No backdrops selected."}</p>}</section>; })}
 
-        <footer><span>Edits are saved as you go.</span><button onClick={close}>Cancel</button></footer>
+        <footer><span>Edits are saved as you go.</span></footer>
       </div>
       {searchType && <div className="image-editor-overlay image-search-overlay" onClick={event => {
         event.stopPropagation(); if (event.target === event.currentTarget) closeSearch();

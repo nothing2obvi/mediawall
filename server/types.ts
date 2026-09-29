@@ -137,6 +137,7 @@ export interface DisplayConfig {
       scale: number;
       duration_seconds: number;
     };
+    live_tv: { channel_image_size: number };
     logo: {
       max_width: number;
     };

@@ -184,8 +184,23 @@ export class LocalImageAdapter extends ExternalImageAdapter {
     for (const file of files) await this.safe(file);
     return files;
   }
-  private async safe(file: string) {
-    if ((await fs.lstat(file)).isSymbolicLink()) throw new Error("Symbolic-link artwork cannot be edited");
+  private async safe(file: string, directory = false) {
+    const stat = await fs.lstat(file);
+    if (stat.isSymbolicLink()) throw new Error("Symbolic-link artwork cannot be edited");
+    if (directory) {
+      if (!stat.isDirectory()) throw new Error("Artist directory is not a directory");
+    } else {
+      if (!stat.isFile() || !/\.(png|jpe?g|webp|gif|avif)$/i.test(file)) throw new Error("Only artwork image files can be edited; audio and video files are protected");
+      const handle = await fs.open(file, "r");
+      const header = Buffer.alloc(32);
+      try { await handle.read(header, 0, header.length, 0); } finally { await handle.close(); }
+      const isImage = header.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
+        || (header[0] === 255 && header[1] === 216 && header[2] === 255)
+        || ["GIF87a", "GIF89a"].includes(header.toString("ascii",0,6))
+        || (header.toString("ascii",0,4) === "RIFF" && header.toString("ascii",8,12) === "WEBP")
+        || (header.toString("ascii",4,8) === "ftyp" && /avif|avis/.test(header.toString("ascii",8,32)));
+      if (!isImage) throw new Error("File content is not a supported artwork image; refusing to modify it");
+    }
     const real = await fs.realpath(file);
     const roots = await Promise.all(this.config.navidrome.artwork.path_mappings.map(m => fs.realpath(m.mediawall).catch(() => "")));
     if (!roots.some(root => root && real.startsWith(root + path.sep))) throw new Error("Artwork is outside configured local music roots");
@@ -197,7 +212,7 @@ export class LocalImageAdapter extends ExternalImageAdapter {
     for (const m of this.config.navidrome.artwork.path_mappings) {
       const dir = path.resolve(m.mediawall, t.id);
       if (!dir.startsWith(path.resolve(m.mediawall) + path.sep)) continue;
-      if (await fs.stat(dir).then(s => s.isDirectory()).catch(() => false)) return this.safe(dir);
+      if (await fs.stat(dir).then(s => s.isDirectory()).catch(() => false)) return this.safe(dir, true);
     }
     throw new Error("No existing artist directory; refusing to create a media-library directory");
   }
@@ -245,6 +260,7 @@ export class LocalImageAdapter extends ExternalImageAdapter {
     const backdrops = this.navidrome.localArtistImagePaths(t.id).filter(f => f !== file);
     const logo = image.type === "Logo" ? undefined : this.navidrome.localArtistLogoPath(t.id);
     await this.manifest(t, backdrops, logo);
+    await this.safe(file);
     await fs.unlink(file);
   }
   async move(t: EditorTarget, from: number, to: number) {

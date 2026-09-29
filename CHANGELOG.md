@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Detect Jellyfin TV/radio channel sessions and display centered channel images with configurable size and text titles.
+- Make the optional local music mount writable and enforce image-only local edits; remove the main image editor Cancel button.
+
 - Add image uploads with drag-and-drop, file selection, preview, and Logo/Backdrop type selection for Jellyfin, local files, and external cache.
 
 - Fix saved Jellyfin image edits appearing to fail during a secondary metadata refresh; refresh editor previews after changes.
