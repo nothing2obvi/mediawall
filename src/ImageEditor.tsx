@@ -43,9 +43,11 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
     const activeDialog = enlarged ? enlargedDialog : uploadOpen ? uploadDialog : searchType ? searchDialog : dialog;
     activeDialog.current?.focus();
     const key = (event: KeyboardEvent) => {
-      if (enlarged && ["ArrowLeft", "ArrowRight", "Enter"].includes(event.key)) {
+      if (enlarged && ["ArrowLeft", "ArrowRight", "Enter", "Backspace"].includes(event.key)) {
         event.preventDefault(); event.stopImmediatePropagation();
-        if (event.key === "Enter") {
+        if (event.key === "Backspace") {
+          if (!event.repeat) void deleteEnlargedBackdrop();
+        } else if (event.key === "Enter") {
           if (enlarged.result && !busy && !event.repeat) void selectEnlarged();
         } else if (!busy) navigateEnlarged(event.key === "ArrowLeft" ? -1 : 1);
         return;
@@ -85,6 +87,7 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
       const updated = await request("mutate", {id, revision: model!.revision, action, imageId: image.id, direction});
       if (session.current === id) {
         setModel({...updated, id}); setPreviewVersion(Date.now());
+        if (action === "delete" && enlarged?.image.id === image.id) setEnlarged(undefined);
         if (action === "add") {
           setEnlarged(undefined);
           if (image.type === "Logo") closeSearch();
@@ -121,6 +124,10 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
     const next = enlargedIndex + direction;
     if (!enlarged || next < 0 || next >= enlargedImages.length) return;
     enlarge(enlargedImages[next], next, enlarged.result);
+  }
+  async function deleteEnlargedBackdrop() {
+    if (!enlarged || enlarged.result || enlarged.image.type !== "Backdrop" || busy) return;
+    await mutate("delete", enlarged.image);
   }
   async function selectEnlarged() {
     if (!enlarged?.result || busy) return;
@@ -186,7 +193,7 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
             <button aria-label="Next image" disabled={busy || enlargedIndex >= enlargedImages.length - 1} onClick={() => navigateEnlarged(1)}><ArrowRight/></button>
           </nav>}
           <div className={`image-enlarged-canvas ${enlarged.image.type === "Logo" ? "image-enlarged-logo" : ""}`}><img src={enlarged.url} alt={enlarged.label}/></div>
-          <footer><span>{enlarged.image.width && enlarged.image.height ? `${enlarged.image.width} × ${enlarged.image.height} · ` : ""}{enlarged.image.provider ?? "Provider unknown"}</span><div className="editor-image-actions">{enlarged.result && <button disabled={busy} onClick={() => void selectEnlarged()}>{enlarged.image.type === "Backdrop" ? "Add backdrop" : "Use logo"}</button>}<button onClick={() => setEnlarged(undefined)}>Close</button></div></footer>
+          <footer><span>{enlarged.image.width && enlarged.image.height ? `${enlarged.image.width} × ${enlarged.image.height} · ` : ""}{enlarged.image.provider ?? "Provider unknown"}</span><div className="editor-image-actions">{!enlarged.result && enlarged.image.type === "Backdrop" && <button className="editor-delete" disabled={busy} title="Delete backdrop (Backspace)" onClick={() => void deleteEnlargedBackdrop()}><Trash2/> Delete backdrop</button>}{enlarged.result && <button disabled={busy} onClick={() => void selectEnlarged()}>{enlarged.image.type === "Backdrop" ? "Add backdrop" : "Use logo"}</button>}<button onClick={() => setEnlarged(undefined)}>Close</button></div></footer>
         </div>
       </div>}
       {uploadOpen && <ImageUploadDialog source={model.target.source} busy={busy} error={error} dialogRef={uploadDialog} onClose={closeUpload} onUpload={upload}/>}
