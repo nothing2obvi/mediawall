@@ -154,7 +154,7 @@ spaces:
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
 | `cycle_interval_seconds` | Now Playing session cycle interval. | `15` | No | Used for natural session cycling and the timer ring. |
 | `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `15` | No | The timer begins when MediaWall observes a paused state. Jellyfin and Navidrome playheads are checked for legitimate progress; removal may take up to one additional client poll. |
-| `session_cleanup.missing_after_seconds` | Keeps a recently active session visible across brief empty API polls. | `5` | No | Prevents flicker to the fallback screen between tracks or episodes. Set to `0` to disable. |
+| `session_cleanup.missing_after_seconds` | Keeps a recently active session visible across brief empty API polls. | `5` | No | Prevents flicker to the fallback screen between tracks or episodes. Set to `0` to disable for ordinary sessions. Missing Live TV channels instead use a fixed, non-configurable 15-second grace period from the first missing poll; fresh active playback takes over immediately. |
 | `session_timer.enabled` | Shows the countdown ring. | `true` | No | Only meaningful when multiple active sessions are cycling. |
 | `session_timer.size` | Countdown ring diameter. | `42` | No | Pixels. |
 | `session_count.enabled` | Shows `1 of 4` session count. | `true` | No | Independent from the timer ring. |
@@ -249,6 +249,7 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 | `animations.scale` | Animation scale. | `1.08` | No | Used by zooming animations; MediaWall adds enough overscan for moving animations to avoid blank edges. |
 | `animations.duration_seconds` | Animation duration. | `26` | No | Duration of one animation direction before it alternates. |
 | `logo.max_width` | Logo image maximum width. | `520` | No | Pixels. |
+| `live_tv.channel_image_size` | Centered Live TV channel image bounding-box size. | `713` | No | Pixels; integer from `32` to `4096`, constrained to fit the viewport. Preserves aspect ratio and follows display animation settings. Channel name and Live TV label are independently controlled through Media Info. |
 | `album_art.size` | Now Playing album cover size. | `300` | No | Pixels. |
 | `fallback_title.font_size` | Fallback title text size. | `86` | No | Used when title text rendering applies. |
 

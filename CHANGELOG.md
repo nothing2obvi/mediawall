@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Reorganize setup and reference documentation into topic pages under `docs/`, with a linked Documentation tree in the README; keep License and Contributors in the README.
+- Add enlarged image previews with same-type arrow-key/button navigation, Enter selection of search results, and Backspace deletion of existing backdrops.
+- Hide image editing during all fallback presentation, including Immich Kiosk.
+
 - Hold disappearing Live TV sessions for a fixed 15 seconds during channel switches; fresh playback takes over immediately.
 
 - Apply visual effects to centered Live TV channel images, increase their default size to 713 pixels, and add independent channel/title-label media information controls and shortcut cycling.

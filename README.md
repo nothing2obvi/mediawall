@@ -109,7 +109,9 @@ That's really the idea behind MediaWall: it can be a Now Playing display, a home
 
 - Shows Now Playing from external music sources such as Spotify through Multi-Scrobbler.
 
-- Shows active playback sessions from Jellyfin, Navidrome, or both.
+- Shows active playback sessions from Jellyfin, Navidrome, or both, including Jellyfin Live TV/radio channels with centered channel artwork and a 15-second channel-switch grace period.
+- Includes an image editor for logos and backdrops, with provider search, uploads, enlarged previews, ordering, and deletion across Jellyfin, local artwork, and the external artwork cache.
+- Supports an optional daily page refresh for each display space.
 - Supports multiple MediaWall users per space, including Jellyfin `All` users.
 - Can show a configurable user-intro transition when a Now Playing session first appears.
 - Falls back to a default MediaWall screen, shuffled artwork, or an optional per-space Immich Kiosk display when nothing is playing.

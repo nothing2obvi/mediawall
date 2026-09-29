@@ -28,11 +28,11 @@
 
 ## Validation
 
-- Production TypeScript/Vite build and 46 automated tests passed.
+- The latest production TypeScript/Vite build and 53 automated tests passed. Enlarged-view keyboard navigation and Backspace deletion were build-checked; those keyboard interactions have not had a separate browser verification pass.
 - Adapter tests cover Jellyfin music/movie/series, local filesystem changes, synthetic Spotify and Apple Music sessions, album-artist identity, both external image providers, multiple append operations, reorder, logo replacement/deletion, individual backdrop deletion, metadata, and rejection of unsupported image types.
 - Source mapping tests cover orange/external, purple/Jellyfin, blue/local, and Spotify backed by Jellyfin. All source accents are defined in the shared stylesheet; the orange layout was visually checked in the browser.
 - Controlled-clock tests cover the 18-seconds-remaining example after two minutes editing, including multiple editors and expired leases, for both presentation modes. These are clock/unit checks, not a two-minute live playback test against each real server.
-- Browser checks in an isolated fixture confirmed display and remote editor access, canonical artist title, previews and dimensions, backdrop reorder, individual deletion, empty-logo fallback message, Escape, outside dismissal, and remote Cancel. The real source libraries were not changed for these tests.
+- Browser checks in an isolated fixture confirmed display and remote editor access, canonical artist title, previews and dimensions, backdrop reorder, individual deletion, empty-logo fallback message, Escape, outside dismissal, and the then-present remote Cancel button (subsequently removed from the main editor). The real source libraries were not changed for these tests.
 - Cache fixture tests verify deletion of owned cache files while retaining original media, unrelated files, metadata, and symlink targets. The CLI warning, refusal without confirmation, successful confirmed clear, and display success toast were exercised against the isolated server.
 - Sound gating tests cover success, global sound on/off, duplicate events, and stale events. The browser audio permission gesture was exercised; audible output was not independently recorded or verified.
 - Asset verification checked all 33 scoped files and decoded-content equivalence as described above.
@@ -52,3 +52,9 @@ Jellyfin uploads use the server's base64 image endpoint with the detected conten
 Validation: source-adapter tests cover repeated backdrop uploads, preserving existing images, logo replacement, provenance, and unrelated local media preservation. Tests verify Jellyfin request paths/body/content type and reject unsupported image types, invalid files, oversized payloads, invalid dimensions, and stale revisions before mutation. Browser validation used a bundled test image in the isolated fixture: file selection, preview, successful upload, return to image management, and the new backdrop with its dimensions and Upload provenance. Native drag-and-drop and uploads into the actual Jellyfin library were not separately exercised.
 
 Local-artwork safety: before mutating existing files, the adapter checks root containment, rejects symlinks and non-files, and requires both an allowed image extension and an image signature. Regression tests verify FLAC, MP3, MKV, MP4, and a non-image disguised as logo.png are refused and remain byte-identical. The optional Compose music mount is writable for artwork editing; other media is not rewritten or renamed.
+
+## Enlarged image viewer
+
+Existing artwork and search results open in a nested preview with same-type Left/Right keyboard and button navigation. Buttons appear only for multiple images and stop at the collection boundaries. Results use a continuous list rather than separate pages. Enter invokes the existing add mutation for search results (replace Logo, append Backdrop). Backspace invokes the existing source adapter's delete mutation only for an existing Backdrop. Both mutations ignore repeated keydown events and are disabled while busy. Preview errors remain visible; successful mutations close the preview. Logo selection also closes search. Escape and outside clicks dismiss one layer at a time.
+
+The editor button is hidden during all fallback presentation, including Immich Kiosk. The main editor has no Cancel button; search and upload retain Cancel as navigation, not undo. Image previews refresh after successful edits without a secondary Jellyfin item-details request that could fail after the image was already saved.

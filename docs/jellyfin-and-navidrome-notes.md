@@ -29,5 +29,7 @@ navidrome:
         mediawall: "/navidrome_music"
 ```
 
+The optional music mount in the Compose example uses `:rw` so the image editor can save artwork. Enable that mount only when using local files, and ensure the container can write the mapped artist directory. Local mutations require a supported image extension and image signature, stay inside the configured root, and reject symlinks. Audio and video files are never rewritten, renamed, or deleted by artwork editing.
+
 Older configs using `jellyfin` in a path mapping are still accepted for compatibility, but new configs should use `mediawall`.
 

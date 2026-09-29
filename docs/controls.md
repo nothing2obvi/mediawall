@@ -15,12 +15,16 @@ These work in both Now Playing and Wallpaper/Screensaver mode unless noted.
 | `t` | Cycle themes when the space uses `theme: All` or has no explicit theme. |
 | `y` | Toggle local sound mute when sounds are enabled for the space. |
 | `l` | Toggle logo display. |
-| `i` | Toggle the media-info option for the current media type. |
+| `i` | Toggle the media-info option for the current media type. For Live TV, cycle channel only, Live TV label only, both, and neither. |
 | `a` | Toggle album art when available. |
 | `s` | Toggle shuffle in Wallpaper/Screensaver mode. |
 | `g` | Toggle the grid in Wallpaper/Screensaver mode. |
 | `c` | Toggle the selection dialog in Wallpaper/Screensaver mode. |
 | `ArrowUp` / `ArrowDown` | Switch libraries in Wallpaper/Screensaver mode when shuffle is off. |
+
+### Image Editor Shortcuts
+
+While an enlarged image preview is open, Left/Right browse same-type images, Enter selects a search result, and Backspace deletes an existing backdrop. Escape returns to the image list. These keys act on the preview instead of changing MediaWall sessions or artwork. See [enlarged previews and keyboard controls](image-editor.md#enlarged-previews-and-keyboard-controls) for selection, deletion, and dismissal behavior.
 
 ### Tapping and Clicking
 

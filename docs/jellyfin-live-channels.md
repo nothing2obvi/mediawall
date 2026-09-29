@@ -12,3 +12,5 @@ spaces:
 
 The image retains its aspect ratio, fits smaller screens, and follows the configured backdrop effects (breathing, Ken Burns, pan, drift, focus, and zoom). In Media Info, the Live TV section independently controls Channel and Live TV text; the `i` shortcut cycles channel only, Live TV only, both, and neither. The Live TV label uses the episode-code styling. Live channel sessions use Jellyfin's channel image, including live programs that reference a channel. Recorded movies/episodes keep their normal presentation.
 
+When an active channel disappears from Jellyfin's sessions, MediaWall keeps it visible for up to 15 seconds from the first missing poll. This bridges the gap while changing channels instead of immediately showing the fallback. Fresh active playback takes over immediately. If nothing returns, the configured fallback appears after the grace period. This Live TV grace period is fixed and cannot be configured; `now_playing.session_cleanup.missing_after_seconds` continues to apply to other session types.
+
