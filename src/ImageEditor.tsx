@@ -11,7 +11,7 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
   const [model, setModel] = useState<Model>();
   const [results, setResults] = useState<EditorImage[]>();
   const [searchType, setSearchType] = useState<ImageType>();
-  const [enlarged, setEnlarged] = useState<{url: string; label: string; image: EditorImage}>();
+  const [enlarged, setEnlarged] = useState<{url: string; label: string; image: EditorImage; result: boolean}>();
   const enlargedDialog = useRef<HTMLDivElement>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const uploadDialog = useRef<HTMLDivElement>(null);
@@ -43,6 +43,13 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
     const activeDialog = enlarged ? enlargedDialog : uploadOpen ? uploadDialog : searchType ? searchDialog : dialog;
     activeDialog.current?.focus();
     const key = (event: KeyboardEvent) => {
+      if (enlarged && ["ArrowLeft", "ArrowRight", "Enter"].includes(event.key)) {
+        event.preventDefault(); event.stopImmediatePropagation();
+        if (event.key === "Enter") {
+          if (enlarged.result && !busy && !event.repeat) void selectEnlarged();
+        } else if (!busy) navigateEnlarged(event.key === "ArrowLeft" ? -1 : 1);
+        return;
+      }
       if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); closeTop(); }
       if (event.key === "Tab") {
         const nodes = activeDialog.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled):not([hidden]), [tabindex="0"]');
@@ -55,7 +62,7 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
     window.addEventListener("keydown", key, true);
     const timer = window.setInterval(() => void request("heartbeat", {id: model.id}).catch(e => setError(e.message)), 10_000);
     return () => { window.removeEventListener("keydown", key, true); window.clearInterval(timer); };
-  }, [model?.id, searchType, uploadOpen, enlarged]);
+  }, [model, searchType, uploadOpen, enlarged, busy, results]);
   useEffect(() => () => { if (session.current) void request("close", {id: session.current}).catch(() => undefined); }, []);
   async function open() {
     setBusy(true); setOpeningError("");
@@ -78,7 +85,10 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
       const updated = await request("mutate", {id, revision: model!.revision, action, imageId: image.id, direction});
       if (session.current === id) {
         setModel({...updated, id}); setPreviewVersion(Date.now());
-        if (action === "add" && image.type === "Logo") closeSearch();
+        if (action === "add") {
+          setEnlarged(undefined);
+          if (image.type === "Logo") closeSearch();
+        }
       }
       props.onChanged();
     } catch (e) {
@@ -100,11 +110,27 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
       if (session.current === id) setError(message); else setOpeningError(message);
     } finally { setBusy(false); }
   }
+  function enlarge(image: EditorImage, index: number, result: boolean) {
+    const url = new URL(props.mediaUrl(image.url) ?? image.url, window.location.origin);
+    if (!result && previewVersion) url.searchParams.set("mwpreview", String(previewVersion));
+    setEnlarged({url: url.toString(), label: `${image.type} ${index+1}`, image, result});
+  }
+  const enlargedImages = enlarged ? (enlarged.result ? results ?? [] : model?.images ?? []).filter(image => image.type === enlarged.image.type) : [];
+  const enlargedIndex = enlargedImages.findIndex(image => image.id === enlarged?.image.id);
+  function navigateEnlarged(direction: number) {
+    const next = enlargedIndex + direction;
+    if (!enlarged || next < 0 || next >= enlargedImages.length) return;
+    enlarge(enlargedImages[next], next, enlarged.result);
+  }
+  async function selectEnlarged() {
+    if (!enlarged?.result || busy) return;
+    await mutate("add", enlarged.image);
+  }
   function card(image: EditorImage, index: number, total: number, result = false) {
     const url = new URL(props.mediaUrl(image.url) ?? image.url, window.location.origin);
     if (!result && previewVersion) url.searchParams.set("mwpreview", String(previewVersion));
     return <article className="editor-image" key={image.id}>
-      <button type="button" className={`editor-preview editor-preview-button ${image.type === "Logo" ? "logo" : ""}`} aria-label={`Enlarge ${image.type.toLowerCase()} ${index+1}`} onClick={() => setEnlarged({url: url.toString(), label: `${image.type} ${index+1}`, image})}><img src={url.toString()} alt={`${image.type} ${index+1}`} loading="lazy" onLoad={event => {
+      <button type="button" className={`editor-preview editor-preview-button ${image.type === "Logo" ? "logo" : ""}`} aria-label={`Enlarge ${image.type.toLowerCase()} ${index+1}`} onClick={() => enlarge(image, index, result)}><img src={url.toString()} alt={`${image.type} ${index+1}`} loading="lazy" onLoad={event => {
         if (!image.width || !image.height) {
           const node = event.currentTarget;
           node.closest("article")?.querySelector(".editor-resolution")?.replaceChildren(`${node.naturalWidth} × ${node.naturalHeight}`);
@@ -152,8 +178,15 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
       }}>
         <div ref={enlargedDialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="image-enlarged-title" className={`image-editor-modal image-enlarged-modal editor-source-${model.target.source}`}>
           <header><h2 id="image-enlarged-title">{enlarged.label}</h2><button aria-label="Close enlarged image" onClick={() => setEnlarged(undefined)}><X/></button></header>
+          {error && <p role="alert" className="editor-error">{error}</p>}
+          {busy && <p role="status">Working…</p>}
+          {enlargedImages.length > 1 && <nav className="editor-image-actions" aria-label="Image navigation">
+            <button aria-label="Previous image" disabled={busy || enlargedIndex <= 0} onClick={() => navigateEnlarged(-1)}><ArrowLeft/></button>
+            <span aria-live="polite">{enlargedIndex + 1} / {enlargedImages.length}</span>
+            <button aria-label="Next image" disabled={busy || enlargedIndex >= enlargedImages.length - 1} onClick={() => navigateEnlarged(1)}><ArrowRight/></button>
+          </nav>}
           <div className={`image-enlarged-canvas ${enlarged.image.type === "Logo" ? "image-enlarged-logo" : ""}`}><img src={enlarged.url} alt={enlarged.label}/></div>
-          <footer><span>{enlarged.image.width && enlarged.image.height ? `${enlarged.image.width} × ${enlarged.image.height} · ` : ""}{enlarged.image.provider ?? "Provider unknown"}</span><button onClick={() => setEnlarged(undefined)}>Close</button></footer>
+          <footer><span>{enlarged.image.width && enlarged.image.height ? `${enlarged.image.width} × ${enlarged.image.height} · ` : ""}{enlarged.image.provider ?? "Provider unknown"}</span><div className="editor-image-actions">{enlarged.result && <button disabled={busy} onClick={() => void selectEnlarged()}>{enlarged.image.type === "Backdrop" ? "Add backdrop" : "Use logo"}</button>}<button onClick={() => setEnlarged(undefined)}>Close</button></div></footer>
         </div>
       </div>}
       {uploadOpen && <ImageUploadDialog source={model.target.source} busy={busy} error={error} dialogRef={uploadDialog} onClose={closeUpload} onUpload={upload}/>}
