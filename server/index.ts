@@ -731,7 +731,9 @@ function normalizeMediaInfoPrefs(value: unknown): DisplaySnapshot["state"]["medi
     music_album: item.music_album,
     music_song_title: item.music_song_title,
     series_episode_info: item.series_episode_info ?? item.series_episode ?? false,
-    series_episode_title: item.series_episode_title ?? item.series_episode ?? false
+    series_episode_title: item.series_episode_title ?? item.series_episode ?? false,
+    live_tv_channel: item.live_tv_channel ?? true,
+    live_tv_label: item.live_tv_label ?? true
   };
 }
 
@@ -2062,7 +2064,9 @@ function isMediaInfoPrefs(value: unknown): value is DisplaySnapshot["state"]["me
     && typeof item.music_album === "boolean"
     && typeof item.music_song_title === "boolean"
     && typeof (item.series_episode_info ?? item.series_episode) === "boolean"
-    && typeof (item.series_episode_title ?? item.series_episode) === "boolean";
+    && typeof (item.series_episode_title ?? item.series_episode) === "boolean"
+    && (item.live_tv_channel === undefined || typeof item.live_tv_channel === "boolean")
+    && (item.live_tv_label === undefined || typeof item.live_tv_label === "boolean");
 }
 
 function sendLocalArtistImage(artistName: string | undefined, res: express.Response, fallbackStatus: number, imageIndex = 0) {

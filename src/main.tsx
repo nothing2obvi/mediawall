@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { cycleLiveTvInfo } from "./live-tv-info";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
@@ -87,6 +88,8 @@ type DisplayState = {
     music_song_title: boolean;
     series_episode_info: boolean;
     series_episode_title: boolean;
+    live_tv_channel: boolean;
+    live_tv_label: boolean;
   };
   showAlbumArt: boolean;
   showLogo: boolean;
@@ -1622,7 +1625,9 @@ function App() {
     const type = mediaKind(artwork, snapshot.nowPlaying);
     const mediaInfo = { ...snapshot.state.mediaInfo };
 
-    if (type === "movie") {
+    if (type === "live-tv") {
+      Object.assign(mediaInfo, cycleLiveTvInfo(mediaInfo));
+    } else if (type === "movie") {
       mediaInfo.movie = !mediaInfo.movie;
     } else if (type === "episode") {
       const episodeInfo = mediaInfo.series_episode_info;
@@ -1882,7 +1887,7 @@ function App() {
       {showMediaWallIdle && snapshot ? (
         <MediaWallIdle snapshot={snapshot} />
       ) : cycledArtwork?.mediaType === "TvChannel" ? (
-        <ChannelBackdrop artwork={cycledArtwork} size={snapshot?.config.display.live_tv?.channel_image_size ?? 648} onReady={() => setImmichExitPending(false)} />
+        <ChannelBackdrop artwork={cycledArtwork} size={snapshot?.config.display.live_tv?.channel_image_size ?? 713} onReady={() => setImmichExitPending(false)} />
       ) : (
         <Backdrop artwork={cycledArtwork} onReady={() => setImmichExitPending(false)} />
       )}
@@ -2496,10 +2501,9 @@ function Identity({ snapshot, artwork }: { snapshot?: Snapshot; artwork?: Artwor
       {state?.showLogo && artwork?.logoUrl && artwork.mediaType !== "TvChannel" && (
         <img className="logo" src={mediaUrl(artwork.logoUrl)} alt={artwork.title} />
       )}
-      {state?.showLogo && (!artwork?.logoUrl || artwork.mediaType === "TvChannel") && (
+      {state?.showLogo && artwork?.mediaType !== "TvChannel" && !artwork?.logoUrl && (
         <div className="text-logo">{now?.logoText ?? artwork?.title ?? "MediaWall"}</div>
       )}
-      {state?.showLogo && artwork?.mediaType === "TvChannel" && <div className="channel-type-label">Live TV</div>}
       {showInfo && (
         <div className="now">
           <MediaInfo now={now} artwork={artwork} prefs={mediaInfoPrefs!} />
@@ -2931,6 +2935,11 @@ function MediaInfoDialog({ state, onCancel, onChange, onSave }: {
           </label>
         </div>
         <div className="media-info-section">
+          <div className="section-label">Live TV</div>
+          <label className="check-row indented"><input type="checkbox" checked={prefs.live_tv_channel} onChange={() => toggle("live_tv_channel")} /><span>Channel</span></label>
+          <label className="check-row indented"><input type="checkbox" checked={prefs.live_tv_label} onChange={() => toggle("live_tv_label")} /><span>Live TV</span></label>
+        </div>
+        <div className="media-info-section">
           <div className="section-label">Music</div>
           <label className="check-row indented">
             <input type="checkbox" checked={prefs.music_album} onChange={() => toggle("music_album")} />
@@ -3193,6 +3202,10 @@ function IconButton({ label, active, flash, onClick, children }: {
 
 function MediaInfo({ now, artwork, prefs }: { now?: Snapshot["nowPlaying"]; artwork?: ArtworkRef; prefs: DisplayState["mediaInfo"] }) {
   const kind = mediaKind(artwork, now);
+  if (kind === "live-tv") return <div className="live-tv-info">
+    {prefs.live_tv_channel && <div className="text-logo">{now?.logoText ?? artwork?.title ?? now?.title}</div>}
+    {prefs.live_tv_label && <div className="episode-code">Live TV</div>}
+  </div>;
   if (kind === "movie") {
     if (!prefs.movie) return null;
     const year = now?.year ?? artwork?.year;
@@ -3223,6 +3236,7 @@ function MediaInfo({ now, artwork, prefs }: { now?: Snapshot["nowPlaying"]; artw
 
 function canRenderMediaInfo(now: Snapshot["nowPlaying"] | undefined, artwork: ArtworkRef | undefined, prefs: DisplayState["mediaInfo"]) {
   const kind = mediaKind(artwork, now);
+  if (kind === "live-tv") return prefs.live_tv_channel || prefs.live_tv_label;
   if (kind === "movie") return prefs.movie && Boolean(now?.year ?? artwork?.year);
   if (kind === "music") return (prefs.music_album && Boolean(now?.album)) || (prefs.music_song_title && Boolean(now?.title));
   if (kind === "episode") return (prefs.series_episode_info && Boolean(formatEpisodeCode(now))) || (prefs.series_episode_title && Boolean(now?.title));
@@ -3382,8 +3396,9 @@ function mediaInfoEnabled(state: DisplayState) {
   return Object.values(state.mediaInfo).some(Boolean);
 }
 
-function mediaKind(artwork?: ArtworkRef, now?: Snapshot["nowPlaying"]): "movie" | "episode" | "music" | "other" {
+function mediaKind(artwork?: ArtworkRef, now?: Snapshot["nowPlaying"]): "movie" | "episode" | "music" | "live-tv" | "other" {
   const type = artwork?.mediaType?.toLowerCase() ?? "";
+  if (type === "tvchannel") return "live-tv";
   const isMusic = type.includes("music") || type === "audio" || artwork?.source === "navidrome" || Boolean(now?.album || now?.artist);
   const isEpisode = type.includes("episode") || type.includes("series") || Boolean(now?.seasonNumber || now?.episodeNumber || now?.seriesName);
   const isMovie = type.includes("movie") || type === "video";

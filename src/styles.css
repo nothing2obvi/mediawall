@@ -1962,6 +1962,15 @@ body.idle {
 }
 
 .channel-backdrop { position:fixed; inset:0; display:grid; place-items:center; background:var(--backdrop-background, #050508); }
-.channel-backdrop img { width:min(var(--channel-image-size,648px),80vw); height:min(var(--channel-image-size,648px),65vh); object-fit:contain; }
+.channel-backdrop img { width:min(var(--channel-image-size,713px),80vw); height:min(var(--channel-image-size,713px),65vh); object-fit:contain; }
 
-.channel-type-label { margin-top:12px; font-size:var(--media-info-font-size,40px); line-height:1.2; opacity:.8; }
+
+.live-tv-info { display:flex; flex-direction:column; gap:12px; }
+.animation-enabled .channel-backdrop img { animation-duration:var(--animation-duration,26s); animation-delay:var(--animation-delay,0s); animation-timing-function:ease-in-out; animation-iteration-count:infinite; animation-direction:alternate; transform-origin:center; will-change:transform; }
+.editor-paused .channel-backdrop img { animation-play-state:paused !important; }
+.animation-breathe .channel-backdrop img { animation-name:backdrop-breathe; }
+.animation-pan .channel-backdrop img { animation-name:backdrop-pan; }
+.animation-kenburns .channel-backdrop img { animation-name:backdrop-kenburns; }
+.animation-drift .channel-backdrop img { animation-name:backdrop-drift; }
+.animation-focus .channel-backdrop img { animation-name:backdrop-focus; }
+.animation-zoom .channel-backdrop img { animation-name:backdrop-zoom; }

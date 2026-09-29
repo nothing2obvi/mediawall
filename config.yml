@@ -174,7 +174,7 @@ spaces:
       logo:
         max_width: 520
       live_tv:
-        channel_image_size: 648 # Centered channel image bounding box, in pixels.
+        channel_image_size: 713 # Centered channel image bounding box, in pixels.
       album_art:
         size: 300
       fallback_title:
@@ -316,7 +316,7 @@ spaces:
       logo:
         max_width: 520
       live_tv:
-        channel_image_size: 648 # Centered channel image bounding box, in pixels.
+        channel_image_size: 713 # Centered channel image bounding box, in pixels.
       album_art:
         size: 300
       fallback_title:
@@ -459,7 +459,7 @@ spaces:
       logo:
         max_width: 520
       live_tv:
-        channel_image_size: 648 # Centered channel image bounding box, in pixels.
+        channel_image_size: 713 # Centered channel image bounding box, in pixels.
       album_art:
         size: 300
       fallback_title:

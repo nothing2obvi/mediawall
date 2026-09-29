@@ -58,7 +58,9 @@ export class StateStore {
         music_album: existingMediaInfo?.music_album ?? true,
         music_song_title: existingMediaInfo?.music_song_title ?? true,
         series_episode_info: existingMediaInfo?.series_episode_info ?? existingMediaInfo?.series_episode ?? true,
-        series_episode_title: existingMediaInfo?.series_episode_title ?? existingMediaInfo?.series_episode ?? true
+        series_episode_title: existingMediaInfo?.series_episode_title ?? existingMediaInfo?.series_episode ?? true,
+        live_tv_channel: existingMediaInfo?.live_tv_channel ?? true,
+        live_tv_label: existingMediaInfo?.live_tv_label ?? true
       },
       shuffleQueue: existing?.shuffleQueue ?? [],
       shuffleQueueIndex: existing?.shuffleQueueIndex ?? 0,

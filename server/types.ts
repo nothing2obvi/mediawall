@@ -452,6 +452,8 @@ export interface DisplayState {
     music_song_title: boolean;
     series_episode_info: boolean;
     series_episode_title: boolean;
+    live_tv_channel: boolean;
+    live_tv_label: boolean;
   };
   shuffleQueue: ArtworkRef[];
   shuffleQueueIndex: number;

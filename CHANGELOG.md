@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Apply visual effects to centered Live TV channel images, increase their default size to 713 pixels, and add independent channel/title-label media information controls and shortcut cycling.
+
 - Detect Jellyfin TV/radio channel sessions and display centered channel images with configurable size and text titles.
 - Make the optional local music mount writable and enforce image-only local edits; remove the main image editor Cancel button.
 
