@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 — 2026-09-30
 
 - Match the Pixelfin-style image editor layout while retaining MediaWall artwork destinations and source colors; add provider/type filters, 30-result pages, supported language filtering, cross-page enlarged previews, and consistent Add/Replace upload actions.
+
+No new configuration breaking changes from v0.4.0.
 
 ## 0.4.0 — 2026-09-30
 
