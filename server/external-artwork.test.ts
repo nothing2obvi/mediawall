@@ -25,7 +25,7 @@ const localArtwork: ArtworkRef = {
 function state(overrides: Partial<NowPlayingState> = {}): NowPlayingState {
   return {
     source: "spotify",
-    user: "nothing2obvi",
+    user: "primary",
     playing: true,
     paused: false,
     title: "Example Song",
@@ -172,7 +172,7 @@ for (const [encountered, resolvedName] of [["a子", "ako"], ["ako", "a子"]] as 
 test("external sessions preserve album-artist identifiers for canonical artwork lookup", () => {
   const value = loadConfig();
   value.external_music.enabled = true;
-  value.external_music.tokens = { test: { user: "nothing2obvi", source: "spotify" } };
+  value.external_music.tokens = { test: { user: "primary", source: "spotify" } };
   const receiver = new ExternalMusicReceiver(value);
   const result = receiver.receiveSubmitListens("test", {
     listen_type: "playing_now",
@@ -189,7 +189,7 @@ test("external sessions preserve album-artist identifiers for canonical artwork 
     }]
   });
   assert.equal(result.ok, true);
-  assert.deepEqual(receiver.activePlaybacks("nothing2obvi")[0]?.externalIds?.albumArtistMbids, [mbid]);
+  assert.deepEqual(receiver.activePlaybacks("primary")[0]?.externalIds?.albumArtistMbids, [mbid]);
 });
 
 test("1. local preference uses an existing Jellyfin/Navidrome artist", async (t) => {
@@ -330,11 +330,11 @@ test("Spotify source avatars support common formats and case-insensitive usernam
   t.after(() => fsp.rm(root, { recursive: true, force: true }));
   const directory = path.join(root, "app/avatars/spotify");
   await fsp.mkdir(directory, { recursive: true });
-  await fsp.writeFile(path.join(directory, "nothing2obvi.WeBp"), "avatar");
+  await fsp.writeFile(path.join(directory, "Primary.WeBp"), "avatar");
   const avatars = new SourceAvatarStore(root);
-  assert.equal(path.basename(avatars.avatarPath("spotify", "nothing2obvi") ?? ""), "nothing2obvi.WeBp");
+  assert.equal(path.basename(avatars.avatarPath("spotify", "primary") ?? ""), "Primary.WeBp");
   assert.equal(avatars.avatarPath("spotify", "missing"), undefined);
-  assert.equal(avatars.avatarPath("navidrome", "nothing2obvi"), undefined);
+  assert.equal(avatars.avatarPath("navidrome", "primary"), undefined);
 });
 
 test("Jellyfin avatar fallback only returns URLs for users with profile images", async () => {
@@ -342,12 +342,12 @@ test("Jellyfin avatar fallback only returns URLs for users with profile images",
   const { JellyfinClient } = await import("./jellyfin.js");
   const jellyfin = new JellyfinClient(value);
   (jellyfin as unknown as { usersCache: unknown[] }).usersCache = [
-    { Id: "with-image", Name: "nothing2obvi", PrimaryImageTag: "tag" },
+    { Id: "with-image", Name: "primary", PrimaryImageTag: "tag" },
     { Id: "without-image", Name: "sam" }
   ];
   const display = Object.values(value.spaces)[0];
   assert.ok(display);
-  assert.match((await jellyfin.userAvatarUrl("nothing2obvi", display!)) ?? "", /with-image/);
+  assert.match((await jellyfin.userAvatarUrl("primary", display!)) ?? "", /with-image/);
   assert.equal(await jellyfin.userAvatarUrl("sam", display!), undefined);
 });
 
