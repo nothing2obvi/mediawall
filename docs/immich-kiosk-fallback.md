@@ -19,7 +19,6 @@ HOMELAB_IMMICH_KIOSK_URL=https://immich-kiosk.example.com/?password=replace-me
 
 MediaWall keeps checking Jellyfin and Navidrome while Kiosk is visible. Playback automatically brings Now Playing back; when playback ends, Kiosk returns. A configured Kiosk also becomes a third display mode alongside Now Playing and Wallpaper/Screensaver.
 
-If you choose a different album from Immich Kiosk's links, that choice survives temporary MediaWall handoffs but not a browser or PWA refresh. A container restart only loses it when the display page reloads. To make an album permanent, use that album as the main `immich_kiosk.url`.
+The URL must be reachable from both the MediaWall container and display browser. MediaWall's controls are hidden during the handoff. Playback restores normal Now Playing; after the final session and missing-session grace period, the handoff returns. An album or link chosen inside Kiosk remains selected across temporary handoffs, but not across a browser/PWA refresh; a container restart loses it only if the display reloads. Put the desired album in this URL to make it persistent. The target and any reverse proxy must permit iframe embedding. Missing, invalid, unreachable, timed-out, or frame-blocked URLs use the ordinary MediaWall idle screen.
 
-The Kiosk URL must be reachable from both the MediaWall container and the display browser, and it must allow iframe embedding. If it can't be loaded, MediaWall uses its normal idle screen. Use the matching MediaWall remote when you need controls while Kiosk is on screen.
-
+Use the matching MediaWall remote when you need controls while Kiosk is on screen.

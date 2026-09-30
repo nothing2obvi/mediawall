@@ -6,11 +6,12 @@ These work in both Now Playing and Wallpaper/Screensaver mode unless noted.
 
 | Key | Action |
 | --- | --- |
-| `f` | Enter or exit fullscreen. |
 | `Escape` | Exit fullscreen. |
 | `ArrowLeft` | Previous session or previous artwork. |
 | `ArrowRight` | Next session or next artwork. |
 | `Space` | Pause or resume the current mode. |
+| `ArrowUp` / `ArrowDown` | Switch libraries in Wallpaper/Screensaver mode when shuffle is off. |
+| `f` | Enter or exit fullscreen. |
 | `m` | Cycle through Now Playing, Wallpaper/Screensaver, and Immich Kiosk when that space has a Kiosk URL. |
 | `t` | Cycle themes when the space uses `theme: All` or has no explicit theme. |
 | `y` | Toggle local sound mute when sounds are enabled for the space. |
@@ -20,11 +21,10 @@ These work in both Now Playing and Wallpaper/Screensaver mode unless noted.
 | `s` | Toggle shuffle in Wallpaper/Screensaver mode. |
 | `g` | Toggle the grid in Wallpaper/Screensaver mode. |
 | `c` | Toggle the selection dialog in Wallpaper/Screensaver mode. |
-| `ArrowUp` / `ArrowDown` | Switch libraries in Wallpaper/Screensaver mode when shuffle is off. |
 
 ### Image Editor Shortcuts
 
-While an enlarged image preview is open, Left/Right browse same-type images, Enter selects a search result, and Backspace deletes an existing backdrop. Escape returns to the image list. These keys act on the preview instead of changing MediaWall sessions or artwork. See [enlarged previews and keyboard controls](image-editor.md#enlarged-previews-and-keyboard-controls) for selection, deletion, and dismissal behavior.
+While an enlarged image preview is open, Left/Right browse same-type images, Enter selects a search result, and Backspace deletes an existing backdrop. Escape returns to the image list. These keys act on the preview instead of changing MediaWall sessions or artwork. See [enlarged previews and keyboard controls](image-editor.md#viewing-and-changing-images) for selection, deletion, and dismissal behavior.
 
 ### Tapping and Clicking
 

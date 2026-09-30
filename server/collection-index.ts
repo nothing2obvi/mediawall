@@ -1,3 +1,4 @@
+import { watchesSource } from "./playback-source.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -63,7 +64,7 @@ export class JellyfinCollectionIndex {
   private async build() {
     const relevantSpaces = Object.entries(this.config.spaces).filter(([, space]) =>
       space.now_playing.collections.enabled
-      && (space.playback_source === "jellyfin" || space.playback_source === "both")
+      && (watchesSource(space.playback_source, "jellyfin"))
     );
     if (!relevantSpaces.length || !this.jellyfin.configured()) return;
 

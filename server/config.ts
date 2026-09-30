@@ -59,10 +59,9 @@ const mediaWallUserSchema = z.object({
 });
 
 const spaceSchema = z.object({
-  playback_source: z.enum(["jellyfin", "navidrome", "both"]).default("both"),
+  playback_source: z.enum(["jellyfin", "navidrome", "external-music", "All"]).default("All"),
   theme: z.enum([...themeNames, "All"]).default("All"),
   users: z.array(z.string()).default([]),
-  playback_user: z.string().optional(),
   libraries: z.array(z.string()).default([]),
   idle_timeout: z.number().default(30),
   page_refresh: z.object({
@@ -566,7 +565,11 @@ export function loadConfig(): AppConfig {
   const configPath = path.resolve(process.env.MEDIAWALL_CONFIG ?? "config.yml");
   const raw = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "{}";
   const expanded = expandEnv(raw);
-  const parsed = configSchema.parse(YAML.parse(expanded) ?? {});
+  const rawConfig = YAML.parse(expanded) ?? {};
+  for (const space of Object.values(rawConfig.spaces ?? {}) as Record<string, unknown>[]) {
+    if (space && typeof space === "object" && "playback_user" in space) throw new Error("playback_user was removed; configure users: [your-user] for each space instead.");
+  }
+  const parsed = configSchema.parse(rawConfig);
   const users = normalizeUsers(parsed.users);
   const spaces = normalizeSpaces(parsed.spaces, users);
   const appConfig: AppConfig = {
@@ -606,7 +609,7 @@ function normalizeUsers(input: Record<string, z.infer<typeof mediaWallUserSchema
 function normalizeSpaces(input: Record<string, z.infer<typeof spaceSchema>>, users: Record<string, MediaWallUser>) {
   const spaces: Record<string, DisplayConfig> = {};
   for (const [spaceName, raw] of Object.entries(input)) {
-    const userNames = raw.users.length ? raw.users : (raw.playback_user ? [raw.playback_user] : Object.keys(users).slice(0, 1));
+    const userNames = raw.users.length ? raw.users : Object.keys(users).slice(0, 1);
     const useAllUsers = userNames.some((name) => name.toLowerCase() === "all");
     const configuredUserNames = Object.keys(users);
     const concreteUserNames = configuredUserNames.filter((name) => name.toLowerCase() !== "all");
@@ -616,11 +619,11 @@ function normalizeSpaces(input: Record<string, z.infer<typeof spaceSchema>>, use
       jellyfin_user: name,
       navidrome_user: name
     });
-    const firstUser = resolvedUsers[0]?.name ?? raw.playback_user ?? "default";
+    const firstUser = resolvedUsers[0]?.name ?? "default";
     spaces[spaceName] = {
       ...raw,
       users: resolvedUsers,
-      playback_user: firstUser,
+      source_user: firstUser,
       idle_timeout: raw.idle_timeout,
       libraries: raw.libraries
     };
@@ -637,6 +640,9 @@ function normalizeExternalMusic(
     if (user.external_music_token && !tokens[user.external_music_token]) {
       tokens[user.external_music_token] = { user: userName };
     }
+  }
+  for (const mapping of Object.values(tokens)) {
+    mapping.user = users[mapping.user]?.name ?? mapping.user;
   }
   return { ...input, tokens };
 }

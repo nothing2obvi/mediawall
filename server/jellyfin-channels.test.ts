@@ -5,7 +5,7 @@ import {JellyfinClient} from "./jellyfin.js";
 
 for (const mediaType of ["Video","Audio"]) test(`Jellyfin ${mediaType} live channel remains a session with centered channel art and text`, async t => {
   const cfg=loadConfig(); cfg.jellyfin.url="http://jellyfin.test";cfg.jellyfin.api_key="test";
-  const display=Object.values(cfg.spaces)[0];display.playback_user="viewer";
+  const display=Object.values(cfg.spaces)[0];display.source_user="viewer";
   t.mock.method(globalThis,"fetch",async(input:unknown)=>new URL(String(input)).pathname==="/Sessions"
     ? Response.json([{Id:"session",UserName:"viewer",NowPlayingItem:{Id:"channel",Type:"TvChannel",MediaType:mediaType,Name:"News",ImageTags:{Primary:"channel-image",Logo:"unused"}},PlayState:{IsPaused:false,PositionTicks:123}}])
     : Response.json([]));
@@ -16,7 +16,7 @@ for (const mediaType of ["Video","Audio"]) test(`Jellyfin ${mediaType} live chan
 });
 test("live programs resolve channel imagery and keep channel session identity across programs", async t=>{
   const cfg=loadConfig();cfg.jellyfin.url="http://jellyfin.test";cfg.jellyfin.api_key="test";
-  const display=Object.values(cfg.spaces)[0];display.playback_user="viewer";let program="one";
+  const display=Object.values(cfg.spaces)[0];display.source_user="viewer";let program="one";
   t.mock.method(globalThis,"fetch",async(input:unknown)=>{
     const pathname=new URL(String(input)).pathname;
     if(pathname==="/Sessions")return Response.json([{Id:"session",UserName:"viewer",NowPlayingItem:{Id:program,Type:"Program",Name:"Show",ChannelId:"channel"},PlayState:{IsPaused:true}}]);
@@ -29,7 +29,7 @@ test("live programs resolve channel imagery and keep channel session identity ac
 });
 test("a live channel without an image still produces a text-only session",async t=>{
   const cfg=loadConfig();cfg.jellyfin.url="http://jellyfin.test";cfg.jellyfin.api_key="test";
-  const display=Object.values(cfg.spaces)[0];display.playback_user="viewer";
+  const display=Object.values(cfg.spaces)[0];display.source_user="viewer";
   t.mock.method(globalThis,"fetch",async(input:unknown)=>new URL(String(input)).pathname==="/Sessions" ? Response.json([{Id:"s",UserName:"viewer",NowPlayingItem:{Id:"channel",Type:"TvChannel",Name:"Radio"}}]) : new Response("",{status:404}));
   const [playing]=await new JellyfinClient(cfg).activePlaybacks(display);
   assert.equal(playing.playing,true);assert.equal(playing.logoText,"Radio");assert.equal(playing.artwork?.backdropUrl,undefined);

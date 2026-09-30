@@ -1,4 +1,4 @@
-export type PlaybackSource = "jellyfin" | "navidrome" | "both";
+export type PlaybackSource = "jellyfin" | "navidrome" | "external-music" | "All";
 export type NowPlayingSource = "jellyfin" | "navidrome" | "spotify" | "apple_music" | "external_music";
 export type ArtworkSource = "jellyfin" | "navidrome" | "fetched" | "fallback";
 export type DisplayMode = "now-playing" | "screensaver" | "immich-kiosk";
@@ -18,7 +18,7 @@ export interface DisplayConfig {
   playback_source: PlaybackSource;
   theme: string;
   users: MediaWallUser[];
-  playback_user: string;
+  source_user: string;
   libraries: string[];
   idle_timeout: number;
   page_refresh: { enabled: boolean; time: string };

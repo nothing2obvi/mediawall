@@ -1,3 +1,5 @@
+import { updatePlaybackProgress, type PlaybackProgress } from "./playback-progress.js";
+import { watchesSource } from "./playback-source.js";
 import express from "express";
 import { holdMissingLiveTv } from "./live-tv-grace.js";
 import { clearArtworkCache } from "./artwork-cache.js";
@@ -59,6 +61,7 @@ type RecentPlaybackRecord = {
   activityAt: number;
   playbackPositionTicks?: number;
   progressConfirmed: boolean;
+  jellyfinProgress?: PlaybackProgress;
   stalledSince?: number;
   pausedSince?: number;
   active: boolean;
@@ -1316,7 +1319,7 @@ async function enabledConnectionIssues(displayConfig: DisplayConfig): Promise<Pu
   const cached = connectionIssueCache.get(cacheKey);
   if (cached && now - cached.checkedAt < 15_000) return cached.issues;
   const issues: PublicConnectionIssue[] = [];
-  if (displayConfig.playback_source === "jellyfin" || displayConfig.playback_source === "both") {
+  if (watchesSource(displayConfig.playback_source, "jellyfin")) {
     if (!jellyfin.configured()) {
       issues.push({ source: "jellyfin", message: "Jellyfin is not configured." });
     } else {
@@ -1330,7 +1333,7 @@ async function enabledConnectionIssues(displayConfig: DisplayConfig): Promise<Pu
       }
     }
   }
-  if ((displayConfig.playback_source === "navidrome" || displayConfig.playback_source === "both") && config.navidrome.enabled) {
+  if ((watchesSource(displayConfig.playback_source, "navidrome")) && config.navidrome.enabled) {
     try {
       await navidrome.reachable();
       noteConnectionSuccess("navidrome");
@@ -1863,7 +1866,7 @@ async function controlCommandFromRequest(body: unknown, displayConfig: DisplayCo
   if (type === "user_transition") {
     const firstUser = displayConfig.users[0];
     const requestedUser = displayConfig.users.find((user) => user.name.toLowerCase() === name.toLowerCase());
-    const username = requestedUser?.name || name || firstUser?.name || displayConfig.playback_user || "MediaWall";
+    const username = requestedUser?.name || name || firstUser?.name || displayConfig.source_user || "MediaWall";
     return {
       ok: true,
       command: {
@@ -2234,7 +2237,7 @@ async function runGridCacheScan(port: number, reason: string) {
 
   if (Object.values(config.spaces).some((space) =>
     space.now_playing.collections.enabled
-    && (space.playback_source === "jellyfin" || space.playback_source === "both")
+    && (watchesSource(space.playback_source, "jellyfin"))
   )) {
     logger.info(`Library scan ${reason}: Jellyfin collection index starting`);
     await collectionIndex.rebuild().catch((error) => {
@@ -2346,10 +2349,10 @@ async function runLocalAssetScan(space: string, displayConfig: DisplayConfig, so
 
 function scanSources(displayConfig: DisplayConfig): Array<"jellyfin" | "navidrome"> {
   const sources: Array<"jellyfin" | "navidrome"> = [];
-  if ((displayConfig.playback_source === "jellyfin" || displayConfig.playback_source === "both") && jellyfin.configured()) {
+  if ((watchesSource(displayConfig.playback_source, "jellyfin")) && jellyfin.configured()) {
     sources.push("jellyfin");
   }
-  if ((displayConfig.playback_source === "navidrome" || displayConfig.playback_source === "both") && navidrome.configured()) {
+  if ((watchesSource(displayConfig.playback_source, "navidrome")) && navidrome.configured()) {
     sources.push("navidrome");
   }
   return sources;
@@ -2491,11 +2494,11 @@ function logPlaybackSelection(space: string, selected: NowPlayingState | undefin
 async function activePlaybackCandidates(space: string, displayConfig: DisplayConfig) {
   const candidates: NowPlayingState[] = [];
   for (const user of displayConfig.users) {
-    if (displayConfig.playback_source === "jellyfin" || displayConfig.playback_source === "both") {
+    if (watchesSource(displayConfig.playback_source, "jellyfin")) {
       try {
         const playbacks = (await jellyfin.activePlaybacks({
           ...displayConfig,
-          playback_user: user.jellyfin_user ?? user.name,
+          source_user: user.jellyfin_user ?? user.name,
           users: [user]
         })).map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound));
         candidates.push(...playbacks.map((playback) => applyCollectionPresentation(playback, space, displayConfig, user.name)));
@@ -2503,11 +2506,11 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
         logger.warn("Jellyfin playback source poll failed", error);
       }
     }
-    if (displayConfig.playback_source === "navidrome" || displayConfig.playback_source === "both") {
+    if (watchesSource(displayConfig.playback_source, "navidrome")) {
       try {
         const playbacks = await navidrome.activePlaybacks({
           ...displayConfig,
-          playback_user: user.navidrome_user ?? user.name,
+          source_user: user.navidrome_user ?? user.name,
           users: [user]
         });
         const resolved = await Promise.all(playbacks.map((playback) => externalArtwork.resolveNavidrome(playback)));
@@ -2516,7 +2519,7 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
         logger.warn("Navidrome playback source poll failed", error);
       }
     }
-    if (config.external_music.enabled) {
+    if (config.external_music.enabled && (watchesSource(displayConfig.playback_source, "external-music"))) {
       const jellyfinAvatarNames = [
         user.name,
         user.jellyfin_user && user.jellyfin_user.toLowerCase() !== "all" ? user.jellyfin_user : undefined
@@ -2609,12 +2612,17 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
       && !signatureChanged
       && previous?.playbackPositionTicks !== undefined
       && candidate.playbackPositionTicks !== previous.playbackPositionTicks;
-    const progressConfirmed = !tracksPlaybackProgress
+    const jellyfinProgress = candidate.source === "jellyfin" && tracksPlaybackProgress
+      ? updatePlaybackProgress(signatureChanged ? undefined : previous?.jellyfinProgress, candidate.playbackPositionTicks!, now)
+      : undefined;
+    const progressConfirmed = jellyfinProgress ? jellyfinProgress.confirmed : !tracksPlaybackProgress
       || positionChanged
       || (!signatureChanged && previous?.progressConfirmed === true);
-    const stalledSince = tracksPlaybackProgress && progressConfirmed && !positionChanged && !candidate.paused && !candidate.stale
-      ? previous?.stalledSince ?? now
-      : undefined;
+    const stalledSince = jellyfinProgress
+      ? (jellyfinProgress.lastAdvanceAt < now && !candidate.paused && !candidate.stale ? jellyfinProgress.lastAdvanceAt : undefined)
+      : tracksPlaybackProgress && progressConfirmed && !positionChanged && !candidate.paused && !candidate.stale
+        ? previous?.stalledSince ?? now
+        : undefined;
     const activityAt = candidate.activityAt
       ?? (signatureChanged ? now : previous?.activityAt)
       ?? previous?.seenAt
@@ -2626,7 +2634,7 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
         : undefined;
     const pausedActive = !pausedSince || now - pausedSince < pausedSessionGraceMs;
     const progressActive = !tracksPlaybackProgress
-      || (progressConfirmed && (!stalledSince || now - stalledSince < pausedSessionGraceMs));
+      || (progressConfirmed && (stalledSince === undefined || now - stalledSince < pausedSessionGraceMs));
     const state = { ...candidate, sessionKey: candidate.sessionKey ?? cacheKey, activityAt };
     replacementKeys.add(playbackContinuityKey(state));
     records.set(cacheKey, {
@@ -2636,6 +2644,7 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
       activityAt,
       playbackPositionTicks: candidate.playbackPositionTicks,
       progressConfirmed,
+      jellyfinProgress,
       stalledSince,
       pausedSince,
       active: pausedActive && progressActive,
@@ -2674,6 +2683,9 @@ function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[],
 
   for (const [sessionKey, record] of records.entries()) {
     if (record.active && record.missingSince !== undefined && record.state.artwork?.mediaType === "TvChannel") continue;
+    // Retain observed Jellyfin progress even after it becomes inactive. Otherwise a
+    // looping stale session could be rediscovered as new playback on the next poll.
+    if (record.state.source === "jellyfin" && seenThisPoll.has(sessionKey)) continue;
     if (record.pausedSince && now - record.pausedSince >= pausedSessionGraceMs) records.delete(sessionKey);
     if (record.stalledSince && now - record.stalledSince >= pausedSessionGraceMs) records.delete(sessionKey);
     if (record.state.source === "jellyfin" && record.state.playbackPositionTicks !== undefined && !record.progressConfirmed && now - record.firstSeenAt >= pausedSessionGraceMs) records.delete(sessionKey);

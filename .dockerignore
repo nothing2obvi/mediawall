@@ -5,3 +5,6 @@ data
 .agents
 .codex
 npm-debug.log
+
+.env
+.env.*

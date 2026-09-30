@@ -57,13 +57,13 @@ In line with my ongoing obsession with the images and artwork in Jellyfin, as se
 
 Then I realized I had an old iPad laying around doing absolutely nothing. I wanted something that would work on that, or on something like a Raspberry Pi connected to a display. MediaWall was born.
 
-MediaWall is a display app for Jellyfin and Navidrome built around three main features, and it's meant to work well on an old iPad, a Raspberry Pi connected to a monitor, or really any device with a browser. Each display space also has a phone-friendly remote at the same route with `-remote` appended, so you can control the display without walking over to it.
+MediaWall is a display app for Jellyfin, Navidrome and other external music sources via Multi-Scrobbler built around three main features, and it's meant to work well on an old iPad, a Raspberry Pi connected to a monitor, or really any device with a browser. Each display space also has a phone-friendly remote at the same route with `-remote` appended, so you can control the display without walking over to it.
 
-The first, and most prominent, is **Now Playing**. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers, along with artwork, user information, media details, and optional sound notifications when sessions start or end.
+The first, and most prominent, is **Now Playing**. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers or external music sources, along with artwork, user information, media details, and optional sound notifications when sessions start or end.
 
-The sound system is customizable too. You can use one global sound, assign custom sounds to individual users, and control when sounds should or shouldn't play. This is especially useful with Navidrome or Jellyfin music libraries, where you probably don't want a notification every time the next song starts.
+The sound system is customizable too. You can use one global sound, assign custom sounds to individual users, and control when sounds should or shouldn't play. This is especially useful with music libraries, where you probably don't want a notification every time the next song starts.
 
-MediaWall can also react to configured Jellyfin collections by using collection-specific sounds and transition images when matching media starts playing. Collection matches are indexed during the existing Jellyfin library scan, persisted to disk, and reused without querying collection membership during playback. Items in several matching collections use the first alphabetical collection's sound and show all relevant collection images in alphabetical order.
+MediaWall can also react to configured Jellyfin collections by using collection-specific sounds and transition images when matching media starts playing.
 
 The second feature is **Screensaver mode**. This is heavily inspired by the Jellyfin Android TV screensaver and cycles through artwork from your Jellyfin libraries, with additional options for controlling what appears and how it's displayed. The idea is to turn an otherwise unused screen into a constantly changing showcase for the artwork already sitting in your media collection. I know many of you have terabytes of media, but most of the time it's all just data sitting there. MediaWall gives you a way to passively browse your libraries and actually see more of it.
 
@@ -97,7 +97,7 @@ It's an easy way to make activity on your server feel a little more visible and 
 
 MediaWall doesn't have to show playback activity at all.
 
-You can put it on a desk, shelf, wall-mounted tablet, or Raspberry Pi-connected display and use it as a rotating screensaver for the artwork in your Jellyfin library. I know that many of you have terabytes of media, but it's all just data. MediaWall allows its viewers to passively browse your libraries.
+You can put it on a desk, shelf, wall-mounted tablet, or Raspberry Pi-connected display and use it as a rotating screensaver for the artwork in your Jellyfin library.
 
 If you don't want it pulling from everything, open the grid and favorite the artwork you actually want to see, or only allow specific libraries. MediaWall can then rotate through only those favorites or libraries, essentially turning your media collection into a curated digital art display.
 
@@ -107,23 +107,22 @@ That's really the idea behind MediaWall: it can be a Now Playing display, a home
 
 ## What It Does
 
-- Shows Now Playing from external music sources such as Spotify through Multi-Scrobbler.
-
-- Shows active playback sessions from Jellyfin, Navidrome, or both, including Jellyfin Live TV/radio channels with centered channel artwork and a 15-second channel-switch grace period.
-- Includes an image editor for logos and backdrops, with provider search, uploads, enlarged previews, ordering, and deletion across Jellyfin, local artwork, and the external artwork cache.
-- Supports an optional daily page refresh for each display space.
+- Shows active playback sessions from Jellyfin, Navidrome, or both, including Jellyfin Live TV channels
+- Shows active playback sessions from external music sources such as Spotify through Multi-Scrobbler.
 - Supports multiple MediaWall users per space, including Jellyfin `All` users.
 - Can show a configurable user-intro transition when a Now Playing session first appears.
 - Falls back to a default MediaWall screen, shuffled artwork, or an optional per-space Immich Kiosk display when nothing is playing.
 - Provides a full-screen Wallpaper/Screensaver mode with library browsing, favorites, shuffle, logos, media info, transitions, and subtle backdrop motion.
-- Uses Jellyfin backdrops/logos where available.
+- Uses Jellyfin, Navidrome, and Spotify backdrops/logos where available.
 - Can use Navidrome playback for music-focused setups, and Navidrome can use Jellyfin's images when both services are configured.
 - Can use local artist backdrop and logo files for Navidrome-only artwork.
-- Caches grid/backdrop images with startup and cron-based library scans.
+- Includes an image editor for logos and backdrops, with provider search, uploads, enlarged previews, ordering, and deletion across Jellyfin, local artwork, and the external artwork cache.
 
 Jellyfin is recommended because MediaWall can use its rich backdrop, logo, user avatar, movie, series, and artist metadata. Navidrome isn't strictly required, and Jellyfin isn't strictly required for a music-only wall: Navidrome can drive Now Playing and local artist backdrop files can provide artwork. If both Jellyfin and Navidrome are configured, Navidrome playback can match against Jellyfin artist data so the Now Playing and Wallpaper/Screensaver views still benefit from Jellyfin's images.
 
 ## [Documentation](docs/README.md)
+
+Upgrading from v0.3.1? Read the [configuration migration notes](docs/upgrading.md) before starting v0.4.0.
 
 ## License
 

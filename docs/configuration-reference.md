@@ -21,8 +21,13 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 
 ### Environment Variables
 
+Put secrets in `.env` and reference them from `config.yml` using `${VARIABLE_NAME}`. Compose loads `.env` through `env_file`; recreate the container after changes. Variable names for external tokens are chosen by you and must match the YAML reference. For one or multiple music users, follow [External Music](external-music.md).
+
+
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
+| `EXTERNAL_MUSIC_PRIMARY_TOKEN` | Example shared secret for the primary external-music user. | unset | For that user's external playback | Reference under `users.primary.external_music_token`; enter the same secret in Multi-Scrobbler. Use a different variable and secret for each user. |
+| `FANART_API_KEY`, `THEAUDIODB_API_KEY` | Optional artwork provider keys. | unset | No | Reference under `image_providers` in `config.yml`. |
 | `LOG_LEVEL` | Controls server log verbosity. | `info` | No | Options: `debug`, `info`, `warn`, `error`, `silent`. Use `debug` when troubleshooting playback/session/artwork behavior. |
 
 ### Server
@@ -68,13 +73,13 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | --- | --- | --- | --- | --- |
 | `enabled` | Enables the ListenBrainz-compatible receiver. | `false` | No | Multi-Scrobbler should use the base URL `/apis/listenbrainz`; it appends `/1/submit-listens`. |
 | `track_transition_grace_seconds` | Extra time to retain the current external track while waiting for the next update. | `10` | No | Range: `0`–`60` seconds. Avoids brief fallback between tracks. A new track replaces the old one immediately for the same user/service. Stopping playback also delays fallback by this amount, plus the space's missing-session grace. |
-| `session_timeout_seconds` | Keeps a received `playing_now` event active for this many seconds. | `90` | No | A later `playing_now` refreshes the session. Minimum: `5`. |
-| `artwork.preference` | Orders local-library and independently fetched artwork. | `local` | No | Options: `local`, `fetched`. Lower-priority artwork fills missing pieces. |
+| `session_timeout_seconds` | Minimum lifetime for a received `playing_now` event. | `90` | No | Minimum: `5`. If a track duration is supplied, the longer of this timeout and the track duration (capped at 12 hours) is used, plus transition grace. A later update refreshes or replaces it. |
+| `artwork.preference` | Orders local-library (Jellyfin or local files) and independently fetched artwork. | `local` | No | Options: `local`, `fetched`. Lower-priority artwork fills missing pieces. |
 | `artwork.minimum_backdrop_resolution` | Minimum accepted fetched backdrop dimensions. | `1920x1080` | No | This filters candidates; images are not resized down to this value. |
 | `artwork.backdrop_count` | Maximum fetched artist backdrops retained. | `3` | No | Fewer qualifying images are accepted when that is all providers return. |
 | `artwork.cache_directory` | MediaWall-owned fetched artwork cache. | `/app/data/external-artwork` | No | Keep `/app/data` persistent. Remove this directory to clear the cache manually. |
 | `artwork.cache_ttl_days` | Time before provider metadata may be refreshed. | `30` | No | Successful and empty results are cached. |
-| `tokens` | Maps bearer tokens to MediaWall users. | `{}` | Required when enabled | Each value may be a username string or an object with `user` and optional fixed `source`. Send the token as `Authorization: Token <token>`. |
+| `tokens` | Alternative to each user's `external_music_token` setting. | `{}` | Only when not using per-user tokens | Keys reference secrets from `.env`; values identify users, optionally with a fixed `source`. Prefer the step-by-step per-user setup in [External Music](external-music.md). Do not configure both methods for the same token. |
 
 Only `playing_now` submissions create active sessions. Standard ListenBrainz fields and compatible `additional_info` extensions are retained where useful, including track artists, album artist, duration, music service, artwork URL, MusicBrainz IDs, and provider IDs.
 
@@ -107,24 +112,23 @@ aliases:
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `name` | Optional display name override for a MediaWall user. | map key | No | Usually omit this and use the map key. |
+| `name` | Overrides the name MediaWall uses for this user. | Identifier under `users:` | No | For `primary:`, omit this to use `primary`, or set `name: Alex`. Spaces and token mappings still reference `primary`. Set `jellyfin_user` and `navidrome_user` explicitly when service usernames differ: the name is also their fallback. |
 | `jellyfin_user` | Jellyfin username mapped to this MediaWall user. | unset | Required for Jellyfin user matching | Use `All` to watch all active Jellyfin users. Can reference `${JELLYFIN_USER}`. |
 | `navidrome_user` | Navidrome username mapped to this MediaWall user. | unset | Required for Navidrome user matching | Use `All` to watch all active Navidrome users. |
 | `navidrome_password` | Navidrome password for this user. | unset | Required for Navidrome | Navidrome needs real credentials for API access; configure one MediaWall user per Navidrome listener you want to distinguish. |
-| `external_music_token` | Shorthand token mapping for this MediaWall user. | unset | No | Equivalent to adding this token under `external_music.tokens`. Prefer an environment variable such as `${EXTERNAL_MUSIC_PRIMARY_TOKEN}`. |
+| `external_music_token` | Secret used by Multi-Scrobbler to send playback for this user. | unset | No | Reference an environment variable, such as `${EXTERNAL_MUSIC_PRIMARY_TOKEN}`. Put the actual secret in `.env` and use the same secret in that user's Multi-Scrobbler ListenBrainz client. See [External Music](external-music.md). |
 | `sound` | Per-user session-start tone override. | unset | No | Filename from the sounds directory configured for the space. |
 | `end_sound` | Per-user session-ended tone override. | unset | No | Filename from the sounds directory configured for the space. |
 
-Per-user sounds override the global tones for any space where that MediaWall user is allowed. Put the audio file in the configured sounds directory, then set `sound` for that user's session-start tone and `end_sound` for that user's session-ended tone. For example, a user can use `sound: "nothing2obvi-start.mp3"` and `end_sound: "nothing2obvi-end.mp3"` while the space still uses the global defaults for everyone else.
+Per-user sounds override the global tones for any space where that MediaWall user is allowed. Put the audio file in the configured sounds directory, then set `sound` for that user's session-start tone and `end_sound` for that user's session-ended tone. For example, a user can use `sound: "bob-start.mp3"` and `end_sound: "bob-end.mp3"` while the space still uses the global defaults for everyone else.
 
 ### Spaces
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `playback_source` | Sources watched for Now Playing. | `both` | No | Options: `jellyfin`, `navidrome`, `both`. |
+| `playback_source` | Sources watched for Now Playing. | `All` | No | Options: `jellyfin`, `navidrome`, `external-music`, `All`. External playback must also be enabled under `external_music`. `All` watches all enabled services. |
 | `theme` | UI theme for this space. | `All` | No | Use `All` (or omit the setting) for interactive selection, or lock the space to `default`, `Dracula`, `Nord`, `Catppuccin Latte`, `Catppuccin Mocha`, `Gruvbox Dark`, `Gruvbox Light`, `Solarized Dark`, `Solarized Light`, `Tokyo Night`, `One Dark`, `Monokai`, `Rose Pine`, `Everforest`, `Kanagawa`, `Synthwave 84`, `Material Palenight`, `Night Owl`, `Ayu Mirage`, `GitHub Light`, or `Tomorrow Night`. Fixed themes hide and disable interactive controls. The active interactive theme is synchronized and persisted per space. |
-| `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use configured MediaWall user names. Use `All` to allow every configured MediaWall user. If omitted, MediaWall falls back to `playback_user` or the first configured user. |
-| `playback_user` | Legacy single-user selector. | unset | No | Prefer `users`. |
+| `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use the identifiers defined under `users:`, for example `[primary, secondary]`. `[All]` includes every configured user. If omitted, the first configured user is used. |
 | `password` | Optional URL password. | unset | No | If omitted or `""`, no `?password=` is required. |
 | `libraries` | Libraries shown in grid, selection, shuffle, and Wallpaper/Screensaver. | `[]` | Recommended | Use Jellyfin library names; `All` allows all Jellyfin libraries. |
 | `idle_timeout` | Playback record cleanup window in seconds. | `30` | No | Mostly internal display/session housekeeping. |
@@ -148,12 +152,12 @@ spaces:
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `fallback` | What Now Playing shows when nothing is playing. | `mediawall` | No | Options: `mediawall`, `shuffle`, `immich_kiosk`. Immich Kiosk is optional and configured per space; it isn't the default. |
-| `immich_kiosk.url` | Full URL handed to Immich Kiosk while this space is idle. | `""` | Required only when fallback is `immich_kiosk` | Prefer an environment reference such as `${HOMELAB_IMMICH_KIOSK_URL}` because Kiosk URLs may contain passwords. The URL must be reachable from both the MediaWall container and display browser. MediaWall's controls are hidden during the handoff. Playback restores normal Now Playing; after the final session and missing-session grace period, the handoff returns. An album or link chosen inside Kiosk remains selected across temporary handoffs, but not across a browser/PWA refresh; a container restart loses it only if the display reloads. Put the desired album in this URL to make it persistent. The target and any reverse proxy must permit iframe embedding. Missing, invalid, unreachable, timed-out, or frame-blocked URLs use the ordinary MediaWall idle screen. |
+| `immich_kiosk.url` | Full URL handed to Immich Kiosk while this space is idle. | `""` | Required only when fallback is `immich_kiosk` | Prefer an environment reference such as `${HOMELAB_IMMICH_KIOSK_URL}` because Kiosk URLs may contain passwords. |
 | `ignored_libraries` | Jellyfin libraries ignored for Now Playing. | `["Feature Pre-Rolls"]` | No | Exact names, case-insensitive. Good for Cinema Mode intro/trailer/pre-roll libraries. |
 | `fallback_shuffle_interval_seconds` | Idle fallback shuffle interval. | `45` | No | Used only when fallback is `shuffle`. |
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
 | `cycle_interval_seconds` | Now Playing session cycle interval. | `15` | No | Used for natural session cycling and the timer ring. |
-| `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `15` | No | The timer begins when MediaWall observes a paused state. Jellyfin and Navidrome playheads are checked for legitimate progress; removal may take up to one additional client poll. |
+| `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `15` | No | The timer begins when MediaWall observes a paused state. Jellyfin and Navidrome playheads are checked for legitimate progress; Jellyfin repeatedly cycling through the same 2–5 seconds counts as stalled. Removal may take up to one additional client poll. |
 | `session_cleanup.missing_after_seconds` | Keeps a recently active session visible across brief empty API polls. | `5` | No | Prevents flicker to the fallback screen between tracks or episodes. Set to `0` to disable for ordinary sessions. Missing Live TV channels instead use a fixed, non-configurable 15-second grace period from the first missing poll; fresh active playback takes over immediately. |
 | `session_timer.enabled` | Shows the countdown ring. | `true` | No | Only meaningful when multiple active sessions are cycling. |
 | `session_timer.size` | Countdown ring diameter. | `42` | No | Pixels. |

@@ -110,11 +110,11 @@ export class JellyfinClient {
   async activePlaybacks(displayConfig: DisplayConfig): Promise<NowPlayingState[]> {
     if (!this.configured()) return [];
     const sessions = await this.getJson<JellyfinItem[]>("/Sessions");
-    const includeAllUsers = isAllUsers(displayConfig.playback_user);
+    const includeAllUsers = isAllUsers(displayConfig.source_user);
     const activeSessions = sessions.filter((entry) => {
       const userName = entry.UserName ?? entry.User?.Name;
       const item = entry.NowPlayingItem;
-      return (includeAllUsers || userName?.toLowerCase() === displayConfig.playback_user.toLowerCase())
+      return (includeAllUsers || userName?.toLowerCase() === displayConfig.source_user.toLowerCase())
         && item;
     });
     const playbacks: NowPlayingState[] = [];
@@ -122,7 +122,7 @@ export class JellyfinClient {
       const item = session.NowPlayingItem as JellyfinItem;
       const libraryName = isLiveChannel(item) ? "Live TV" : await this.nowPlayingLibraryName(item);
       if (libraryName && normalizedNameSet(displayConfig.now_playing.ignored_libraries).has(libraryName.toLowerCase())) {
-        const userName = String(session.UserName ?? session.User?.Name ?? displayConfig.playback_user);
+        const userName = String(session.UserName ?? session.User?.Name ?? displayConfig.source_user);
         const title = String(item.Name ?? "Unknown item");
         logger.info(`Ignoring Jellyfin Now Playing session from library "${libraryName}" for user "${userName}": ${title}`);
         continue;
@@ -134,10 +134,10 @@ export class JellyfinClient {
 
   private async nowPlayingFromSession(session: JellyfinItem, displayConfig: DisplayConfig, libraryName?: string): Promise<NowPlayingState> {
     const item = session.NowPlayingItem as JellyfinItem;
-    const jellyfinUser = String(session.UserName ?? session.User?.Name ?? displayConfig.playback_user);
-    const mediaWallUser = isAllUsers(displayConfig.playback_user)
+    const jellyfinUser = String(session.UserName ?? session.User?.Name ?? displayConfig.source_user);
+    const mediaWallUser = isAllUsers(displayConfig.source_user)
       ? jellyfinUser
-      : displayConfig.users[0]?.name ?? displayConfig.playback_user;
+      : displayConfig.users[0]?.name ?? displayConfig.source_user;
     const sessionKey = [
       "jellyfin",
       session.Id,
@@ -319,7 +319,7 @@ export class JellyfinClient {
     const spaceUser = displayConfig.users.find((user) => user.jellyfin_user && !isAllUsers(user.jellyfin_user));
     if (spaceUser?.jellyfin_user) return spaceUser.jellyfin_user;
     const configuredUser = Object.values(this.config.users).find((user) => user.jellyfin_user && !isAllUsers(user.jellyfin_user));
-    return configuredUser?.jellyfin_user ?? displayConfig.playback_user;
+    return configuredUser?.jellyfin_user ?? displayConfig.source_user;
   }
 
   async imageEditorRequest(endpoint: string, method = "GET", upload?: {body: string; contentType: string}) {

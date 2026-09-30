@@ -1,3 +1,17 @@
+import mediaWallLogo from "./logos/logo.png";
+import chromecastLogo from "./logos/chromecast.png";
+import jriverLogo from "./logos/jriver.png";
+import kodiLogo from "./logos/kodi.png";
+import mopidyLogo from "./logos/mopidy.png";
+import mpdLogo from "./logos/mpd.png";
+import musikcubeLogo from "./logos/musikcube.png";
+import plexLogo from "./logos/plex.png";
+import sonosLogo from "./logos/sonos.png";
+import subsonicLogo from "./logos/subsonic.png";
+import vlcLogo from "./logos/vlc.png";
+import musiccastLogo from "./logos/yamaha-musiccast.svg";
+import yandexMusicLogo from "./logos/yandex-music.png";
+import { externalServiceKey } from "./external-service";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { cycleLiveTvInfo } from "./live-tv-info";
 import { createRoot } from "react-dom/client";
@@ -172,6 +186,7 @@ type Snapshot = {
   };
   nowPlaying?: {
     source: NowPlayingSource;
+    externalMusicSource?: string;
     playing: boolean;
     paused: boolean;
     user?: string;
@@ -182,7 +197,6 @@ type Snapshot = {
     artworkArtist?: string;
     album?: string;
     durationSeconds?: number;
-    externalMusicSource?: string;
     externalIds?: Record<string, unknown>;
     year?: number;
     seasonNumber?: number;
@@ -497,6 +511,7 @@ function App() {
   const [userTransition, setUserTransition] = useState<{
     id: string;
     source: NowPlayingSource;
+    externalMusicSource?: string;
     username: string;
     avatarUrl?: string;
     verb: string;
@@ -1472,6 +1487,7 @@ function App() {
     setUserTransition({
       id,
       source: now.source,
+      externalMusicSource: now.externalMusicSource,
       username,
       avatarUrl: now.displayUserAvatarUrl,
       verb,
@@ -2356,6 +2372,7 @@ function MediaWallIdle({ snapshot }: { snapshot: Snapshot }) {
 function UserTransitionIntro({ intro }: {
   intro: {
     source: NowPlayingSource;
+    externalMusicSource?: string;
     username: string;
     avatarUrl?: string;
     verb: string;
@@ -2370,7 +2387,7 @@ function UserTransitionIntro({ intro }: {
     collectionImages?: Array<{ collectionName: string; url: string; size: number }>;
   };
 }) {
-  const icon = sourceIcon(intro.source);
+  const icon = sourceIcon(intro.source, intro.externalMusicSource);
   return (
     <section
       className="user-transition-intro"
@@ -3279,7 +3296,7 @@ function NowPlayingBadge({ snapshot }: { snapshot?: Snapshot }) {
   const now = snapshot?.nowPlaying;
   if (!config?.enabled || !now) return null;
   const source = now.source;
-  const icon = sourceIcon(source);
+  const icon = sourceIcon(source, now.externalMusicSource);
   const showLabel = config.show_text || config.show_source_icon;
   const showAvatar = config.show_user_avatar && Boolean(now.displayUserAvatarUrl);
   const showUsername = (source === "navidrome" ? config.show_navidrome_username : config.show_jellyfin_username) && Boolean(now.displayUser ?? now.user);
@@ -3419,7 +3436,23 @@ function sourceLabel(source: "jellyfin" | "navidrome" | "sounds" | "custom_image
   return "Custom Logo";
 }
 
-function sourceIcon(source: NowPlayingSource | undefined) {
+const externalServiceLogos: Record<string, string> = {
+  spotify: spotifyLogo, apple_music: appleMusicLogo,
+  "chromecast": chromecastLogo,
+  "jriver": jriverLogo,
+  "kodi": kodiLogo,
+  "mopidy": mopidyLogo,
+  "mpd": mpdLogo,
+  "musikcube": musikcubeLogo,
+  "plex": plexLogo,
+  "sonos": sonosLogo,
+  "subsonic": subsonicLogo,
+  "vlc": vlcLogo,
+  "yamaha-musiccast": musiccastLogo,
+  "yandex-music": yandexMusicLogo,
+};
+function sourceIcon(source: NowPlayingSource | undefined, service?: string) {
+  if (source === "external_music") return externalServiceLogos[externalServiceKey(service) ?? ""] ?? mediaWallLogo;
   if (source === "navidrome") return navidromeLogo;
   if (source === "spotify") return spotifyLogo;
   if (source === "apple_music") return appleMusicLogo;

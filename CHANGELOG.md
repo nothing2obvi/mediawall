@@ -1,37 +1,43 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-09-30
 
-- Reorganize setup and reference documentation into topic pages under `docs/`, with a linked Documentation tree in the README; keep License and Contributors in the README.
-- Add enlarged image previews with same-type arrow-key/button navigation, Enter selection of search results, and Backspace deletion of existing backdrops.
-- Hide image editing during all fallback presentation, including Immich Kiosk.
+MediaWall v0.4.0 adds external music playback, source-aware artwork editing, and Jellyfin Live TV support. This release includes configuration changes that require attention before upgrading.
 
-- Hold disappearing Live TV sessions for a fixed 15 seconds during channel switches; fresh playback takes over immediately.
+## New features since v0.3.1
 
-- Apply visual effects to centered Live TV channel images, increase their default size to 713 pixels, and add independent channel/title-label media information controls and shortcut cycling.
+- **External music through Multi-Scrobbler:** Spotify and other live `playing_now` sources can appear alongside Jellyfin and Navidrome, with separate tokens per MediaWall user. Spotify is tested; the other documented live sources are expected to work. History-only sources do not create live sessions.
+- **Artist artwork from multiple sources:** combine Jellyfin/local artist images with Fanart.tv, TheAudioDB, MusicBrainz, and Cover Art Archive lookups. Includes artist aliases, album-artist matching, provider preference, cached images, custom Spotify avatars, and source/provider/download logs.
+- **Artwork editor on the display and remote:** Jellyfin-like logo/backdrop search, uploads, ordering, replacement and deletion, colored source buttons, enlarged previews, Left/Right navigation, Enter selection, and Backspace deletion of existing backdrops. Editing pauses MediaWall's presentation, not media playback. Local mutations are restricted to artwork files.
+- **Jellyfin Live TV and radio:** centered channel images, configurable size (713px default), ambient effects, independent channel/Live TV text controls, and a fixed 15-second grace period during channel switches.
+- **Playback reliability:** external tracks replace older tracks immediately with a handoff grace period. Jellyfin sessions looping over the same 2–5 seconds are treated as stalled after the existing paused-session timeout and do not repeatedly reappear.
+- **Per-space scheduled refresh:** optional daily browser refresh, with a default schedule of 06:00 in the display browser's timezone when enabled.
+- **More external service logos:** Chromecast, JRiver, Kodi, Mopidy, MPD, Musikcube, Plex, Sonos, Subsonic-compatible services, VLC, Yamaha MusicCast, and Yandex Music use their supplied logos when the incoming service identity matches.
+- **Artwork cache controls and reorganized docs:** confirmed CLI cache clearing, display feedback, and a Documentation tree with practical one-user/multiple-user external-music setup.
 
-- Detect Jellyfin TV/radio channel sessions and display centered channel images with configurable size and text titles.
-- Make the optional local music mount writable and enforce image-only local edits; remove the main image editor Cancel button.
+## Breaking changes and upgrade steps
 
-- Add image uploads with drag-and-drop, file selection, preview, and Logo/Backdrop type selection for Jellyfin, local files, and external cache.
+1. **Replace `playback_source: both` with `playback_source: All`.** The accepted values are now `jellyfin`, `navidrome`, `external-music`, and `All` (case-sensitive). The default is `All`. A specific selector watches only that playback source; use `All` if a space should also display external music. `external_music.enabled: true` is still required for external ingestion.
+2. **Remove `playback_user`.** Define users under the top-level `users:` section, then set each space's `users: [primary]` or `users: [All]`. Configurations containing the removed setting fail with a migration message.
+3. **Review local artwork mount permissions.** The optional Compose music mount now uses `:rw` to support image editing. Existing read-only mounts remain read-only until you change them; keep them that way if you do not want local artwork writes. MediaWall's editor does not modify audio/video files.
+4. **Review changed defaults.** Album artwork defaults to 300px. Live channel image size defaults to 713px. Explicit configured sizes are preserved.
+5. **Update documentation bookmarks.** Setup/reference pages now live under `docs/`; Multi-Scrobbler setup is part of External Music, and Live TV details are in Jellyfin and Navidrome Notes.
 
-- Fix saved Jellyfin image edits appearing to fail during a secondary metadata refresh; refresh editor previews after changes.
-- Move image editing beside Themes and open search in a nested modal with stepwise dismissal.
+Existing `.env`, passwords, server URLs, Immich Kiosk URLs, and persistent data should be preserved. Do not replace your configuration wholesale with the example file. The main image editor has no Cancel/undo action: edits save immediately.
 
-- Shared source-aware image editor on display and remote controls, with Jellyfin, local-file, and external-cache adapters.
-- Logo/backdrop search, append, individual deletion, persisted ordering, and presentation timer hold/resume.
-- Confirmed artwork-cache CLI cleanup with success toast and global-sound-aware built-in feedback.
-- Static asset metadata sanitization and normalized cache-clear sound.
+## Docker images
 
-## 0.4.0 — 2026-09-25
+`ghcr.io/nothing2obvi/mediawall:v0.4.0` and `ghcr.io/nothing2obvi/mediawall:latest` target **linux/amd64** and **linux/arm64**.
 
-Local release checkpoint before the image editor work.
+After updating your configuration, pull the image and recreate your container:
 
-- External music via a ListenBrainz-compatible receiver and Multi-Scrobbler; Spotify tested.
-- Canonical artist/album-artist artwork, bidirectional aliases, Jellyfin/local/provider fallback, cached provider images, and source avatars.
-- Immediate external track replacement and a configurable track-handoff grace period.
-- Artwork provenance, download counts, rejection reasons, and cache-reuse logs.
-- Optional daily page refresh per space and 300-pixel default album artwork.
-- External music and image-provider setup documentation.
+```sh
+docker compose pull
+docker compose up -d
+```
 
-Validation: production build and 28 automated tests passed. Personal test configuration, credentials, and runtime data are excluded.
+For Compose installations using a local `build:` instead of `image:`, rebuild with `docker compose up -d --build`.
+
+## Validation
+
+Production TypeScript/Vite build and 61 automated tests passed. An isolated live-server test confirmed that repeating Jellyfin playhead positions become inactive, remain inactive across polls, and recover on genuine forward progress. No production media was modified during these tests.

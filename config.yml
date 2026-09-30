@@ -67,7 +67,7 @@ users:
 
 spaces:
   livingroom:
-    playback_source: both
+    playback_source: All
     theme: All
     users:
       - All
@@ -213,7 +213,7 @@ spaces:
           - crossfade
 
   office:
-    playback_source: both
+    playback_source: All
     theme: All
     users:
       - All
@@ -355,7 +355,7 @@ spaces:
           - crossfade
 
   homelab:
-    playback_source: both
+    playback_source: All
     theme: All
     users:
       - All

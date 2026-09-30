@@ -86,8 +86,8 @@ export class NavidromeClient {
 
   async activePlaybacks(displayConfig: DisplayConfig): Promise<NowPlayingState[]> {
     if (!this.configured()) return [];
-    const requestedUser = displayConfig.users[0]?.navidrome_user ?? displayConfig.playback_user;
-    const includeAllUsers = isAllUsers(requestedUser) || isAllUsers(displayConfig.playback_user);
+    const requestedUser = displayConfig.users[0]?.navidrome_user ?? displayConfig.source_user;
+    const includeAllUsers = isAllUsers(requestedUser) || isAllUsers(displayConfig.source_user);
     const authUser = includeAllUsers
       ? firstNavidromeUser(this.config)
       : {
@@ -100,13 +100,13 @@ export class NavidromeClient {
     const entries = normalizeArray(response.nowPlaying?.entry);
     const matchingEntries = includeAllUsers
       ? entries
-      : entries.filter((candidate) => candidate.username?.toLowerCase() === displayConfig.playback_user.toLowerCase());
+      : entries.filter((candidate) => candidate.username?.toLowerCase() === displayConfig.source_user.toLowerCase());
     const candidates = matchingEntries.length ? matchingEntries : includeAllUsers ? [] : entries.filter((entry) => !entry.username);
     return Promise.all(candidates.map((entry) => this.nowPlayingFromEntry(entry, displayConfig)));
   }
 
   private async nowPlayingFromEntry(entry: NowPlayingEntry, displayConfig: DisplayConfig): Promise<NowPlayingState> {
-    const requestedUser = displayConfig.users[0]?.navidrome_user ?? displayConfig.playback_user;
+    const requestedUser = displayConfig.users[0]?.navidrome_user ?? displayConfig.source_user;
     const navidromeUser = entry.username ?? requestedUser;
     const displayUser = navidromeUser;
     const activityAt = navidromeTimestamp(entry.minutesAgo);
@@ -148,7 +148,7 @@ export class NavidromeClient {
       stale,
       sessionKey: [
         "navidrome",
-        entry.username ?? displayConfig.playback_user,
+        entry.username ?? displayConfig.source_user,
         entry.playerId,
         entry.playerName,
         entry.id,
