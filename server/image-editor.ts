@@ -11,11 +11,14 @@ import { ExternalArtworkResolver, imageDimensions } from "./external-artwork.js"
 export type ImageType = "Logo" | "Backdrop";
 export type EditorSource = "jellyfin" | "local" | "external";
 export interface EditorImage { id: string; type: ImageType; url: string; provider?: string; width?: number; height?: number; rating?: number; language?: string }
+export interface EditorSearchOptions { start: number; provider: string; allLanguages: boolean }
+export interface EditorSearchPage { images: EditorImage[]; total: number; start: number; providers: string[]; supportsLanguageFilter: boolean }
 export interface EditorTarget { source: EditorSource; id: string; name: string; kind: string }
 export interface EditorModel { target: EditorTarget; revision: string; images: EditorImage[] }
 export interface ImageAdapter {
   list(target: EditorTarget): Promise<EditorImage[]>;
   search(target: EditorTarget, type: ImageType): Promise<EditorImage[]>;
+  searchPage?(target: EditorTarget, type: ImageType, options: EditorSearchOptions): Promise<EditorSearchPage>;
   add(target: EditorTarget, image: EditorImage): Promise<void>;
   upload(target: EditorTarget, type: ImageType, image: ImageUpload): Promise<void>;
   remove(target: EditorTarget, image: EditorImage): Promise<void>;
@@ -42,7 +45,7 @@ export function artworkAfterEdit(model: EditorModel, previous?: ArtworkRef): Art
 }
 const revision = (images: EditorImage[]) => crypto.createHash("sha256").update(JSON.stringify(images)).digest("hex");
 export class ImageEditor {
-  private sessions = new Map<string, { space: string; target: EditorTarget; candidates: Map<string, EditorImage>; touched: number }>();
+  private sessions = new Map<string, { space: string; target: EditorTarget; candidates: Map<string, EditorImage>; searches: Map<ImageType, EditorImage[]>; touched: number }>();
   private locks = new Set<string>();
   constructor(private adapters: Record<EditorSource, ImageAdapter>) {}
   async open(space: string, snapshot: DisplaySnapshot) {
@@ -50,7 +53,7 @@ export class ImageEditor {
     const model = await this.model(target);
     const id = crypto.randomUUID();
     for (const [key, session] of this.sessions) if (Date.now() - session.touched > 120_000) this.sessions.delete(key);
-    this.sessions.set(id, { space, target, candidates: new Map(), touched: Date.now() });
+    this.sessions.set(id, { space, target, candidates: new Map(), searches: new Map(), touched: Date.now() });
     return { id, ...model };
   }
   close(id: string) { this.sessions.delete(id); }
@@ -72,6 +75,25 @@ export class ImageEditor {
     const results = await this.adapters[session.target.source].search(session.target, type);
     for (const image of results) session.candidates.set(image.id, image);
     return results;
+  }
+  async searchPage(space: string, id: string, type: ImageType, input: Partial<EditorSearchOptions> = {}): Promise<EditorSearchPage> {
+    if (type !== "Logo" && type !== "Backdrop") throw new Error("Unsupported image type");
+    const options = { start: input.start ?? 0, provider: input.provider ?? "", allLanguages: input.allLanguages ?? false };
+    if (!Number.isSafeInteger(options.start) || options.start < 0 || options.start > 2_147_483_617
+      || typeof options.provider !== "string" || options.provider.length > 200 || typeof options.allLanguages !== "boolean") throw new Error("Invalid search filters");
+    const session = this.session(space, id), adapter = this.adapters[session.target.source];
+    let page: EditorSearchPage;
+    if (adapter.searchPage) page = await adapter.searchPage(session.target, type, options);
+    else {
+      // Keep the original provider lookup and a stable result set when paging/filtering.
+      let results = session.searches.get(type);
+      if (!results) { results = await adapter.search(session.target, type); session.searches.set(type, results); }
+      const providers = [...new Set(results.map(image => image.provider).filter((value): value is string => Boolean(value)))];
+      const filtered = options.provider ? results.filter(image => image.provider === options.provider) : results;
+      page = { images: filtered.slice(options.start, options.start + 30), total: filtered.length, start: options.start, providers, supportsLanguageFilter: false };
+    }
+    for (const image of page.images) session.candidates.set(image.id, image);
+    return page;
   }
   async mutate(space: string, id: string, body: { revision: string; action: string; imageId?: string; direction?: number; type?: ImageType; data?: string }) {
     const session = this.session(space, id), target = session.target;
@@ -122,6 +144,16 @@ export class JellyfinImageAdapter implements ImageAdapter {
       id: crypto.randomUUID(), type, url: v.Url, provider: v.ProviderName,
       width: v.Width, height: v.Height, language: v.Language, rating: v.CommunityRating
     }));
+  }
+  async searchPage(t: EditorTarget, type: ImageType, options: EditorSearchOptions): Promise<EditorSearchPage> {
+    const params = new URLSearchParams({type, startIndex: String(options.start), limit: "30", providerName: options.provider, includeAllLanguages: String(options.allLanguages)});
+    const result = await this.client.imageEditorRequest(`${this.base(t)}/RemoteImages?${params}`);
+    const images: EditorImage[] = (result?.Images ?? []).filter((value: any) => value.Type === type).map((value: any) => ({
+      id: crypto.randomUUID(), type, url: value.Url, provider: value.ProviderName,
+      width: value.Width, height: value.Height, language: value.Language, rating: value.CommunityRating
+    }));
+    return { images, start: options.start, total: result?.TotalRecordCount ?? options.start + images.length,
+      providers: (result?.Providers ?? [...new Set(images.map(image => image.provider))]).filter((value: unknown): value is string => typeof value === "string" && Boolean(value)), supportsLanguageFilter: true };
   }
   async add(t: EditorTarget, image: EditorImage) {
     await this.client.imageEditorRequest(`${this.base(t)}/RemoteImages/Download?${new URLSearchParams({ type: image.type, imageUrl: image.url })}`, "POST");

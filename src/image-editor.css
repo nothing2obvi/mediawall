@@ -55,3 +55,44 @@
 .image-enlarged-canvas { display:flex; justify-content:center; align-items:center; height:65dvh; margin-top:16px; background:#070a10; }
 .image-enlarged-canvas.image-enlarged-logo { background:repeating-conic-gradient(#242a33 0% 25%,#1b2028 0% 50%) 50%/24px 24px; }
 .image-enlarged-canvas img { width:100%; height:100%; object-fit:contain; }
+
+/* Pixelfin-style artwork layout, with MediaWall's destination accents. */
+.image-editor-modal { width:min(1050px,96vw); }
+.image-editor-modal h2 { font-size:23px; }
+.editor-section-heading { display:flex; align-items:center; gap:10px; margin:18px 0 16px; }
+.editor-section-heading h3 { margin:0; font-size:18px; }
+.image-editor-modal .editor-icon-button { width:38px; height:38px; min-height:38px; padding:7px; border-radius:50%; flex-shrink:0; }
+.editor-standard-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; }
+.editor-backdrops .editor-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+.editor-image { min-width:0; border-radius:8px; }
+.editor-preview { aspect-ratio:16/9; }
+.editor-preview.editor-logo-preview { background:repeating-conic-gradient(#242a33 0% 25%,#1b2028 0% 50%) 50%/20px 20px; }
+.editor-card-footer { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:12px; border-top:1px solid #ffffff18; }
+.editor-card-description { display:flex; flex-direction:column; flex:1; min-width:0; }
+.editor-card-description strong { font-size:16px; font-weight:500; }
+.editor-card-description span { color:#aeb8c8; font-size:12px; overflow-wrap:anywhere; }
+.editor-card-actions,.editor-order-actions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.editor-order-actions { flex-basis:100%; justify-content:flex-end; }
+.image-editor-modal .editor-delete { color:#ef6666; border-color:transparent; background:transparent; }
+.image-editor-modal .editor-delete:hover { background:#ef66661f; border-color:#ef6666; color:#ff8585; }
+.editor-search-controls { display:flex; align-items:end; gap:16px; flex-wrap:wrap; margin:20px 0; }
+.editor-search-controls label { display:grid; gap:6px; }
+.image-editor-modal select { min-width:110px; max-width:100%; background:#202632; color:#fff; border:1px solid #ffffff40; border-radius:8px; padding:10px; font:inherit; }
+.image-editor-modal select:focus-visible,.image-editor-modal input:focus-visible { outline:2px solid var(--editor-accent); outline-offset:3px; }
+.editor-search-range,.editor-search-controls>.editor-icon-button { align-self:center; }
+.editor-search-range { white-space:nowrap; color:#aeb8c8; }
+.editor-search-controls .editor-all-languages { display:flex; align-self:center; align-items:center; gap:8px; }
+.editor-all-languages input { accent-color:var(--editor-accent); width:17px; height:17px; }
+.image-editor-modal .editor-choose-file { border-radius:24px; padding:10px 22px; font-weight:600; box-shadow:0 2px 6px #0003; }
+.image-enlarged-modal { width:min(96vw,1600px); }
+.image-enlarged-viewer { display:flex; align-items:center; gap:12px; }
+.image-enlarged-canvas { flex:1; min-width:0; }
+@media(max-width:650px) {
+  .editor-standard-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .editor-backdrops .editor-grid { grid-template-columns:1fr; }
+  .editor-search-controls { gap:10px; }
+  .image-enlarged-viewer { gap:4px; }
+  .image-enlarged-viewer>button { padding:8px; }
+  .image-editor-modal h2 { font-size:20px; overflow-wrap:anywhere; }
+}
+@media(max-width:360px) { .editor-standard-grid { grid-template-columns:1fr; } }

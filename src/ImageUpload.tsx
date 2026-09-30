@@ -3,12 +3,12 @@ import { Upload, X } from "lucide-react";
 import type { ImageType } from "../server/image-editor";
 
 export function ImageUploadDialog(props: {
-  source: string; busy: boolean; error: string; dialogRef: React.RefObject<HTMLDivElement | null>;
+  source: string; hasLogo: boolean; busy: boolean; error: string; dialogRef: React.RefObject<HTMLDivElement | null>;
   onClose: () => void; onUpload: (type: ImageType, data: string) => Promise<void>;
 }) {
   const [file, setFile] = useState<File>();
   const [preview, setPreview] = useState<string>();
-  const [type, setType] = useState<ImageType>("Backdrop");
+  const [type, setType] = useState<ImageType>("Logo");
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
   const [ready, setReady] = useState(false);
@@ -52,14 +52,13 @@ export function ImageUploadDialog(props: {
       <div className={`image-upload-drop ${dragging ? "dragging" : ""}`} onDragOver={event => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => {event.preventDefault(); setDragging(false); choose(event.dataTransfer.files);}}>
         {preview ? <img src={preview} alt="Upload preview" onLoad={() => setReady(true)} onError={() => {setReady(false); setError("This file could not be read as an image.");}}/> : <Upload aria-hidden="true"/>}
         <p>{file?.name ?? "Drag and drop an image here"}</p>
-        <button disabled={busy} onClick={() => picker.current?.click()}>{file ? "Choose another image" : "Choose image"}</button>
+        <button className="editor-choose-file" disabled={busy} onClick={() => picker.current?.click()}>Choose file</button>
         <input ref={picker} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.gif" onChange={event => choose(event.target.files)} />
       </div>
-      <label className="image-upload-type">Image type<select aria-label="Image type" value={type} disabled={busy} onChange={event => setType(event.target.value as ImageType)}><option value="Backdrop">Backdrop</option><option value="Logo">Logo</option></select></label>
-      <p className="editor-notice">{type === "Logo" ? "This replaces the current logo." : "This adds a new backdrop and keeps all existing backdrops."}</p>
+      <label className="image-upload-type">Image type<select aria-label="Image type" value={type} disabled={busy} onChange={event => setType(event.target.value as ImageType)}><option value="Logo">Logo</option><option value="Backdrop">Backdrop</option></select></label>
       {(error || props.error) && <p className="editor-error" role="alert">{error || props.error}</p>}
       {busy && <p role="status">Uploading…</p>}
-      <footer><button disabled={!file || !ready || busy} onClick={() => void submit()}><Upload/>{type === "Logo" ? "Upload logo" : "Add backdrop"}</button><button onClick={props.onClose}>Cancel</button></footer>
+      <footer><button disabled={!file || !ready || busy} onClick={() => void submit()}><Upload/>{type === "Logo" && props.hasLogo ? "Replace" : "Add"}</button><button onClick={props.onClose}>Cancel</button></footer>
     </div>
   </div>;
 }

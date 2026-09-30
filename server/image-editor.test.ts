@@ -199,3 +199,46 @@ test("local editing refuses audio/video files and files disguised as artwork", a
     assert.deepEqual(await fs.readFile(file),content);mock.mock.restore();
   }
 });
+
+test("Jellyfin search pages preserve provider, language and 30-result limits", async () => {
+  const calls: URL[] = [];
+  const adapter = new JellyfinImageAdapter({imageEditorRequest: async (url: string) => {
+    calls.push(new URL(url, "http://fixture"));
+    return {Images:[{Type:"Logo",Url:"https://fixture/logo",ProviderName:"Jellyfin provider",Language:"fr"}],TotalRecordCount:65,Providers:["Jellyfin provider","Other provider"]};
+  }} as any);
+  const t = {source:"jellyfin",id:"item",name:"Item",kind:"Movie"} as const;
+  const page = await adapter.searchPage(t,"Logo",{start:30,provider:"Jellyfin provider",allLanguages:true});
+  assert.equal(calls[0].pathname,"/Items/item/RemoteImages");
+  assert.equal(calls[0].searchParams.get("limit"),"30");
+  assert.equal(calls[0].searchParams.get("startIndex"),"30");
+  assert.equal(calls[0].searchParams.get("providerName"),"Jellyfin provider");
+  assert.equal(calls[0].searchParams.get("includeAllLanguages"),"true");
+  assert.equal(page.total,65); assert.equal(page.start,30); assert.equal(page.supportsLanguageFilter,true);
+  assert.deepEqual(page.providers,["Jellyfin provider","Other provider"]);
+  await adapter.searchPage(t,"Backdrop",{start:0,provider:"",allLanguages:false});
+  assert.equal(calls[1].searchParams.get("includeAllLanguages"),"false");
+});
+
+test("local/external result paging caches provider lookup and registers selectable candidates", async () => {
+  let searches = 0; let selected = "";
+  const adapter = {list:async()=>[],search:async(_target: EditorTarget,type: "Logo" | "Backdrop")=>{
+    searches++;
+    return Array.from({length:65},(_,i)=>({id:String(i),type,url:`https://fixture/${i}`,provider:i%2 ? "theaudiodb" : "fanart.tv"}));
+  },add:async(_target:EditorTarget,image:{id:string})=>{selected=image.id;},upload:async()=>{},remove:async()=>{},move:async()=>{}};
+  for (const source of ["fetched","navidrome"]) {
+    const editor = new ImageEditor({external:adapter,local:adapter,jellyfin:adapter});
+    const model = await editor.open("room",snapshot(source));
+    const first = await editor.searchPage("room",model.id,"Backdrop");
+    const second = await editor.searchPage("room",model.id,"Backdrop",{start:30});
+    const last = await editor.searchPage("room",model.id,"Backdrop",{start:60});
+    assert.equal(first.images.length,30);assert.equal(second.images[0].id,"30");assert.equal(last.images.length,5);
+    assert.equal(first.total,65);assert.equal(first.supportsLanguageFilter,false);
+    const filtered = await editor.searchPage("room",model.id,"Backdrop",{start:30,provider:"fanart.tv"});
+    assert.equal(filtered.total,33);assert.equal(filtered.images.length,3);assert.equal(filtered.images[0].id,"60");
+    await editor.mutate("room",model.id,{revision:model.revision,action:"add",imageId:second.images[0].id});
+    assert.equal(selected,"30");
+    for(const invalid of [{start:-1},{start:1.5},{provider:42},{allLanguages:"true"}]) await assert.rejects(editor.searchPage("room",model.id,"Backdrop",invalid as any),/Invalid search/);
+    await assert.rejects(editor.searchPage("room",model.id,"Primary" as any),/Unsupported/);
+  }
+  assert.equal(searches,2,"one provider lookup per editor and type despite paging/filtering");
+});

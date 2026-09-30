@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Match the Pixelfin-style image editor layout while retaining MediaWall artwork destinations and source colors; add provider/type filters, 30-result pages, supported language filtering, cross-page enlarged previews, and consistent Add/Replace upload actions.
+
 ## 0.4.0 — 2026-09-30
 
 MediaWall v0.4.0 adds external music playback, source-aware artwork editing, and Jellyfin Live TV support. This release includes configuration changes that require attention before upgrading.

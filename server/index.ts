@@ -881,7 +881,7 @@ app.post("/api/space/:space/image-editor/:operation", async (req, res) => {
     if (operation === "close") { imageEditor.close(id); editorClock.release(space, id); res.json({ ok: true }); return; }
     editorClock.hold(space, id);
     if (operation === "heartbeat") { res.json({ ok: true }); return; }
-    if (operation === "search") { res.json({ images: await imageEditor.search(space, id, req.body.type) }); return; }
+    if (operation === "search") { res.json(await imageEditor.searchPage(space, id, req.body.type, {start: req.body.start, provider: req.body.provider, allLanguages: req.body.allLanguages})); return; }
     if (operation === "mutate") {
       const model = await imageEditor.mutate(space, id, req.body);
       artworkVersions.set(`${model.target.source}:${model.target.id}`, Date.now());
