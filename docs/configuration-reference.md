@@ -2,6 +2,8 @@
 
 MediaWall reads `config.yml` when it starts. Leave out optional settings to use the defaults below. Keep secrets in `.env` and reference them with `${ENV_VAR}`.
 
+For a fuller setup, see [config.yml.example](../config.yml.example). Copy it to `config.yml`, set the referenced variables in your `.env`, and adjust the users, libraries, mounts, and enabled features for your setup. The example uses port `1222`, so match your Compose port mapping.
+
 ## Sections
 
 | Section | Purpose |

@@ -1,0 +1,234 @@
+# Example setup with Jellyfin, Navidrome, external music, and Immich Kiosk.
+# Copy to config.yml and adjust the users, libraries, mounts, and features you use.
+# Set every ${VARIABLE} below in your .env; no credentials are included here.
+# Example URLs: JELLYFIN_URL=http://jellyfin:8096, NAVIDROME_URL=http://navidrome:4533,
+# LIVINGROOM_IMMICH_KIOSK_URL=http://immich-kiosk:3000 (also reachable by your browser).
+# Create your own API keys, passwords, and EXTERNAL_MUSIC_PRIMARY_TOKEN.
+# Match the external token in Multi-Scrobbler. MUSICBRAINZ_CONTACT should be your contact email.
+# Publish port 1222, mount your music at /music, and mount ./library at /library.
+# The optional staff-picks.png collection image is a placeholder; supply it or leave it blank.
+
+server:
+  port: 1222
+
+library_scan:
+  enabled: true
+  ttl_days: 30
+  scan_on_startup: true
+  cron:
+    enabled: true
+    expression: "0 3 * * *"
+
+jellyfin:
+  url: "${JELLYFIN_URL}"
+  api_key: "${JELLYFIN_API_KEY}"
+
+navidrome:
+  enabled: true
+  url: "${NAVIDROME_URL}"
+  artwork:
+    jellyfin_fallback: true
+    local_files: true
+    order:
+      - jellyfin
+      - local
+      - fetched
+    path_mappings:
+      - navidrome: "/music"
+        mediawall: "/music"
+
+external_music:
+  enabled: true
+  session_timeout_seconds: 90
+  artwork:
+    preference: local
+    minimum_backdrop_resolution: 1920x1080
+    backdrop_count: 3
+    album_cache_directory: /app/data/external-artwork
+    album_cache_ttl_days: 30
+  tokens:
+    "${EXTERNAL_MUSIC_PRIMARY_TOKEN}":
+      user: primary
+
+image_providers:
+  musicbrainz:
+    enabled: true
+    contact: "${MUSICBRAINZ_CONTACT}"
+  fanart:
+    enabled: true
+    api_key: "${FANART_API_KEY}"
+  theaudiodb:
+    enabled: true
+    api_key: "${THEAUDIODB_API_KEY}"
+  cover_art_archive:
+    enabled: true
+
+users:
+  primary:
+    jellyfin_user: "${JELLYFIN_PRIMARY_USER}"
+    navidrome_user: "${NAVIDROME_PRIMARY_USER}"
+    navidrome_password: "${NAVIDROME_PRIMARY_PASSWORD}"
+  secondary:
+    jellyfin_user: "All"
+    navidrome_user: "${NAVIDROME_SECONDARY_USER}"
+    navidrome_password: "${NAVIDROME_SECONDARY_PASSWORD}"
+
+spaces:
+  livingroom:
+    playback_source: All
+    theme: All
+    users:
+      - All
+    password: "${LIVINGROOM_PASSWORD}"
+    libraries:
+      - Music
+      - Concerts
+      - Shows
+      - Movies
+      - Documentaries
+    idle_timeout: 30
+    now_playing:
+      fallback: immich_kiosk
+      immich_kiosk:
+        url: "${LIVINGROOM_IMMICH_KIOSK_URL}"
+      ignored_libraries:
+        - "Pre-Rolls"
+      fallback_shuffle_interval_seconds: 45
+      cycle_users: true
+      cycle_interval_seconds: 15
+      session_cleanup:
+        paused_after_seconds: 15
+      session_timer:
+        enabled: true
+        size: 42
+      session_count:
+        enabled: true
+        font_size: 13
+      user_transition:
+        enabled: true
+        duration_seconds: 5
+        background_color: "#000000"
+        avatar_size: 240
+        username_font_size: 126
+        message_font_size: 71
+        source_icon_size: 160
+      mediawall_fallback:
+        modes:
+          - dvd
+        image: banner
+        background_color: "#565954"
+        min_logo_width: 260
+        max_logo_width: 760
+        sizes:
+          centered: 760
+          breathing: 760
+          float: 700
+          spotlight: 760
+          dvd: 520
+          minimal: 300
+      custom_logo:
+        directory: "/app/custom_logo"
+      multiple_backdrops:
+        enabled: true
+        interval_seconds: 15
+      collections:
+        enabled: true
+        global:
+          enabled: false
+          sound: "toned.mp3"
+          user_transition_image: ""
+          image_size: 260
+        groups:
+          - name: "staff-picks"
+            title_regexes:
+              - "(?i).*staff\\s+picks.*"
+            users:
+              - All
+            sound: "toned.mp3"
+            user_transition_image: "staff-picks.png"
+            image_size: 260
+      sounds:
+        enabled: true
+        jellyfin: true
+        navidrome: true
+        quiet_hours:
+          enabled: false
+          start: "23:00"
+          end: "08:00"
+        continuous_sessions:
+          navidrome: true
+          jellyfin_libraries:
+            - Music
+        session_start:
+          retrigger_after_inactive_seconds: 30
+        session_end:
+          enabled: false
+          tone: "close.mp3"
+        trigger: new_session
+        directory: "/app/sounds"
+        tone: "noted.mp3"
+        volume: 0.35
+    display:
+      ui:
+        scale: 0.85
+      music_artist_images: albumartists
+      cycle_interval_seconds: 15
+      require_logos: true
+      backdrop_background_color: "#050508"
+      multiple_backdrops:
+        mode: single_backdrop
+        single_backdrop: random
+        cycle_order: numbered
+      animations:
+        style: kenburns
+        enabled: true
+        scale: 1.08
+        duration_seconds: 26
+      logo:
+        max_width: 520
+      album_art:
+        size: 300
+      fallback_title:
+        font_size: 86
+      nowplaying_text:
+        enabled: true
+        text: "Now playing on"
+        show_text: true
+        font_size: 16
+        show_source_icon: true
+        icon_size: 24
+
+        show_user_avatar: true
+
+        user_avatar_size: 60
+
+        show_jellyfin_username: true
+        show_navidrome_username: true
+        user_font_size: 13
+      screensaver_text:
+        enabled: true
+        text: "Featured on your server"
+        font_size: 16
+        icon_size: 24
+      media_info:
+        font_size: 40
+        release_year_font_size: 40
+        episode_info_font_size: 28
+        episode_title_font_size: 40
+        music_album_font_size: 24
+        music_song_title_font_size: 40
+      transitions:
+        duration_ms: 1200
+        order: written
+        styles:
+          - crossfade
+    page_refresh:
+      enabled: true
+      time: 06:00
+
+aliases:
+  artists:
+    "a子":
+      - "ako"
+library:
+  directory: /library

@@ -130,6 +130,8 @@ Jellyfin is recommended because MediaWall can use its rich backdrop, logo, user 
 
 ## [Documentation](docs/README.md)
 
+For a fuller setup, see [config.yml.example](config.yml.example). Copy it to `config.yml`, add your own values to `.env`, and adjust the users, libraries, and mounts to match your setup.
+
 Upgrading from v0.3.1? Read the [configuration migration notes](docs/upgrading.md) before starting v0.4.0.
 
 ## License
