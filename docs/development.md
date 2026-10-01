@@ -1,6 +1,6 @@
 ## Development
 
-Node.js 22 or later is required. MediaWall's disk-backed Jellyfin collection index uses Node's built-in SQLite support.
+Node.js 22 or later is required. The Jellyfin collection index uses Node's built-in SQLite support.
 
 Install dependencies:
 
@@ -12,10 +12,11 @@ Run checks:
 
 ```sh
 npm run typecheck
+npm test
 npm run build
 ```
 
-Run locally:
+For local development, set `library.directory` in your config to a writable folder, such as `./library`. Then run:
 
 ```sh
 npm run dev

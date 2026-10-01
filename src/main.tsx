@@ -121,6 +121,7 @@ const backdropAnimations: BackdropAnimation[] = ["breathe", "pan", "kenburns", "
 
 type Snapshot = {
   cacheCleared?: {id: string; at: number};
+  libraryRevision?: number;
   profile: string;
   display: string;
   mode: DisplayState["mode"];
@@ -129,7 +130,7 @@ type Snapshot = {
   libraryScan?: {
     active: boolean;
     completed: boolean;
-    source: "jellyfin" | "navidrome" | "sounds" | "custom_images";
+    source: "jellyfin" | "navidrome" | "sounds" | "custom_images" | "library";
     currentLibrary?: string;
     percent: number;
     scanned: number;
@@ -889,7 +890,7 @@ function App() {
 
   useEffect(() => {
     if (activeLibrary) void loadItems(activeLibrary);
-  }, [activeLibrary, libraries]);
+  }, [activeLibrary, libraries, snapshot?.libraryRevision]);
 
   useEffect(() => {
     const now = snapshot?.nowPlaying;
@@ -3429,10 +3430,11 @@ function formatSessionCount(position: number, count: number) {
   return `${position} of ${count}`;
 }
 
-function sourceLabel(source: "jellyfin" | "navidrome" | "sounds" | "custom_images") {
+function sourceLabel(source: "jellyfin" | "navidrome" | "sounds" | "custom_images" | "library") {
   if (source === "jellyfin") return "Jellyfin";
   if (source === "navidrome") return "Navidrome";
   if (source === "sounds") return "Sounds";
+  if (source === "library") return "Library";
   return "Custom Logo";
 }
 

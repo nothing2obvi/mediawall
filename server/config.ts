@@ -1,3 +1,4 @@
+import { logger } from "./logger.js";
 import fs from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
@@ -429,6 +430,7 @@ const spaceSchema = z.object({
 });
 
 const configSchema = z.object({
+  library: z.object({ directory: z.string().default("/library") }).default({directory:"/library"}),
   server: z.object({ port: z.number().default(1221) }).default({ port: 1221 }),
   library_scan: z.object({
     enabled: z.boolean().default(true),
@@ -480,8 +482,8 @@ const configSchema = z.object({
       preference: z.enum(["local", "fetched"]).default("local"),
       minimum_backdrop_resolution: z.string().regex(/^\d+x\d+$/i).default("1920x1080"),
       backdrop_count: z.number().int().min(1).max(20).default(3),
-      cache_directory: z.string().default("/app/data/external-artwork"),
-      cache_ttl_days: z.number().min(1).default(30)
+      album_cache_directory: z.string().default("/app/data/external-artwork"),
+      album_cache_ttl_days: z.number().min(1).default(30)
     }).transform((artwork) => {
       const [width, height] = artwork.minimum_backdrop_resolution.toLowerCase().split("x").map(Number);
       return {
@@ -489,16 +491,16 @@ const configSchema = z.object({
         minimum_backdrop_width: width,
         minimum_backdrop_height: height,
         backdrop_count: artwork.backdrop_count,
-        cache_directory: artwork.cache_directory,
-        cache_ttl_days: artwork.cache_ttl_days
+        album_cache_directory: artwork.album_cache_directory,
+        album_cache_ttl_days: artwork.album_cache_ttl_days
       };
     }).default({
       preference: "local",
       minimum_backdrop_width: 1920,
       minimum_backdrop_height: 1080,
       backdrop_count: 3,
-      cache_directory: "/app/data/external-artwork",
-      cache_ttl_days: 30
+      album_cache_directory: "/app/data/external-artwork",
+      album_cache_ttl_days: 30
     }),
     tokens: z.record(z.string(), z.union([
       z.string(),
@@ -525,8 +527,8 @@ const configSchema = z.object({
       minimum_backdrop_width: 1920,
       minimum_backdrop_height: 1080,
       backdrop_count: 3,
-      cache_directory: "/app/data/external-artwork",
-      cache_ttl_days: 30
+      album_cache_directory: "/app/data/external-artwork",
+      album_cache_ttl_days: 30
     },
     tokens: {}
   }),
@@ -557,8 +559,7 @@ const configSchema = z.object({
   }).default({ artists: {} }),
   users: z.record(z.string(), mediaWallUserSchema).default({}),
   spaces: z.record(z.string(), spaceSchema).default({}),
-  displays: z.record(z.string(), z.record(z.string(), z.any())).optional(),
-  grid_cache: z.any().optional()
+
 });
 
 export function loadConfig(): AppConfig {
@@ -566,14 +567,32 @@ export function loadConfig(): AppConfig {
   const raw = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "{}";
   const expanded = expandEnv(raw);
   const rawConfig = YAML.parse(expanded) ?? {};
-  for (const space of Object.values(rawConfig.spaces ?? {}) as Record<string, unknown>[]) {
-    if (space && typeof space === "object" && "playback_user" in space) throw new Error("playback_user was removed; configure users: [your-user] for each space instead.");
+  const errors: string[] = [];
+  const removed = (present: boolean, message: string) => { if (present) {logger.error(`Configuration migration: ${message}`);errors.push(message);} };
+  removed("displays" in rawConfig, "displays is deprecated and removed. Define display routes under spaces instead.");
+  removed("grid_cache" in rawConfig, "grid_cache is deprecated and removed. Use library_scan for grid cache settings.");
+  const artwork = rawConfig.external_music?.artwork ?? {};
+  removed("cache_directory" in artwork, "external_music.artwork.cache_directory is deprecated and removed. Use library.directory (default /library) for artist images and external_music.artwork.album_cache_directory for album covers. Set album_cache_directory to your old cache path to migrate artist images on startup. Mount ./library:/library with write access.");
+  removed("cache_ttl_days" in artwork, "external_music.artwork.cache_ttl_days is deprecated and removed. Use album_cache_ttl_days for album covers. Library artist images no longer expire.");
+  for (const [name, space] of Object.entries(rawConfig.spaces ?? {}) as [string, any][]) {
+    if (!space || typeof space !== "object") continue;
+    removed("playback_user" in space, `spaces.${name}.playback_user was removed. Configure top-level users, then users: [primary] or users: [All] in this space.`);
+    removed(space.playback_source !== undefined && !["jellyfin", "navidrome", "external-music", "All"].includes(space.playback_source), `spaces.${name}.playback_source: the old both value is deprecated and removed. Choices are jellyfin, navidrome, external-music, All (case-sensitive). Use All to watch every source.`);
+    if (space.display?.screensaver_interval !== undefined) logger.warn(`Configuration migration: spaces.${name}.display.screensaver_interval is deprecated. Use cycle_interval_seconds instead.`);
+    removed(space.display?.breathing !== undefined, `spaces.${name}.display.breathing was replaced by display.animations. Set enabled: true and style: breathe; other choices are pan, kenburns, drift, focus, zoom, All.`);
+    if (space.display?.album_art?.size === undefined) logger.info(`Configuration defaults for ${name}: album_art.size is now 300px. Set display.album_art.size to keep a different size.`);
+    if (space.display?.live_tv?.channel_image_size === undefined) logger.info(`Configuration defaults for ${name}: live_tv.channel_image_size is 713px. Set display.live_tv.channel_image_size to override it.`);
   }
+  for (const mapping of rawConfig.navidrome?.artwork?.path_mappings ?? []) {
+    if (mapping.jellyfin !== undefined) logger.warn("Configuration migration: navidrome.artwork.path_mappings[].jellyfin is deprecated. Rename it to mediawall; keep navidrome as the source path.");
+  }
+  if (errors.length) throw new Error(errors.join("\n"));
   const parsed = configSchema.parse(rawConfig);
   const users = normalizeUsers(parsed.users);
   const spaces = normalizeSpaces(parsed.spaces, users);
   const appConfig: AppConfig = {
     server: parsed.server,
+    library: parsed.library,
     library_scan: parsed.library_scan,
     jellyfin: parsed.jellyfin,
     navidrome: parsed.navidrome,

@@ -1,10 +1,9 @@
 ## Remote
 
-Every display space has a matching remote URL. For example, `/livingroom` has `/livingroom-remote`. The remote is meant for a phone or small tablet, works vertically or horizontally, and exposes the main controls: previous/next, pause/play in Wallpaper/Screensaver mode, mode, selection, grid, shuffle, favorites, media info, fullscreen, and sound mute when sounds are enabled.
+Each space has a phone-friendly remote: `/livingroom` uses `/livingroom-remote`. It works in portrait or landscape and gives you the display's main controls, including the image editor and theme selector.
 
-The remote controls the same server-owned presentation state as the display. Browsers connected to the same space share the current mode, item/session, backdrop position, pause state, and transition deadline; another space keeps its own independent timeline. MediaWall uses a lightweight server-sent events connection to wake clients when that shared state changes, plus shared server timestamps so it doesn't need to send timer ticks every second.
+Displays and remotes connected to the same space stay in sync. Other spaces work independently. The remote uses the same password, libraries, and favorites as its display.
 
-Dialogs and the grid can be dismissed by tapping outside them or tapping the same remote button again. The grid uses the same libraries, favorite filtering, and password rules as the display. Remote button presses also show the same brief center-screen feedback icons on the display.
+Tap outside a dialog or tap its button again to close it. Remote actions also show brief feedback on the display.
 
-Display and remote routes install as distinct PWAs. A route ending in `-remote` uses the remote icon and its own manifest identity; normal space routes use the MediaWall logo. Query-string passwords are preserved in the launch URL but aren't used when deciding which icon/identity applies.
-
+You can add the display and remote to your home screen separately. Each gets its own icon, and password-protected launch URLs keep their password.

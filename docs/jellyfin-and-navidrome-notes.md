@@ -7,7 +7,7 @@ Jellyfin gives the best experience because MediaWall can access:
 - movie, series, episode, and music metadata
 - backdrops
 - logos
-- image tags for cache-busting changed artwork
+- automatic updates when artwork changes
 
 Navidrome can be used for music playback. For artwork, MediaWall can use matching Jellyfin artist data when both services are configured, or local artist backdrop files when running Navidrome-only.
 
@@ -29,7 +29,7 @@ navidrome:
         mediawall: "/navidrome_music"
 ```
 
-The optional music mount in the Compose example uses `:rw` so the image editor can save artwork. Enable that mount only when using local files, and ensure the container can write the mapped artist directory. Local mutations require a supported image extension and image signature, stay inside the configured root, and reject symlinks. Audio and video files are never rewritten, renamed, or deleted by artwork editing.
+The optional music mount uses `:rw` so the image editor can save artwork. Only enable it if you use local images, and make sure the artist folder is writable. Symbolic links aren’t supported. Editing never changes music or video files.
 
 Older configs using `jellyfin` in a path mapping are still accepted for compatibility, but new configs should use `mediawall`.
 
@@ -45,11 +45,10 @@ spaces:
         channel_image_size: 713
 ```
 
-The image retains its aspect ratio, fits smaller screens, and follows the configured backdrop effects (breathing, Ken Burns, pan, drift, focus, and zoom). In Media Info, the Live TV section independently controls Channel and Live TV text; the `i` shortcut cycles channel only, Live TV only, both, and neither. The Live TV label uses the episode-code styling. Live channel sessions use Jellyfin's channel image, including live programs that reference a channel. Recorded movies/episodes keep their normal presentation.
+The image fits the screen without stretching and uses your backdrop effects. In Media Info, choose the channel name, the Live TV label, both, or neither. The `i` key cycles these choices. Recorded movies and episodes keep their usual layout.
 
-When an active channel disappears from Jellyfin's sessions, MediaWall keeps it visible for up to 15 seconds from the first missing poll. This bridges the gap while changing channels instead of immediately showing the fallback. Fresh active playback takes over immediately. If nothing returns, the configured fallback appears after the grace period. This Live TV grace period is fixed and cannot be configured; `now_playing.session_cleanup.missing_after_seconds` continues to apply to other session types.
-
+Changing channels doesn’t immediately send the display to fallback. MediaWall keeps the current channel visible briefly until the next one starts.
 
 ### Stopped sessions reported as playing
 
-Some Jellyfin clients keep reporting a playhead cycling through the same 2–5 seconds after playback stops or pauses. MediaWall treats this as stalled rather than active playback. It uses the existing `now_playing.session_cleanup.paused_after_seconds` timeout (15 seconds by default), retains the stalled state across polls, and restores the session when the playhead makes real forward progress. A larger backward seek resets the progress baseline so rewinding normally can continue.
+Some Jellyfin clients keep reporting the same few seconds as playing after you stop or pause. MediaWall treats these sessions as inactive after `now_playing.session_cleanup.paused_after_seconds` (15 seconds by default). They reappear when playback actually continues. Rewinding normally still works.

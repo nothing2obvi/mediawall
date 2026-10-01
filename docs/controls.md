@@ -24,7 +24,7 @@ These work in both Now Playing and Wallpaper/Screensaver mode unless noted.
 
 ### Image Editor Shortcuts
 
-While an enlarged image preview is open, Left/Right browse same-type images, Enter selects a search result, and Backspace deletes an existing backdrop. Escape returns to the image list. These keys act on the preview instead of changing MediaWall sessions or artwork. See [enlarged previews and keyboard controls](image-editor.md#viewing-and-changing-images) for selection, deletion, and dismissal behavior.
+While an enlarged image preview is open, Left/Right browse same-type images, Enter selects a search result, and Backspace deletes an existing backdrop. Escape goes back one dialog level. These shortcuts only affect the open preview. See [enlarged previews and keyboard controls](image-editor.md#viewing-and-changing-images) for selection, deletion, and dismissal behavior.
 
 ### Tapping and Clicking
 

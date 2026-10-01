@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AppConfig } from "./types.js";
-export const cacheWarning = "Clear MediaWall artwork cache? This removes cached grid/wallpaper images and downloaded external artist backdrops, logos, album covers, and their saved selections. Original Jellyfin artwork, local/Navidrome artwork, audio files and personal assets are not removed.";
+export const cacheWarning = "Clear MediaWall artwork cache? This removes cached grid/wallpaper images and cached album covers. MediaWall Library images, original Jellyfin artwork, local/Navidrome artwork, audio files and personal assets are not removed.";
 export async function clearArtworkCache(config: AppConfig, appRoot: string) {
   let removed = 0;
   const unlinkFile = async (file: string) => {
@@ -20,9 +20,9 @@ export async function clearArtworkCache(config: AppConfig, appRoot: string) {
       await unlinkFile(path.join(grid, name));
     }
   }
-  const configured = config.external_music.artwork.cache_directory;
+  const configured = config.external_music.artwork.album_cache_directory;
   const external = path.resolve(appRoot, configured);
-  for (const scope of ["artists", "albums"]) {
+  for (const scope of ["albums"]) {
     const parent = path.join(external, scope);
     if ((await fs.lstat(external).catch(() => undefined))?.isSymbolicLink() || (await fs.lstat(parent).catch(() => undefined))?.isSymbolicLink()) continue;
     for (const key of await fs.readdir(parent).catch(() => [])) {

@@ -19,6 +19,14 @@
 
 MediaWall is a way to take advantage of an old iPad, a Raspberry Pi with a display, or any spare screen by turning it into a live window into your Jellyfin and Navidrome servers. It can show what you and your users are currently watching or listening to, cycle through artwork from your libraries as a screensaver, or display favorite media as wallpapers. With Multi-Scrobbler, it can also show Now Playing from external music sources such as Spotify. It also supports custom sounds, layouts, and fallback screens. Basically, it's a fun little project that's an overengineered way to view active sessions and make your media library visible instead of leaving all that artwork buried in storage.
 
+## What's your use case for MediaWall?
+
+Personally I use it as a “What’s now playing on the server?” passive display, with sounds so I know when a session starts. We might be doing something else, hear a pleasant chime, then go, “Ooh, someone started the new season of Ted Lasso.” I have about 25 regular users, so it’s just like a fun little thing that happens randomly. Sounds, of course, are optional.
+
+It’s also been particularly useful when my wife and I host parties. One of us plays music via Bluetooth on our speakers, and the display shows us what’s playing, complete with backdrop artwork, album cover, and media info, whether I play music from Navidrome or my wife plays music from Spotify. When someone asks what’s playing, we just tell them to check the screen.
+
+And when nothing’s playing at all, it falls back to Immich Kiosk, so our family photos are displayed. Immich Kiosk integration is also optional.
+
 ## Screenshots
 
 ![MediaWall monitor setup](src/screenshots/monitor_3.jpg)

@@ -21,14 +21,15 @@ function snapshot(source = "fetched", kind = "MusicArtist") {
 function png() { const b=Buffer.alloc(24); b.set([137,80,78,71,13,10,26,10]); b.writeUInt32BE(2400,16); b.writeUInt32BE(1400,20); return b; }
 async function fixture(t: any) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(),"mediawall-editor-")); t.after(()=>fs.rm(root,{recursive:true,force:true}));
-  const cfg = loadConfig(); cfg.external_music.artwork.cache_directory=path.join(root,"external"); cfg.library_scan.directory=path.join(root,"grid");
+  const cfg = loadConfig(); cfg.library.directory=path.join(root,"library"); cfg.external_music.artwork.album_cache_directory=path.join(root,"external"); cfg.library_scan.directory=path.join(root,"grid");
   cfg.navidrome.artwork.local_files=true; cfg.navidrome.artwork.path_mappings=[{navidrome:"/music",mediawall:path.join(root,"music")}];
-  const jellyfin=new JellyfinClient(cfg), nav=new NavidromeClient(cfg,jellyfin), resolver=new ExternalArtworkResolver(cfg,jellyfin,nav,root);
+  const jellyfin=new JellyfinClient(cfg), nav=new NavidromeClient(cfg,jellyfin);
   const dir=path.join(root,"external","artists",key);await fs.mkdir(dir,{recursive:true});
   const cache={version:2,configuration:"test",resolvedAt:Date.now(),artist:"Album Artist",providers:["fanart.tv"],logo:{file:"logo.png",provider:"fanart.tv",sourceUrl:"https://images.test/logo"},backdrops:[0,1,2].map(i=>({file:`backdrop-${i}.png`,provider:"fanart.tv",sourceUrl:`https://images.test/${i}`,width:2400,height:1400}))};
   for(const image of [cache.logo,...cache.backdrops])await fs.writeFile(path.join(dir,image.file),png());
   await fs.writeFile(path.join(dir,"metadata.json"),JSON.stringify(cache));
-  return {root,cfg,resolver,nav,dir,cache};
+  const resolver=new ExternalArtworkResolver(cfg,jellyfin,nav,root);await resolver.ready;
+  return {root,cfg,resolver,nav,dir:resolver.library.directory(key),cache};
 }
 test("source and canonical entity come from displayed artwork, not playback service",()=>{
   assert.equal(editorTarget(snapshot("jellyfin")).source,"jellyfin");
@@ -102,7 +103,7 @@ test("cache clearing removes owned images only; retains original media, metadata
   await fs.writeFile(path.join(f.cfg.library_scan.directory,hash+".json"),JSON.stringify({status:200,createdAt:Date.now()}));await fs.writeFile(path.join(f.cfg.library_scan.directory,hash+".bin"),"cache");
   await fs.writeFile(path.join(f.cfg.library_scan.directory,"users.json"),"{}");await fs.writeFile(path.join(f.dir,"original.flac"),"music");
   const original=path.join(f.root,"original.jpg");await fs.writeFile(original,"original");await fs.symlink(original,path.join(f.dir,"not-owned.png"));
-  const removed=await clearArtworkCache(f.cfg,f.root);assert.equal(removed,7);
+  const removed=await clearArtworkCache(f.cfg,f.root);assert.equal(removed,2);
   assert.equal(await fs.readFile(original,"utf8"),"original");assert.equal(await fs.readFile(path.join(f.dir,"original.flac"),"utf8"),"music");assert.ok(await fs.stat(path.join(f.cfg.library_scan.directory,"users.json")));
 });
 
@@ -159,7 +160,8 @@ for (const source of ["external", "local"] as const) test(`${source} uploads app
   await adapter.upload(entity, "Logo", image);
   after = await adapter.list(entity);
   assert.equal(after.filter(i=>i.type==="Logo").length, 1);
-  assert.notEqual(after.find(i=>i.type==="Logo")!.id,before.find(i=>i.type==="Logo")!.id);
+  if (source === "local") assert.notEqual(after.find(i=>i.type==="Logo")!.id,before.find(i=>i.type==="Logo")!.id);
+  else assert.equal(after.find(i=>i.type==="Logo")!.id,"logo.png");
   assert.equal(after.filter(i=>i.type==="Backdrop").length, before.filter(i=>i.type==="Backdrop").length + 2);
   assert.ok(await fs.stat(path.join(dir,"track.flac")));
   if (source === "external") assert.equal(after.find(i=>i.type==="Logo")!.provider,"Upload");

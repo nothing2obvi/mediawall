@@ -2,9 +2,9 @@
 
 ### Apple Devices
 
-Open your MediaWall space in Safari, tap the Share button, then choose **Add to Home Screen**. Launching from the Home Screen runs it like a PWA. If sounds are enabled, tap the MediaWall screen once after opening so Safari allows audio playback.
+Open your MediaWall space in Safari, tap the Share button, then choose **Add to Home Screen**. It opens like an app from your Home Screen. If sounds are enabled, tap the MediaWall screen once after opening so Safari allows audio playback.
 
-On a regular computer, you can also open the space in a browser and make MediaWall fullscreen with the shortcuts listed below.
+On a regular computer, you can also open the space in a browser and make MediaWall fullscreen with the [keyboard shortcuts](controls.md#keyboard-shortcuts).
 
 If animation changes seem to stick in the Home Screen app even though Safari shows the new behavior, delete the Home Screen app, go to **Settings -> Safari -> Clear History and Website Data**, open the MediaWall URL in Safari, refresh it, then add it to the Home Screen again.
 
@@ -14,7 +14,7 @@ Different devices handle motion differently. On older devices such as a 2017 iPa
 
 Open your MediaWall space in Chrome, open the browser menu, then choose **Add to Home screen** or **Install app** if Chrome offers it. If sounds are enabled, tap the screen once after opening so the browser allows audio playback.
 
-On devices with a keyboard or touch display, use the shortcuts in the Controls section above.
+On devices with a keyboard or touch display, use the [keyboard shortcuts](controls.md#keyboard-shortcuts).
 
 ### Raspberry Pi
 

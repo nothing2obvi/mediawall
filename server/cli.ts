@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline/promises";
+import { libraryWarning } from "./artist-library.js";
 import { cacheWarning } from "./artwork-cache.js";
 import { loadConfig } from "./config.js";
 
@@ -7,6 +8,7 @@ const backdropAnimations = ["breathe", "pan", "kenburns", "drift", "focus", "zoo
 const usage = [
   "Usage:",
   "  npm run mediawall -- clear cache [--yes]",
+  "  npm run mediawall -- clear library-images [--yes]",
   "  npm run mediawall -- animation <animation_name> on <space>",
   "  npm run mediawall -- animation <animation_name> --random on <space>",
   "  npm run mediawall -- animation all on <space>",
@@ -27,8 +29,9 @@ type CommandType = "sound" | "mediawall" | "animation" | "user_transition";
 
 async function main() {
   const args = process.argv.slice(2);
-  if (args[0] === "clear" && args[1] === "cache") {
-    console.warn(cacheWarning);
+  if (args[0] === "clear" && ["cache", "library-images"].includes(args[1])) {
+    const library = args[1] === "library-images";
+    console.warn(library ? libraryWarning : cacheWarning);
     if (!args.includes("--yes")) {
       if (!process.stdin.isTTY) throw new Error("Confirmation required: use an interactive terminal or --yes");
       const prompt = createInterface({ input: process.stdin, output: process.stdout });
@@ -38,12 +41,12 @@ async function main() {
     const config = loadConfig();
     const entry = Object.entries(config.spaces)[0];
     if (!entry) throw new Error("No configured space");
-    const url = new URL(`/api/space/${encodeURIComponent(entry[0])}/clear-cache`, `http://127.0.0.1:${process.env.PORT ?? config.server.port}`);
+    const url = new URL(`/api/space/${encodeURIComponent(entry[0])}/clear-${library ? "library-images" : "cache"}`, `http://127.0.0.1:${process.env.PORT ?? config.server.port}`);
     if (entry[1].password) url.searchParams.set("password", entry[1].password);
-    const response = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({confirm: "clear-mediawall-artwork-cache"})});
+    const response = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({confirm: library ? "clear-mediawall-library-images" : "clear-mediawall-artwork-cache"})});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error ?? "Cache clearing failed");
-    console.log(`Artwork cache cleared: ${result.removed} cache files removed.`); return;
+    console.log(`${library ? "Library images" : "Artwork cache"} cleared: ${result.removed} files removed.`); return;
   }
   const parsed = parseArgs(args);
   if (!parsed.ok) {

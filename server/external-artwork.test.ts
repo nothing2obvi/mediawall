@@ -39,13 +39,14 @@ function state(overrides: Partial<NowPlayingState> = {}): NowPlayingState {
 
 function config(root: string, preference: "local" | "fetched", backdropCount = 3): AppConfig {
   const value = loadConfig();
+  value.library.directory = path.join(root,"library");
   value.external_music.artwork = {
     preference,
     minimum_backdrop_width: 1920,
     minimum_backdrop_height: 1080,
     backdrop_count: backdropCount,
-    cache_directory: root,
-    cache_ttl_days: 30
+    album_cache_directory: root,
+    album_cache_ttl_days: 30
   };
   value.image_providers = {
     musicbrainz: { enabled: false, contact: "" },

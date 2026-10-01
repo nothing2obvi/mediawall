@@ -15,6 +15,7 @@ services:
     volumes:
       - ./config.yml:/app/config.yml:ro
       - ./data:/app/data
+      - ./library:/library
       - ./app/sounds:/app/sounds:ro
       - ./app/custom_logo:/app/custom_logo:ro
       - ./app/collections:/app/collections:ro
@@ -25,7 +26,7 @@ services:
 Then:
 
 1. Copy `.env.example` to `.env`.
-2. Fill in Jellyfin and/or Navidrome connection values.
+2. Fill in Jellyfin and/or Navidrome connection values, or follow [External Music](external-music.md) for Multi-Scrobbler.
 3. Edit `config.yml` for your spaces and libraries.
 4. Start the app:
 
@@ -55,5 +56,5 @@ http://localhost:1221/livingroom-remote
 
 The remote follows the same password rule as the space, so a protected remote uses the same `?password=` value.
 
-Interactive state is stored in `data/state.json`. Image cache data is stored under the configured library scan directory, which defaults to `/app/data/grid-cache` inside the container.
+Keep `./data` and `./library` between upgrades. `data/state.json` holds your display choices, `/app/data/grid-cache` holds cached images, and `/library/Artists` holds your [Library images](external-music-images.md).
 

@@ -210,6 +210,7 @@ export type BackdropAnimation =
   | "zoom";
 
 export interface AppConfig {
+  library: { directory: string };
   server: {
     port: number;
   };
@@ -246,8 +247,8 @@ export interface AppConfig {
       minimum_backdrop_width: number;
       minimum_backdrop_height: number;
       backdrop_count: number;
-      cache_directory: string;
-      cache_ttl_days: number;
+      album_cache_directory: string;
+      album_cache_ttl_days: number;
     };
     tokens: Record<string, {
       user: string;
@@ -385,7 +386,7 @@ export interface PublicSoundSession {
 export interface PublicLibraryScanProgress {
   active: boolean;
   completed: boolean;
-  source: "jellyfin" | "navidrome" | "sounds" | "custom_images";
+  source: "jellyfin" | "navidrome" | "sounds" | "custom_images" | "library";
   currentLibrary?: string;
   percent: number;
   scanned: number;
@@ -471,6 +472,7 @@ export interface DisplayState {
 }
 
 export interface DisplaySnapshot {
+  libraryRevision?: number;
   cacheCleared?: { id: string; at: number };
   profile: string;
   display: string;

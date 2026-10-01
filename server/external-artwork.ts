@@ -1,3 +1,5 @@
+import { ArtistLibrary } from "./artist-library.js";
+import os from "node:os";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -43,6 +45,14 @@ type ImageCandidate = { url: string; provider: string; score: number; language?:
 
 export class ExternalArtworkResolver {
   private readonly root: string;
+  readonly library: ArtistLibrary;
+  readonly ready: Promise<void>;
+  private clearing?: Promise<number>;
+  async clearLibraryImages() {
+    if(this.clearing)return this.clearing;
+    this.clearing=this.library.clear();
+    try{return await this.clearing;}finally{this.clearing=undefined;}
+  }
   private readonly inFlight = new Map<string, Promise<unknown>>();
   private lastMusicBrainzRequestAt = 0;
   private imageProviders = new Map<string, string>();
@@ -50,12 +60,13 @@ export class ExternalArtworkResolver {
 
   imageSource(url?: string): string {
     if (!url) return "none";
-    const provider = this.imageProviders.get(url);
-    if (provider) return `Image provider (${provider}; MediaWall cache)`;
+    const provider = this.imageProviders.get(url.split("?")[0]);
+    if (provider) return `${url.startsWith("/api/external-artwork/artists/") ? "MediaWall Library" : "Album cache"} (${provider})`;
     if (url.startsWith("/api/jellyfin/")) return "Jellyfin";
     if (url.startsWith("/api/navidrome/local-")) return "local files";
     if (url.startsWith("/api/navidrome/")) return "Navidrome";
-    if (url.startsWith("/api/external-artwork/")) return "Image provider (MediaWall cache; provider unknown)";
+    if (url.startsWith("/api/external-artwork/artists/")) return "MediaWall Library (manually added or provider unknown)";
+    if (url.startsWith("/api/external-artwork/")) return "Album cache (provider unknown)";
     if (url.startsWith("/")) return "MediaWall local asset";
     try { return `external image host (${new URL(url).hostname})`; }
     catch { return "unknown"; }
@@ -82,11 +93,18 @@ export class ExternalArtworkResolver {
     private readonly navidrome: NavidromeClient,
     appRoot: string
   ) {
-    const configured = config.external_music.artwork.cache_directory;
+    const configured = config.external_music.artwork.album_cache_directory;
     this.root = path.resolve(path.isAbsolute(configured) ? configured : path.join(appRoot, configured));
+    this.library = new ArtistLibrary(path.resolve(appRoot, config.library.directory));
+    this.ready = this.library.scan().then(async () => {
+      await this.library.migrate(this.root);
+      await this.library.scan();
+    });
   }
 
   async resolveExternal(state: NowPlayingState) {
+    await this.ready;
+    if(this.clearing)await this.clearing;
     const artworkArtist = artworkArtistFor(state);
     if (!artworkArtist) return state;
     const lookupArtists = artistLookupNames(artworkArtist, this.config.aliases.artists);
@@ -110,6 +128,8 @@ export class ExternalArtworkResolver {
   }
 
   async resolveNavidrome(state: NowPlayingState) {
+    await this.ready;
+    if(this.clearing)await this.clearing;
     const artworkArtist = artworkArtistFor(state);
     if (!artworkArtist) return state;
     const lookupArtists = artistLookupNames(artworkArtist, this.config.aliases.artists);
@@ -135,6 +155,8 @@ export class ExternalArtworkResolver {
 
   assetPath(scope: string, key: string, filename: string) {
     if (!safeSegment(scope) || !safeSegment(key) || !safeSegment(filename)) return undefined;
+    if (scope === "artists") return this.library.asset(key, filename);
+    if (scope !== "albums") return undefined;
     const directory = path.resolve(this.root, scope, key);
     const candidate = path.resolve(directory, filename);
     if (!candidate.startsWith(`${directory}${path.sep}`)) return undefined;
@@ -156,11 +178,23 @@ export class ExternalArtworkResolver {
     }));
   }
 
+  get libraryBusy() { return this.library.busy; }
+
+  async libraryItems() {
+    await this.ready;
+    const items = [];
+    for (const key of this.library.keys()) {
+      const artwork = await this.editorArtwork(key);
+      if (artwork?.backdropUrl || artwork?.logoUrl) items.push({id:key, name:artwork.title ?? "Artist", type:"MusicArtist", artwork, thumbUrl:artwork.thumbUrl ?? artwork.logoUrl});
+    }
+    return items.sort((a,b)=>a.name.localeCompare(b.name));
+  }
+
   private async resolveLocalArtist(artists: string[]) {
     let artwork: ArtworkRef | undefined;
     for (const artist of artists) {
-      const candidate = await this.jellyfin.artworkForArtistName(artist).catch(() => undefined)
-        ?? this.navidrome.localArtistArtworks(artist)[0];
+      const candidate = (this.config.navidrome.artwork.jellyfin_fallback ? await this.jellyfin.artworkForArtistName(artist).catch(() => undefined) : undefined)
+        ?? (this.config.navidrome.artwork.local_files ? this.navidrome.localArtistArtworks(artist)[0] : undefined);
       artwork = mergeArtwork(artwork, candidate);
       if (artwork?.backdropUrl && artwork.logoUrl) break;
     }
@@ -231,17 +265,20 @@ export class ExternalArtworkResolver {
       externalIds?.artistMbids,
       nested(externalIds, "rawMbidMapping", "artist_mbids")
     );
-    const key = cacheKey(suppliedMbid ?? artist);
+    await this.ready;
+    const found = await this.library.find(artist);
+    const key = found?.key ?? cacheKey(suppliedMbid ?? artist);
+    await this.library.ensure(artist, key);
     const configuration = this.artistCacheConfiguration();
     const cache = await this.readFreshCache<ArtistCache>("artists", key, configuration);
     if (cache) {
       const artwork = this.artistArtwork(key, cache);
-      this.logSelection(`cache:artists:${key}`, `artist=${JSON.stringify(artist)}`, artwork, undefined, "fresh provider cache reused; downloaded=0");
+      this.logSelection(`cache:artists:${key}`, `artist=${JSON.stringify(artist)}`, artwork, undefined, "MediaWall Library images reused; downloaded=0");
       return artwork;
     }
     const pendingKey = `artist:${key}`;
     const existing = this.inFlight.get(pendingKey) as Promise<ArtistCache> | undefined;
-    const pending = existing ?? this.fetchArtist(artist, suppliedMbid, key);
+    const pending = existing ?? this.library.mutation(()=>this.fetchArtist(artist, suppliedMbid, key));
     if (!existing) this.trackPending(pendingKey, pending);
     return this.artistArtwork(key, await pending);
   }
@@ -288,7 +325,12 @@ export class ExternalArtworkResolver {
 
   async editorCache(key: string): Promise<ArtistCache> {
     if (!/^[a-f0-9]{24}$/.test(key)) throw new Error("Invalid artwork key");
-    return JSON.parse(await fsp.readFile(path.join(this.root, "artists", key, "metadata.json"), "utf8"));
+    await this.ready;
+    const record=await this.library.read(key);
+    for(const image of [record.logo,...record.backdrops]) {
+      if(!image)continue;const file=this.library.asset(key,image.file);if(file)Object.assign(image,imageDimensions(await fsp.readFile(file)));
+    }
+    return record;
   }
 
   async editorArtwork(key: string) { return this.artistArtwork(key, await this.editorCache(key)); }
@@ -296,21 +338,33 @@ export class ExternalArtworkResolver {
   async editorSave(key: string, cache: ArtistCache) {
     cache.edited = true;
     cache.resolvedAt = Date.now();
-    await this.writeCache(await this.cacheDirectory("artists", key), cache);
+    await this.library.save(key, cache);
+  }
+
+  async downloadForLocal(candidate: ImageCandidate,type:"Logo"|"Backdrop") {
+    const dir=await fsp.mkdtemp(path.join(os.tmpdir(),"mediawall-image-"));
+    try {
+      const image=await this.downloadImage(candidate,dir,"image",type==="Backdrop");
+      if(!image)throw new Error("Image download rejected; check artwork logs");
+      return {buffer:await fsp.readFile(path.join(dir,image.file)),mime:"image/"+path.extname(image.file).slice(1),extension:path.extname(image.file).slice(1),width:image.width ?? 0,height:image.height ?? 0};
+    } finally {await fsp.rm(dir,{recursive:true,force:true});}
   }
 
   async editorDownload(key: string, candidate: ImageCandidate, type: "Logo" | "Backdrop") {
     if (!/^[a-f0-9]{24}$/.test(key)) throw new Error("Invalid artwork key");
     const image = await this.downloadImage(candidate, await this.cacheDirectory("artists", key),
-      `${type.toLowerCase()}-${crypto.randomUUID()}`, type === "Backdrop");
+      await this.library.nextName(key, type), type === "Backdrop");
     if (!image) throw new Error("Image download rejected; check artwork logs for the reason");
     return image;
   }
 
   async editorStoreUpload(key: string, type: "Logo" | "Backdrop", image: {buffer: Buffer; extension: string; width: number; height: number}) {
     if (!/^[a-f0-9]{24}$/.test(key) || !["png", "jpg", "webp", "gif"].includes(image.extension)) throw new Error("Invalid artwork upload");
-    const file = `${type.toLowerCase()}-${crypto.randomUUID()}.${image.extension}`;
-    await fsp.writeFile(path.join(await this.cacheDirectory("artists", key), file), image.buffer, {flag: "wx"});
+    const file = `${await this.library.nextName(key, type)}.${image.extension}`;
+    const dir=await this.cacheDirectory("artists",key);
+    const temp=path.join(dir,`.upload-${crypto.randomUUID()}.tmp`);
+    await fsp.writeFile(temp,image.buffer,{flag:"wx"});
+    await fsp.rename(temp,path.join(dir,file));
     return {file, provider: "Upload", sourceUrl: "upload", width: image.width, height: image.height};
   }
 
@@ -320,7 +374,7 @@ export class ExternalArtworkResolver {
   }
 
   private async editedArtist(artists: string[]) {
-    const entries = await fsp.readdir(path.join(this.root, "artists")).catch(() => []);
+    const entries = this.library.keys();
     for (const key of entries) {
       if (!/^[a-f0-9]{24}$/.test(key)) continue;
       const cache = await this.editorCache(key).catch(() => undefined);
@@ -330,17 +384,18 @@ export class ExternalArtworkResolver {
   }
 
   private async fetchArtist(artist: string, suppliedMbid: string | undefined, key: string): Promise<ArtistCache> {
-    logger.info(`Artwork lookup artist=${JSON.stringify(artist)} reason=no fresh matching cache; fanart.tv=${!this.config.image_providers.fanart.enabled ? "disabled" : !this.config.image_providers.fanart.api_key ? "missing credential" : "enabled"} TheAudioDB=${!this.config.image_providers.theaudiodb.enabled ? "disabled" : !this.config.image_providers.theaudiodb.api_key ? "missing credential" : "enabled"}`);
+    logger.info(`Artwork lookup artist=${JSON.stringify(artist)} reason=no Library images found; fanart.tv=${!this.config.image_providers.fanart.enabled ? "disabled" : !this.config.image_providers.fanart.api_key ? "missing credential" : "enabled"} TheAudioDB=${!this.config.image_providers.theaudiodb.enabled ? "disabled" : !this.config.image_providers.theaudiodb.api_key ? "missing credential" : "enabled"}`);
     const artistMbid = suppliedMbid ?? await this.resolveArtistMbid(artist);
     if (!artistMbid) logger.info(`Artwork lookup artist=${JSON.stringify(artist)} fanart.tv skipped: no MusicBrainz artist ID`);
     const { logos, backdrops, providers } = await this.artistCandidates(artist, artistMbid);
 
     const directory = await this.cacheDirectory("artists", key);
-    const logo = await this.downloadFirst(logos, directory, "logo", false);
-    const backdropResults: CachedImage[] = [];
-    for (const candidate of uniqueCandidates(backdrops)) {
+    const current = await this.library.read(key);
+    const logo = current.logo ?? await this.downloadFirst(logos, directory, "logo", false);
+    const backdropResults: CachedImage[] = [...current.backdrops];
+    for (const candidate of (current.backdrops.length ? [] : uniqueCandidates(backdrops))) {
       if (backdropResults.length >= this.config.external_music.artwork.backdrop_count) break;
-      const image = await this.downloadImage(candidate, directory, `backdrop-${backdropResults.length}`, true).catch(() => undefined);
+      const image = await this.downloadImage(candidate, directory, backdropResults.length ? `backdrop${backdropResults.length}` : "backdrop", true).catch(() => undefined);
       if (image) backdropResults.push(image);
     }
     const result: ArtistCache = {
@@ -353,7 +408,7 @@ export class ExternalArtworkResolver {
       logo,
       backdrops: backdropResults
     };
-    await this.writeCache(directory, result);
+    await this.library.save(key, result);
     logger.info(`Artwork download summary artist=${JSON.stringify(artist)} providers_with_results=${[...providers].join(",") || "none"} saved=${backdropResults.length + Number(Boolean(logo))} logo=${logo?.provider ?? "none"} backdrops=${backdropResults.length}/${this.config.external_music.artwork.backdrop_count} backdrop_providers=${backdropResults.map(i => i.provider).join(",") || "none"} candidates=${uniqueCandidates(logos).length + uniqueCandidates(backdrops).length} reason=${backdropResults.length >= this.config.external_music.artwork.backdrop_count ? "configured backdrop limit reached" : "available candidates exhausted; see rejection logs"}`);
     return result;
   }
@@ -361,6 +416,11 @@ export class ExternalArtworkResolver {
   private artistArtwork(key: string, cache: ArtistCache): ArtworkRef | undefined {
     for (const image of cache.backdrops) this.rememberImage("artists", key, image);
     this.rememberImage("artists", key, cache.logo);
+    const url = (image: CachedImage) => {
+      const file=this.library.asset(key,image.file);
+      const stat=file ? fs.statSync(file) : undefined;
+      return fetchedUrl("artists",key,image.file)+(stat ? `?v=${stat.mtimeMs}-${stat.size}` : "");
+    };
     const backdrop = cache.backdrops[0];
     if (!backdrop && !cache.logo && !cache.edited) return undefined;
     return {
@@ -371,9 +431,9 @@ export class ExternalArtworkResolver {
       mediaType: "MusicArtist",
       imageType: backdrop ? "Backdrop" : "Primary",
       imageIndex: 0,
-      backdropUrl: backdrop ? fetchedUrl("artists", key, backdrop.file) : undefined,
-      thumbUrl: backdrop ? fetchedUrl("artists", key, backdrop.file) : undefined,
-      logoUrl: cache.logo ? fetchedUrl("artists", key, cache.logo.file) : undefined,
+      backdropUrl: backdrop ? url(backdrop) : undefined,
+      thumbUrl: backdrop ? url(backdrop) : undefined,
+      logoUrl: cache.logo ? url(cache.logo) : undefined,
       backdropCount: cache.backdrops.length,
       backdropTags: cache.backdrops.map((image) => image.file),
       logoTag: cache.logo?.file,
@@ -406,7 +466,7 @@ export class ExternalArtworkResolver {
   }
 
   private async fetchAlbum(artist: string, album: string, suppliedReleaseMbid: string | undefined, key: string): Promise<AlbumCache> {
-    logger.info(`Album artwork lookup artist=${JSON.stringify(artist)} album=${JSON.stringify(album)} reason=no fresh matching cache; Cover Art Archive=${this.config.image_providers.cover_art_archive.enabled ? "enabled" : "disabled"} TheAudioDB=${!this.config.image_providers.theaudiodb.enabled ? "disabled" : !this.config.image_providers.theaudiodb.api_key ? "missing credential" : "enabled"}`);
+    logger.info(`Album artwork lookup artist=${JSON.stringify(artist)} album=${JSON.stringify(album)} reason=no Library images found; Cover Art Archive=${this.config.image_providers.cover_art_archive.enabled ? "enabled" : "disabled"} TheAudioDB=${!this.config.image_providers.theaudiodb.enabled ? "disabled" : !this.config.image_providers.theaudiodb.api_key ? "missing credential" : "enabled"}`);
     const releaseMbid = suppliedReleaseMbid ?? await this.resolveReleaseMbid(artist, album);
     if (!releaseMbid) logger.info("Album artwork: Cover Art Archive skipped: no MusicBrainz release ID");
     const candidates: ImageCandidate[] = [];
@@ -529,8 +589,10 @@ export class ExternalArtworkResolver {
       const extension = imageExtension(response.headers.get("content-type"), url.pathname, buffer);
       if (!extension) return reject("unsupported image format");
       const file = `${base}.${extension}`;
-      await fsp.writeFile(path.join(directory, file), buffer);
-      logger.info(`Artwork downloaded provider=${candidate.provider} kind=${backdrop ? "backdrop" : base} saved=1 bytes=${buffer.length} dimensions=${dimensions ? `${dimensions.width}x${dimensions.height}` : "unknown"} reason=usable candidate selected for cache`);
+      const temp=path.join(directory,`.download-${crypto.randomUUID()}.tmp`);
+      await fsp.writeFile(temp,buffer,{flag:"wx"});
+      await fsp.rename(temp,path.join(directory,file));
+      logger.info(`Artwork downloaded provider=${candidate.provider} kind=${backdrop ? "backdrop" : base} saved=1 bytes=${buffer.length} dimensions=${dimensions ? `${dimensions.width}x${dimensions.height}` : "unknown"} reason=usable candidate selected for storage`);
       return { file, provider: candidate.provider, sourceUrl: candidate.url, ...dimensions };
     } catch (error) {
       return reject(error instanceof Error ? error.name : "download or cache write failed");
@@ -570,10 +632,15 @@ export class ExternalArtworkResolver {
     key: string,
     configuration: string
   ): Promise<T | undefined> {
+    if (scope === "artists") {
+      const record = await this.library.read(key).catch(() => undefined);
+      if (record && (record.edited || record.logo || record.backdrops.length || (record.configuration === configuration && Date.now() - record.resolvedAt < 3600000))) return record as unknown as T;
+      return undefined;
+    }
     const file = path.join(this.root, scope, key, "metadata.json");
     try {
       const cache = JSON.parse(await fsp.readFile(file, "utf8")) as T;
-      const ttl = this.config.external_music.artwork.cache_ttl_days * 86_400_000;
+      const ttl = this.config.external_music.artwork.album_cache_ttl_days * 86_400_000;
       return cache.edited || (cache.configuration === configuration && Date.now() - cache.resolvedAt <= ttl) ? cache : undefined;
     } catch {
       return undefined;
@@ -581,6 +648,7 @@ export class ExternalArtworkResolver {
   }
 
   private async cacheDirectory(scope: string, key: string) {
+    if (scope === "artists") return this.library.directory(key);
     const directory = path.join(this.root, scope, key);
     await fsp.mkdir(directory, { recursive: true });
     return directory;

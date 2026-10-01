@@ -1,6 +1,6 @@
 # Configuration
 
-MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWall applies the defaults listed below through its config schema. Secrets should live in `.env` and be referenced from `config.yml` with `${ENV_VAR}`.
+MediaWall reads `config.yml` when it starts. Leave out optional settings to use the defaults below. Keep secrets in `.env` and reference them with `${ENV_VAR}`.
 
 ## Sections
 
@@ -8,12 +8,13 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 | --- | --- |
 | `server` | HTTP listener settings. |
 | Environment variables | Runtime values such as credentials, passwords, and log level. |
-| `library_scan` | Startup and scheduled image-cache warming for grid/backdrop artwork. |
+| `library` | Folder for MediaWall artist images. |
+| `library_scan` | Startup and scheduled artwork scans. |
 | `jellyfin` | Jellyfin connection used for playback sessions, users, libraries, and artwork. |
 | `navidrome` | Navidrome connection and artwork fallback/local-file behavior. |
 | `external_music` | ListenBrainz-compatible receiver settings for external music bridges such as Multi-Scrobbler. |
-| `image_providers` | MediaWall-owned metadata and artwork provider settings. |
-| `aliases` | Bidirectional lookup aliases for music artist artwork. |
+| `image_providers` | Settings for MediaWall’s image providers. |
+| `aliases` | Alternate artist names used to find artwork. |
 | `users` | MediaWall users that map Jellyfin and/or Navidrome accounts together. |
 | `spaces` | Display routes such as `/livingroom`, each with its own users, libraries, Now Playing behavior, and display settings. |
 
@@ -22,7 +23,6 @@ MediaWall reads `config.yml` at startup. Optional values may be omitted; MediaWa
 ### Environment Variables
 
 Put secrets in `.env` and reference them from `config.yml` using `${VARIABLE_NAME}`. Compose loads `.env` through `env_file`; recreate the container after changes. Variable names for external tokens are chosen by you and must match the YAML reference. For one or multiple music users, follow [External Music](external-music.md).
-
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
@@ -36,13 +36,21 @@ Put secrets in `.env` and reference them from `config.yml` using `${VARIABLE_NAM
 | --- | --- | --- | --- | --- |
 | `port` | Port MediaWall listens on. | `1221` | No | Docker compose should publish the same port. |
 
+### Library
+
+| Setting | Purpose | Default | Required | Notes |
+| --- | --- | --- | --- | --- |
+| `directory` | Root folder for MediaWall Library images. | `/library` | No | Mount `./library:/library` with write access. Artist images live in `Artists` inside it. |
+
+Library images are scanned at startup and when files change. Scheduled scans also include them. These images don't expire, and `clear cache` doesn't remove them. See [External Music Images](external-music-images.md).
+
 ### Library Scan
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `enabled` | Enables image-cache warming. | `true` | No | Applies to Jellyfin and Navidrome/local artwork used by the grid, plus local sound/custom logo discovery progress. |
+| `enabled` | Enables scheduled artwork scans and preloads cached images. | `true` | No | Includes Jellyfin, Navidrome/local artwork, and Library. Library file-change detection still works when this is off. |
 | `directory` | Cache directory. | `/app/data/grid-cache` | No | Mount `/app/data` to persist it. |
-| `ttl_days` | Cache freshness window. | `30` | No | Stale cached images are refreshed by scans. |
+| `ttl_days` | How long cached images stay fresh. | `30` | No | Stale cached images are refreshed by scans. |
 | `scan_on_startup` | Runs a scan after startup. | `true` | No | Useful after container restarts. |
 | `cron.enabled` | Enables scheduled scans. | `true` | No | Uses a standard five-field cron expression. |
 | `cron.expression` | Scan schedule. | `0 3 * * *` | No | Local container/system time. |
@@ -74,16 +82,16 @@ Put secrets in `.env` and reference them from `config.yml` using `${VARIABLE_NAM
 | `enabled` | Enables the ListenBrainz-compatible receiver. | `false` | No | Multi-Scrobbler should use the base URL `/apis/listenbrainz`; it appends `/1/submit-listens`. |
 | `track_transition_grace_seconds` | Extra time to retain the current external track while waiting for the next update. | `10` | No | Range: `0`–`60` seconds. Avoids brief fallback between tracks. A new track replaces the old one immediately for the same user/service. Stopping playback also delays fallback by this amount, plus the space's missing-session grace. |
 | `session_timeout_seconds` | Minimum lifetime for a received `playing_now` event. | `90` | No | Minimum: `5`. If a track duration is supplied, the longer of this timeout and the track duration (capped at 12 hours) is used, plus transition grace. A later update refreshes or replaces it. |
-| `artwork.preference` | Orders local-library (Jellyfin or local files) and independently fetched artwork. | `local` | No | Options: `local`, `fetched`. Lower-priority artwork fills missing pieces. |
-| `artwork.minimum_backdrop_resolution` | Minimum accepted fetched backdrop dimensions. | `1920x1080` | No | This filters candidates; images are not resized down to this value. |
-| `artwork.backdrop_count` | Maximum fetched artist backdrops retained. | `3` | No | Fewer qualifying images are accepted when that is all providers return. |
-| `artwork.cache_directory` | MediaWall-owned fetched artwork cache. | `/app/data/external-artwork` | No | Keep `/app/data` persistent. Remove this directory to clear the cache manually. |
-| `artwork.cache_ttl_days` | Time before provider metadata may be refreshed. | `30` | No | Successful and empty results are cached. |
+| `artwork.preference` | Chooses whether to prefer Jellyfin/local or Library/provider artwork. | `local` | No | Options: `local`, `fetched`. Other sources fill missing artwork. Jellyfin/local lookups follow the `navidrome.artwork.jellyfin_fallback` and `local_files` switches. |
+| `artwork.minimum_backdrop_resolution` | Minimum accepted fetched backdrop dimensions. | `1920x1080` | No | This filters candidates; images are not resized to this value. |
+| `artwork.backdrop_count` | Maximum backdrops downloaded for a new artist. | `3` | No | Providers may return fewer usable images. Doesn’t limit images you add yourself. |
+| `artwork.album_cache_directory` | Album-cover cache and old artist-cache migration source. | `/app/data/external-artwork` | No | Keep `/app/data` persistent. Replaces `cache_directory`; artist images now live under `library.directory`. |
+| `artwork.album_cache_ttl_days` | How long album-cover results stay fresh. | `30` | No | Replaces `cache_ttl_days`. Artist Library images don’t expire. |
 | `tokens` | Alternative to each user's `external_music_token` setting. | `{}` | Only when not using per-user tokens | Keys reference secrets from `.env`; values identify users, optionally with a fixed `source`. Prefer the step-by-step per-user setup in [External Music](external-music.md). Do not configure both methods for the same token. |
 
-Only `playing_now` submissions create active sessions. Standard ListenBrainz fields and compatible `additional_info` extensions are retained where useful, including track artists, album artist, duration, music service, artwork URL, MusicBrainz IDs, and provider IDs.
+External sources must send live `playing_now` updates. Playback history alone won’t appear as Now Playing.
 
-Spotify avatars may be placed at `app/avatars/spotify/<username>.png`, `.jpg`, `.jpeg`, or `.webp`. MediaWall uses that file first, then a same-user Jellyfin avatar, then the normal no-avatar fallback. Source images are rendered with a centered circular cover crop and are not modified.
+Spotify avatars may be placed at `app/avatars/spotify/<username>.png`, `.jpg`, `.jpeg`, or `.webp`. MediaWall uses that file first, then a same-user Jellyfin avatar, then the normal no-avatar fallback. Avatars appear as circles; the original files aren’t changed.
 
 ### Image Providers
 
@@ -99,7 +107,7 @@ Spotify avatars may be placed at `app/avatars/spotify/<username>.png`, `.jpg`, `
 
 ### Artist Aliases
 
-`aliases.artists` maps an artist name to one or more alternate artwork lookup names. Matching ignores surrounding whitespace and case while preserving Unicode names. Relationships are automatically bidirectional and safely de-duplicated, including chained or cyclic entries. Aliases apply to Jellyfin, Navidrome/local, and fetched artist and album artwork lookup only; MediaWall continues to display the originally encountered artist name.
+Use `aliases.artists` when an artist has alternate names or spellings. Aliases work in both directions, ignore case and surrounding spaces, and support Unicode. They apply to artwork searches across Jellyfin, local files, Library, and providers. The displayed artist name stays unchanged.
 
 ```yaml
 aliases:
@@ -157,8 +165,8 @@ spaces:
 | `fallback_shuffle_interval_seconds` | Idle fallback shuffle interval. | `45` | No | Used only when fallback is `shuffle`. |
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
 | `cycle_interval_seconds` | Now Playing session cycle interval. | `15` | No | Used for natural session cycling and the timer ring. |
-| `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `15` | No | The timer begins when MediaWall observes a paused state. Jellyfin and Navidrome playheads are checked for legitimate progress; Jellyfin repeatedly cycling through the same 2–5 seconds counts as stalled. Removal may take up to one additional client poll. |
-| `session_cleanup.missing_after_seconds` | Keeps a recently active session visible across brief empty API polls. | `5` | No | Prevents flicker to the fallback screen between tracks or episodes. Set to `0` to disable for ordinary sessions. Missing Live TV channels instead use a fixed, non-configurable 15-second grace period from the first missing poll; fresh active playback takes over immediately. |
+| `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `15` | No | Also handles Jellyfin sessions stuck repeating the same few seconds. Updates may take a little longer than this setting. |
+| `session_cleanup.missing_after_seconds` | Keeps sessions visible through short playback gaps. | `5` | No | Prevents flicker to the fallback screen between tracks or episodes. Set to `0` to disable for ordinary sessions. Live TV uses its own short delay to allow channel changes. |
 | `session_timer.enabled` | Shows the countdown ring. | `true` | No | Only meaningful when multiple active sessions are cycling. |
 | `session_timer.size` | Countdown ring diameter. | `42` | No | Pixels. |
 | `session_count.enabled` | Shows `1 of 4` session count. | `true` | No | Independent from the timer ring. |
@@ -198,7 +206,7 @@ spaces:
 | `collections.groups.user_transition_image` | Image shown during the user transition for this collection group. | unset | No | Filename from `/app/collections`. |
 | `collections.groups.image_size` | Group collection transition image size. | `260` | No | Pixels, constrained responsively. |
 
-Collection matching is precomputed as part of the existing Jellyfin library scan and saved in the disk-backed SQLite index `/app/data/grid-cache/jellyfin-collection-index.sqlite`. MediaWall queries this indexed file directly for session lookups; it does not retain the full mapping in memory or query Jellyfin for collection membership when playback starts. The index is rebuilt from scratch only during an enabled startup scan or scheduled Jellyfin scan. Each successful build atomically replaces the prior index, so removed items, memberships, collections, and rules disappear on the next scan. If a rebuild fails, MediaWall keeps the last known-good index. Changes remain intentionally stale until the next configured scan.
+Collection rules and memberships update during startup and scheduled Jellyfin scans. Changes won’t take effect until the next scan. If a scan fails, MediaWall keeps the previous results.
 
 For one collection, the first eligible group in written config order wins. If an item belongs to several matching collections, the alphabetically first matching collection supplies the session-start sound. Every matching collection contributes its configured transition image, shown in alphabetical collection order at its configured size. Duplicate references to the same image and size are shown once.
 
@@ -224,9 +232,9 @@ For one collection, the first eligible group in written config order wins. If an
 
 **Browser sound note:** most browsers will not allow MediaWall to play audible sounds until the page has received at least one click, tap, or keypress after loading. This is a browser autoplay restriction, not a MediaWall setting.
 
-Session-start sound events are tied to the server runtime's first presentation of a session. Refreshing or reopening a browser doesn't create another sound event. Restarting the MediaWall server clears this temporary runtime history, so an already-active non-continuous session may sound when first presented again. Browser permission and local mute remain device-specific.
+Refreshing the display doesn’t replay a session-start sound. Restarting MediaWall may play it again for an active session. Browser audio permission and mute settings apply separately to each device.
 
-**Testing sound note:** if you keep testing with the same media item, MediaWall may not play the tone every time. Duplicate session detection and the inactive cooldown are meant to prevent reconnects, brief pauses, and track changes inside continuous sessions from repeatedly triggering sounds.
+**Testing sound note:** if you keep testing with the same media item, MediaWall may not play the tone every time. Brief pauses, reconnects, and track changes within continuous sessions don’t normally trigger another sound.
 
 For custom audio, normalize files before adding them. The bundled sounds use MP3 at 44.1 kHz stereo, 128 kbps, with loudness normalized around `I=-18`, `TP=-1.5`, `LRA=11`. One ffmpeg example:
 
@@ -238,7 +246,7 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `ui.scale` | Scales app UI chrome. | `0.85` | No | Applies to controls, dialogs, grid cards, and toast notifications. v0.2 uses a more compact default while preserving touch targets. |
+| `ui.scale` | Scales the interface. | `0.85` | No | Applies to controls, dialogs, grid cards, and toast notifications. Buttons stay large enough to tap. |
 | `music_artist_images` | Music artist role filter. | `albumartists` | No | Options: `artists`, `albumartists`, `both`. |
 | `music_logo_artist` | Music logo and fallback text artist credit. | `artists` | No | Options: `artists`, `albumartist`. `music_artist_images` controls which artist artwork/backdrops are selected; this setting controls whether the visible logo/text follows the track's credited artists or the album artist. |
 | `cycle_interval_seconds` | Wallpaper/Screensaver cycle interval. | `15` | No | When shuffle is off, items go library-by-library and alphabetically. |
@@ -295,7 +303,7 @@ display:
 | `icon_size` | Source icon size. | `24` | No | Pixels. |
 | `show_user_avatar` | Shows Jellyfin avatar. | `false` | No | Navidrome does not provide avatars. |
 | `user_avatar_size` | Jellyfin avatar size. | `24` | No | Pixels. |
-| `user_avatar_resize.enabled` | Requests resized Jellyfin avatars. | `true` | No | Helpful for animated GIF avatars and older devices such as older iPads. |
+| `user_avatar_resize.enabled` | Downloads smaller Jellyfin avatars. | `true` | No | Helpful for animated GIF avatars and older devices such as older iPads. |
 | `user_avatar_resize.size` | Requested Jellyfin avatar image size. | `96` | No | Pixels. This affects the image fetched from Jellyfin, not the rendered UI size. |
 | `show_jellyfin_username` | Shows Jellyfin username. | `false` | No | Aligns cleanly if avatar/text/icon are disabled. |
 | `show_navidrome_username` | Shows Navidrome username. | `false` | No | Useful because Navidrome has no avatars. |
@@ -331,7 +339,6 @@ display:
 
 For older tablets, `crossfade`, `fade`, and `blur_fade` are usually the safest choices. Directional slide, push, wipe, and zoom transitions can look more dynamic, but may feel heavier on older iPads or low-power kiosk devices.
 
-
 ### Artwork source logging
 
-At the default `info` log level, artwork selection changes identify the backdrop, logo, and album-cover sources separately: Jellyfin, Navidrome, local files, a named image provider, or an external image host. External music logs include the service, artist, track, and configured selection order/preference. Provider downloads log saved image counts, provider names, candidate counts, requested backdrop limits, and rejection reasons (HTTP status, size, dimensions, format, or request failure). Fresh provider-cache reuse explicitly reports `downloaded=0`. MusicBrainz supplies lookup IDs, not images. Repeated unchanged selections are suppressed. Source descriptions omit full remote URLs and credentials.
+At `LOG_LEVEL=info`, logs tell you where backdrops, logos, and album covers came from, including Library and named providers. They also show how many images were downloaded and why candidates were skipped. Reused images report `downloaded=0`. MusicBrainz identifies artists and albums; it doesn’t supply images. Credentials and full remote image URLs aren’t included in source descriptions.

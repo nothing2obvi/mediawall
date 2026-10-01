@@ -47,6 +47,7 @@ const revision = (images: EditorImage[]) => crypto.createHash("sha256").update(J
 export class ImageEditor {
   private sessions = new Map<string, { space: string; target: EditorTarget; candidates: Map<string, EditorImage>; searches: Map<ImageType, EditorImage[]>; touched: number }>();
   private locks = new Set<string>();
+  hasSessions() { return [...this.sessions.values()].some(s=>Date.now()-s.touched<120_000); }
   constructor(private adapters: Record<EditorSource, ImageAdapter>) {}
   async open(space: string, snapshot: DisplaySnapshot) {
     const target = editorTarget(snapshot);
@@ -187,7 +188,7 @@ export class ExternalImageAdapter implements ImageAdapter {
     const old = cache.logo;
     if (image.type === "Logo") cache.logo = downloaded; else cache.backdrops.push(downloaded);
     await this.resolver.editorSave(t.id, cache);
-    if (image.type === "Logo" && old) await this.resolver.editorRemoveFile(t.id, old.file);
+    if (image.type === "Logo" && old && old.file !== downloaded.file) await this.resolver.editorRemoveFile(t.id, old.file);
   }
   async upload(t: EditorTarget, type: ImageType, image: ImageUpload) {
     const cache = await this.resolver.editorCache(t.id);
@@ -195,7 +196,7 @@ export class ExternalImageAdapter implements ImageAdapter {
     const old = cache.logo;
     if (type === "Logo") cache.logo = stored; else cache.backdrops.push(stored);
     await this.resolver.editorSave(t.id, cache);
-    if (type === "Logo" && old) await this.resolver.editorRemoveFile(t.id, old.file);
+    if (type === "Logo" && old && old.file !== stored.file) await this.resolver.editorRemoveFile(t.id, old.file);
   }
   async remove(t: EditorTarget, image: EditorImage) {
     const cache = await this.resolver.editorCache(t.id);
@@ -265,18 +266,10 @@ export class LocalImageAdapter extends ExternalImageAdapter {
     await fs.rename(tmp, file);
   }
   async add(t: EditorTarget, image: EditorImage) {
-    const dir = await this.directory(t);
-    const key = crypto.createHash("sha256").update(t.id).digest("hex").slice(0,24);
-    const downloaded = await this.resolver.editorDownload(key, {url: image.url, provider: image.provider ?? "unknown", score: 0}, image.type);
-    const source = this.resolver.assetPath("artists", key, downloaded.file);
-    if (!source) throw new Error("Downloaded image missing");
-    const backdrops = this.navidrome.localArtistImagePaths(t.id), oldLogo = this.navidrome.localArtistLogoPath(t.id);
-    const target = path.join(dir, downloaded.file);
-    await fs.copyFile(source, target, 1);
-    await this.manifest(t, image.type === "Backdrop" ? [...backdrops, target] : backdrops, image.type === "Logo" ? target : oldLogo);
-    if (image.type === "Logo" && oldLogo) { await this.safe(oldLogo); await fs.unlink(oldLogo); }
-    await this.resolver.editorRemoveFile(key, downloaded.file);
+    const imageData = await this.resolver.downloadForLocal({url:image.url,provider:image.provider ?? "unknown",score:0},image.type);
+    await this.upload(t,image.type,imageData);
   }
+
   async upload(t: EditorTarget, type: ImageType, image: ImageUpload) {
     const dir = await this.directory(t);
     const backdrops = this.navidrome.localArtistImagePaths(t.id), oldLogo = this.navidrome.localArtistLogoPath(t.id);

@@ -9,6 +9,7 @@ services:
     volumes:
       - ./config.yml:/app/config.yml:ro
       - ./data:/app/data
+      - ./library:/library
       - ./app/sounds:/app/sounds:ro
       - ./app/custom_logo:/app/custom_logo:ro
       - ./app/collections:/app/collections:ro

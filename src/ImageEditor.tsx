@@ -162,7 +162,7 @@ export function ImageEditorButton(props: { hidden?: boolean; source?: string; en
       </div>
     </article>;
   }
-  const notice = model && `Edits save immediately to ${model.target.source === "jellyfin" ? "your Jellyfin server" : model.target.source === "local" ? "your local artwork files" : "MediaWall’s artwork cache"}.`;
+  const notice = model && `Edits save immediately to ${model.target.source === "jellyfin" ? "your Jellyfin server" : model.target.source === "local" ? "your local artwork files" : "your MediaWall Library"}.`;
   return <>
     {!props.hidden && props.source && props.source !== "fallback" && <button ref={trigger} className={`image-editor-trigger editor-source-${source}`} title="Edit images" aria-label="Edit images" disabled={busy} onClick={() => void open()}><ImagePlus/></button>}
     {openingError && <span role="alert" className="editor-open-error" onClick={() => setOpeningError("")}>{openingError}</span>}

@@ -49,6 +49,7 @@ const app = express();
 const favoritesShuffleLibrary = "Favorites";
 let cacheCleared: {id: string; at: number} | undefined;
 let clearingCache = false;
+let libraryRevision = Date.now();
 const mediaWallFallbackModes = ["centered", "breathing", "float", "spotlight", "dvd", "minimal"] as const;
 const mediaWallFallbackModeOptions = [...mediaWallFallbackModes, "All"] as const;
 const backdropAnimations = ["breathe", "pan", "kenburns", "drift", "focus", "zoom"] as const;
@@ -253,7 +254,7 @@ app.get("/api/external-artwork/:scope/:key/:filename", (req, res) => {
     res.sendStatus(404);
     return;
   }
-  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.setHeader("Cache-Control", req.params.scope === "artists" ? "no-cache" : "public, max-age=86400");
   res.sendFile(assetPath);
 });
 
@@ -866,11 +867,23 @@ app.post("/api/space/:space/clear-cache", async (req, res) => {
   finally { clearingCache = false; }
 });
 
+app.post("/api/space/:space/clear-library-images", async (req,res) => {
+  if (!isLocalRequest(req)) {res.status(403).json({error:"Library clearing is only available from the local container or host"});return;}
+  if (!resolveDisplay(String(req.params.space),undefined,res,req.query.password)) return;
+  if(req.body.confirm!=="clear-mediawall-library-images") {res.status(400).json({error:"Explicit Library-clear confirmation required"});return;}
+  if(clearingCache || [...libraryScanProgress.values()].some(p=>p.active) || imageEditor.hasSessions() || externalArtwork.libraryBusy) {res.status(409).json({error:"An image editor or scan is active; close it and retry"});return;}
+  clearingCache=true;
+  try {await externalArtwork.ready;const removed=await externalArtwork.clearLibraryImages();await refreshLibraryDisplay();res.json({ok:true,removed});}
+  catch {res.status(500).json({error:"Library clearing failed; check filesystem permissions"});}
+  finally{clearingCache=false;}
+});
+
 app.post("/api/space/:space/image-editor/:operation", async (req, res) => {
   const space = String(req.params.space);
   const resolved = resolveDisplay(space, undefined, res, req.query.password); if (!resolved) return;
   try {
     const operation = String(req.params.operation), id = String(req.body.id ?? "");
+    if(clearingCache && operation!=="close") {res.status(409).json({error:"Artwork clearing is in progress; retry shortly"});return;}
     if (operation === "open") {
       const snapshot = await buildSnapshot(space, resolved.displayConfig);
       const model = await imageEditor.open(space, snapshot);
@@ -1122,6 +1135,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     playbackDetectionPending,
     soundSessions: playbackDetails?.soundSessions ?? [],
     libraryScan: libraryScanProgress.get(space),
+    libraryRevision,
     connectionIssues,
     controlCommand,
     uiIndicator: activeUiIndicator(space),
@@ -2193,12 +2207,14 @@ function sendImageResult(res: express.Response, result: CachedImageResult) {
 
 async function browseLibraries(displayConfig: DisplayConfig) {
   const libraries = useNavidromeBrowse(displayConfig)
-    ? await navidrome.browseLibraries(displayConfig)
+    ? await navidrome.browseLibraries({...displayConfig,libraries:displayConfig.libraries.filter(n=>!["library","mediawall-library"].includes(n.toLowerCase()))})
     : await jellyfin.browseLibraries(displayConfig);
+  if (!displayConfig.libraries.length || displayConfig.libraries.some(n=>["all","library","mediawall-library"].includes(n.toLowerCase()))) libraries.push({id:"mediawall-library", name:"Library", type:"music"});
   return libraries.sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
 }
 
 async function browseItems(displayConfig: DisplayConfig, libraryId: string, libraryType: string) {
+  if (libraryId === "mediawall-library") return externalArtwork.libraryItems();
   if (useNavidromeBrowse(displayConfig)) return navidrome.browseItems(libraryId);
   return jellyfin.browseItems(libraryId, jellyfin.browseUser(displayConfig), libraryType, displayConfig.display.music_artist_images);
 }
@@ -2234,6 +2250,17 @@ async function runGridCacheScan(port: number, reason: string) {
   let scanned = 0;
   let warmed = 0;
   logger.info(`Library scan ${reason} starting`);
+  await externalArtwork.ready;
+  if (await externalArtwork.library.scan()) await refreshLibraryDisplay();
+  const libraryItems = await externalArtwork.libraryItems();
+  logger.info(`Library scan ${reason}: Library, artists=${libraryItems.length}`);
+  let libraryScanned=0;
+  for (const item of libraryItems) {
+    for(const space of Object.keys(config.spaces))setLibraryScanProgress(space,{active:true,completed:false,source:"library",currentLibrary:"Library",percent:Math.round(libraryScanned/libraryItems.length*100),scanned:libraryScanned,total:libraryItems.length,warmed:libraryScanned,updatedAt:Date.now()});
+    if (item.thumbUrl) await warmGridImage(port,item.thumbUrl);
+    libraryScanned++;
+  }
+  for(const space of Object.keys(config.spaces))setLibraryScanProgress(space,{active:false,completed:true,source:"library",currentLibrary:"Library",percent:100,scanned:libraryScanned,total:libraryItems.length,warmed:libraryScanned,updatedAt:Date.now()});
 
   if (Object.values(config.spaces).some((space) =>
     space.now_playing.collections.enabled
@@ -3015,7 +3042,25 @@ function sameWallpaperItem(left: ArtworkRef, right: ArtworkRef) {
   return left.source === right.source && left.itemId === right.itemId;
 }
 
+async function refreshLibraryDisplay() {
+  libraryRevision = Date.now();
+  for (const key of externalArtwork.library.keys()) artworkVersions.set(`external:${key}`,Date.now());
+  for (const [space,display] of Object.entries(config.spaces)) {
+    const state=states.get(space,undefined,display);
+    if(state.current?.source==="fetched") {
+      const updated=await externalArtwork.editorArtwork(state.current.itemId).catch(()=>undefined);
+      states.update(space,undefined,display,{current:updated ?? fallbackArtwork()});
+    }
+    touchSpace(space);
+  }
+  logger.info("MediaWall Library images changed; displays refreshed.");
+}
+
 const port = Number(process.env.PORT ?? config.server.port ?? 1221);
+try { await externalArtwork.ready; }
+catch(error) { logger.error("MediaWall Library startup failed. Mount ./library:/library with write access and check library.directory. No existing artwork was cleared.",error);process.exit(1); }
+externalArtwork.library.watch(()=>{void refreshLibraryDisplay().catch(error=>logger.warn("Library display refresh failed",error));});
+logger.info("Upgrade notes: artist artwork is now persistent MediaWall Library images; clear cache only clears grid images and album covers. Use clear library-images for artist images. Mount ./library:/library. Local music mounts need write access only for editing; audio and video files are never edited. Documentation is under docs/.");
 app.listen(port, "0.0.0.0", () => {
   logger.info(`MediaWall listening on http://0.0.0.0:${port} logLevel=${logger.level}`);
   void warmStartupMetadata().finally(() => startGridCacheScans(port));
