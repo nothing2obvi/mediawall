@@ -2,6 +2,8 @@
 
 ### MediaWall Library images
 
+These changes apply when upgrading from **v0.4.1 or earlier to v0.4.2 or later**. The artist Library was introduced in v0.4.2.
+
 Add `./library:/library` as a writable Compose mount. Replace `external_music.artwork.cache_directory` with `album_cache_directory`, keeping its old path, and rename `cache_ttl_days` to `album_cache_ttl_days`. Use `library.directory` (default `/library`) for artist images. Old names now stop startup with instructions in the log.
 
 Existing artist downloads are copied into named Library folders on startup. Backdrops keep their order, and originals stay in the old location as a backup. See [External Music Images](external-music-images.md#upgrading-existing-artwork) before upgrading.
