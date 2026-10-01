@@ -8,7 +8,7 @@ docker exec mediawall npm run mediawall -- play sounds All on livingroom
 docker exec mediawall npm run mediawall -- play mediawall dvd on livingroom
 docker exec mediawall npm run mediawall -- play screensaver All on livingroom
 docker exec mediawall npm run mediawall -- play user transition on livingroom
-docker exec mediawall npm run mediawall -- play user transition doug on livingroom
+docker exec mediawall npm run mediawall -- play user transition bob on livingroom
 docker exec mediawall npm run mediawall -- animation pan on livingroom
 docker exec mediawall npm run mediawall -- animation all --random on livingroom
 ```

@@ -1,3 +1,4 @@
+import { anonymousIdentity, mappedUserKey } from "./anonymous-mode.js";
 import { updatePlaybackProgress, type PlaybackProgress } from "./playback-progress.js";
 import { watchesSource } from "./playback-source.js";
 import express from "express";
@@ -242,6 +243,11 @@ app.get("/api/avatars/:source/:username", (req, res) => {
   }
   res.setHeader("Cache-Control", "public, max-age=300");
   res.sendFile(avatarPath);
+});
+
+app.get("/api/avatars/anonymous", (_req,res)=>{
+  const file=sourceAvatars.anonymousPath();if(!file){res.sendStatus(404);return;}
+  res.setHeader("Cache-Control","no-cache");res.sendFile(file);
 });
 
 app.get("/api/external-artwork/:scope/:key/:filename", (req, res) => {
@@ -582,7 +588,7 @@ app.post("/api/space/:space/playback-previous", async (req, res) => {
   }
   res.json({
     state: states.advanceTransition(req.params.space, undefined, resolved.displayConfig),
-    nowPlaying: publicNowPlaying(selected),
+    nowPlaying: publicNowPlaying(selected, resolved.displayConfig),
     sessionPosition: selected.sessionPosition,
     sessionCount: selected.sessionCount
   });
@@ -599,7 +605,7 @@ app.post("/api/space/:space/playback-next", async (req, res) => {
   }
   res.json({
     state: states.advanceTransition(req.params.space, undefined, resolved.displayConfig),
-    nowPlaying: publicNowPlaying(selected),
+    nowPlaying: publicNowPlaying(selected, resolved.displayConfig),
     sessionPosition: selected.sessionPosition,
     sessionCount: selected.sessionCount
   });
@@ -1131,11 +1137,12 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     config: publicDisplayConfig(displayConfig),
     state,
     mode,
-    nowPlaying: nowPlaying ? publicNowPlaying(nowPlaying) : undefined,
+    nowPlaying: nowPlaying ? publicNowPlaying(nowPlaying, displayConfig) : undefined,
     playbackDetectionPending,
     soundSessions: playbackDetails?.soundSessions ?? [],
     libraryScan: libraryScanProgress.get(space),
     libraryRevision,
+    anonymousAvatarUrl: displayConfig.anonymous_mode?.enabled ? sourceAvatars.anonymousUrl() : undefined,
     connectionIssues,
     controlCommand,
     uiIndicator: activeUiIndicator(space),
@@ -1430,8 +1437,10 @@ function blockedFrameReason(headers: Headers, targetOrigin: string, parentOrigin
   return "frame_blocked";
 }
 
-function publicNowPlaying(nowPlaying: NowPlayingState): PublicNowPlayingState {
+function publicNowPlaying(nowPlaying: NowPlayingState, displayConfig: DisplayConfig): PublicNowPlayingState {
+  const identity=anonymousIdentity(displayConfig.anonymous_mode, nowPlaying.mediaWallUserKey ?? nowPlaying.mediaWallUser ?? nowPlaying.user, sourceAvatars.anonymousUrl());
   return {
+    anonymousIdentity: identity,
     source: nowPlaying.source,
     playing: nowPlaying.playing,
     paused: nowPlaying.paused,
@@ -1449,9 +1458,9 @@ function publicNowPlaying(nowPlaying: NowPlayingState): PublicNowPlayingState {
     episodeNumber: nowPlaying.episodeNumber,
     seriesName: nowPlaying.seriesName,
     logoText: nowPlaying.logoText,
-    displayUser: nowPlaying.displayUser,
-    displayUserAvatarUrl: nowPlaying.displayUserAvatarUrl,
-    mediaWallUser: nowPlaying.mediaWallUser,
+    displayUser: identity ? identity.username : nowPlaying.displayUser,
+    displayUserAvatarUrl: identity ? identity.avatarUrl : nowPlaying.displayUserAvatarUrl,
+    mediaWallUser: identity ? identity.username : nowPlaying.mediaWallUser,
     libraryName: nowPlaying.libraryName,
     collectionName: nowPlaying.collectionName,
     collectionTransitionImageUrl: nowPlaying.collectionTransitionImageUrl,
@@ -1879,17 +1888,20 @@ async function controlCommandFromRequest(body: unknown, displayConfig: DisplayCo
   const expiresAt = Date.now() + durationSeconds * 1000;
   if (type === "user_transition") {
     const firstUser = displayConfig.users[0];
-    const requestedUser = displayConfig.users.find((user) => user.name.toLowerCase() === name.toLowerCase());
+    const requestedUser = displayConfig.users.find((user) => (user.key ?? user.name).toLowerCase() === name.toLowerCase() || user.name.toLowerCase() === name.toLowerCase());
     const username = requestedUser?.name || name || firstUser?.name || displayConfig.source_user || "MediaWall";
+    const identity=anonymousIdentity(displayConfig.anonymous_mode,requestedUser?.key ?? (name || firstUser?.key || username),sourceAvatars.anonymousUrl());
     return {
       ok: true,
       command: {
         id: crypto.randomUUID(),
         type,
-        name: username,
+        name: identity?.username ?? username,
+        anonymousIdentity: identity,
         startedAt,
         source: "jellyfin",
-        username,
+        username: identity?.username ?? username,
+        avatarUrl: identity?.transitionAvatarUrl,
         verb: "started watching",
         expiresAt
       }
@@ -2527,7 +2539,7 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
           ...displayConfig,
           source_user: user.jellyfin_user ?? user.name,
           users: [user]
-        })).map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound));
+        })).map((playback) => withMediaWallUserSound({...playback,mediaWallUserKey:mappedUserKey(playback,user,config.users)}, user.name, user.sound, user.end_sound));
         candidates.push(...playbacks.map((playback) => applyCollectionPresentation(playback, space, displayConfig, user.name)));
       } catch (error) {
         logger.warn("Jellyfin playback source poll failed", error);
@@ -2541,7 +2553,7 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
           users: [user]
         });
         const resolved = await Promise.all(playbacks.map((playback) => externalArtwork.resolveNavidrome(playback)));
-        candidates.push(...resolved.map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound)));
+        candidates.push(...resolved.map((playback) => withMediaWallUserSound({...playback,mediaWallUserKey:mappedUserKey(playback,user,config.users)}, user.name, user.sound, user.end_sound)));
       } catch (error) {
         logger.warn("Navidrome playback source poll failed", error);
       }
@@ -2563,7 +2575,7 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
           displayUserAvatarUrl
         };
       }));
-      candidates.push(...playbacks.map((playback) => withMediaWallUserSound(playback, user.name, user.sound, user.end_sound)));
+      candidates.push(...playbacks.map((playback) => withMediaWallUserSound({...playback,mediaWallUserKey:mappedUserKey(playback,user,config.users)}, user.name, user.sound, user.end_sound)));
     }
   }
   return dedupePlaybackCandidates(candidates);
@@ -3056,6 +3068,9 @@ async function refreshLibraryDisplay() {
   logger.info("MediaWall Library images changed; displays refreshed.");
 }
 
+sourceAvatars.watchAnonymous(()=>{
+  for(const [space,display] of Object.entries(config.spaces))if(display.anonymous_mode?.enabled)touchSpace(space);
+});
 const port = Number(process.env.PORT ?? config.server.port ?? 1221);
 try { await externalArtwork.ready; }
 catch(error) { logger.error("MediaWall Library startup failed. Mount ./library:/library with write access and check library.directory. No existing artwork was cleared.",error);process.exit(1); }

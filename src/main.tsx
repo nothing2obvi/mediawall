@@ -1,3 +1,5 @@
+import { badgeIdentity, transitionIdentity } from "./identity-presentation";
+import type { AnonymousIdentity } from "../server/anonymous-mode";
 import mediaWallLogo from "./logos/logo.png";
 import chromecastLogo from "./logos/chromecast.png";
 import jriverLogo from "./logos/jriver.png";
@@ -122,6 +124,7 @@ const backdropAnimations: BackdropAnimation[] = ["breathe", "pan", "kenburns", "
 type Snapshot = {
   cacheCleared?: {id: string; at: number};
   libraryRevision?: number;
+  anonymousAvatarUrl?: string;
   profile: string;
   display: string;
   mode: DisplayState["mode"];
@@ -143,6 +146,7 @@ type Snapshot = {
     message: string;
   }>;
   controlCommand?: {
+    anonymousIdentity?: AnonymousIdentity;
     id: string;
     type: "sound" | "mediawall" | "animation" | "user_transition";
     name: string;
@@ -204,6 +208,7 @@ type Snapshot = {
     episodeNumber?: number;
     seriesName?: string;
     logoText?: string;
+    anonymousIdentity?: AnonymousIdentity;
     displayUser?: string;
     displayUserAvatarUrl?: string;
     mediaWallUser?: string;
@@ -510,6 +515,8 @@ function App() {
   const [initialLoadingExpired, setInitialLoadingExpired] = useState(false);
   const [availableSpaces, setAvailableSpaces] = useState<string[]>([]);
   const [userTransition, setUserTransition] = useState<{
+    anonymous?: boolean;
+    showAnonymousAvatar?: boolean;
     id: string;
     source: NowPlayingSource;
     externalMusicSource?: string;
@@ -1035,6 +1042,7 @@ function App() {
     seenControlCommands.current.add(command.id);
     startUserTransition({
       source: command.source ?? "jellyfin",
+      anonymousIdentity: command.anonymousIdentity,
       playing: true,
       paused: false,
       user: command.username ?? command.name,
@@ -1479,18 +1487,21 @@ function App() {
     const config = snapshot?.config.now_playing.user_transition;
     if (!config?.enabled || !now) return false;
     const id = now.publicSoundSessionKey ?? now.publicSessionId ?? now.signature ?? `${now.source}:${Date.now()}`;
-    const username = now.displayUser ?? now.user ?? now.mediaWallUser ?? sourceDisplayName(now.source);
+    const identity = transitionIdentity(now,sourceDisplayName(now.source));
+    const username = identity.username;
     const verb = now.source !== "jellyfin" || isMusicArtwork(now.artwork, now)
       ? "started listening to"
       : "started watching";
     const durationSeconds = Math.max(0.5, config.duration_seconds ?? 3);
     window.clearTimeout(userTransitionTimer.current);
     setUserTransition({
+      anonymous: Boolean(now.anonymousIdentity),
+      showAnonymousAvatar: now.anonymousIdentity?.showTransitionAvatar,
       id,
       source: now.source,
       externalMusicSource: now.externalMusicSource,
       username,
-      avatarUrl: now.displayUserAvatarUrl,
+      avatarUrl: identity.avatarUrl,
       verb,
       durationSeconds,
       backgroundColor: config.background_color ?? "#000000",
@@ -1908,7 +1919,7 @@ function App() {
       ) : (
         <Backdrop artwork={cycledArtwork} onReady={() => setImmichExitPending(false)} />
       )}
-      {userTransition && <UserTransitionIntro intro={userTransition} />}
+      {userTransition && <UserTransitionIntro intro={{...userTransition,avatarUrl:userTransition.anonymous ? (userTransition.showAnonymousAvatar ? snapshot?.anonymousAvatarUrl : undefined) : userTransition.avatarUrl}} />}
       {!showMediaWallIdle && cycledArtwork?.mediaType !== "TvChannel" && <div className="shade" />}
       {!showMediaWallIdle && <Identity snapshot={snapshot} artwork={cycledArtwork} />}
       <SessionTimer snapshot={snapshot} />
@@ -3299,8 +3310,9 @@ function NowPlayingBadge({ snapshot }: { snapshot?: Snapshot }) {
   const source = now.source;
   const icon = sourceIcon(source, now.externalMusicSource);
   const showLabel = config.show_text || config.show_source_icon;
-  const showAvatar = config.show_user_avatar && Boolean(now.displayUserAvatarUrl);
-  const showUsername = (source === "navidrome" ? config.show_navidrome_username : config.show_jellyfin_username) && Boolean(now.displayUser ?? now.user);
+  const identity = badgeIdentity(now,source === "navidrome" ? config.show_navidrome_username : config.show_jellyfin_username,config.show_user_avatar);
+  const showAvatar = Boolean(identity.avatarUrl);
+  const showUsername = Boolean(identity.username);
   const showUserRow = showAvatar || showUsername;
   const centerUserUnderIcon = !config.show_text
     && config.show_source_icon
@@ -3324,8 +3336,8 @@ function NowPlayingBadge({ snapshot }: { snapshot?: Snapshot }) {
       )}
       {showUserRow && (
         <div className="now-playing-user">
-          {showAvatar && <img src={mediaUrl(now.displayUserAvatarUrl)} alt="" />}
-          {showUsername && <span>{now.displayUser ?? now.user}</span>}
+          {showAvatar && <img src={mediaUrl(identity.avatarUrl)} alt="" />}
+          {showUsername && <span>{identity.username}</span>}
         </div>
       )}
     </aside>

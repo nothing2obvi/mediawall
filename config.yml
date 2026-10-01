@@ -74,6 +74,17 @@ spaces:
     theme: All
     users:
       - All
+    # Uses the top-level MediaWall user keys; shown always wins.
+    anonymous_mode:
+      enabled: false
+      shown: []
+      not_shown: [All]
+      anonymous_username: someone
+      now_playing_info:
+        show_anonymous_username: true
+        show_anonymous_avatar: true
+      user_transition_info:
+        show_anonymous_avatar: true
     password: "${LIVINGROOM_PASSWORD}"
     libraries:
       - Music

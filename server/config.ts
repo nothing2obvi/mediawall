@@ -59,7 +59,16 @@ const mediaWallUserSchema = z.object({
   end_sound: z.string().optional()
 });
 
+const anonymousModeSchema = z.object({
+  enabled: z.boolean().default(false),
+  shown: z.array(z.string()).default([]),
+  not_shown: z.array(z.string()).default(["All"]),
+  anonymous_username: z.string().trim().min(1).default("someone"),
+  now_playing_info: z.object({show_anonymous_username:z.boolean().default(true),show_anonymous_avatar:z.boolean().default(true)}).default({show_anonymous_username:true,show_anonymous_avatar:true}),
+  user_transition_info: z.object({show_anonymous_avatar:z.boolean().default(true)}).default({show_anonymous_avatar:true})
+});
 const spaceSchema = z.object({
+  anonymous_mode: anonymousModeSchema.optional(),
   playback_source: z.enum(["jellyfin", "navidrome", "external-music", "All"]).default("All"),
   theme: z.enum([...themeNames, "All"]).default("All"),
   users: z.array(z.string()).default([]),
@@ -613,6 +622,7 @@ function normalizeUsers(input: Record<string, z.infer<typeof mediaWallUserSchema
   const users: Record<string, MediaWallUser> = {};
   for (const [name, user] of Object.entries(input)) {
     users[name] = {
+      key: name,
       name: user.name ?? name,
       jellyfin_user: user.jellyfin_user,
       navidrome_user: user.navidrome_user,

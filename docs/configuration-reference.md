@@ -120,7 +120,7 @@ aliases:
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `name` | Overrides the name MediaWall uses for this user. | Identifier under `users:` | No | For `primary:`, omit this to use `primary`, or set `name: Alex`. Spaces and token mappings still reference `primary`. Set `jellyfin_user` and `navidrome_user` explicitly when service usernames differ: the name is also their fallback. |
+| `name` | Overrides the name MediaWall uses for this user. | Identifier under `users:` | No | For `primary:`, omit this to use `primary`, or set `name: bob`. Spaces and token mappings still reference `primary`. Set `jellyfin_user` and `navidrome_user` explicitly when service usernames differ: the name is also their fallback. |
 | `jellyfin_user` | Jellyfin username mapped to this MediaWall user. | unset | Required for Jellyfin user matching | Use `All` to watch all active Jellyfin users. Can reference `${JELLYFIN_USER}`. |
 | `navidrome_user` | Navidrome username mapped to this MediaWall user. | unset | Required for Navidrome user matching | Use `All` to watch all active Navidrome users. |
 | `navidrome_password` | Navidrome password for this user. | unset | Required for Navidrome | Navidrome needs real credentials for API access; configure one MediaWall user per Navidrome listener you want to distinguish. |
@@ -140,6 +140,22 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | `password` | Optional URL password. | unset | No | If omitted or `""`, no `?password=` is required. |
 | `libraries` | Libraries shown in grid, selection, shuffle, and Wallpaper/Screensaver. | `[]` | Recommended | Use Jellyfin library names; `All` allows all Jellyfin libraries. |
 | `idle_timeout` | Playback record cleanup window in seconds. | `30` | No | Mostly internal display/session housekeeping. |
+
+### Space Anonymous Mode
+
+Put `anonymous_mode` under `spaces.<space>`, beside that space's `users` selection. Lists use the user keys from the MediaWall Users section above, not display-name overrides. Matching is case-insensitive. For examples and more details, see [Anonymous Mode](anonymous-mode.md).
+
+| Setting | Purpose | Default | Required | Notes |
+| --- | --- | --- | --- | --- |
+| `enabled` | Makes the anonymous rules active for this space. | `false` | No | Omitting the section preserves existing behavior. |
+| `shown` | Users who keep their normal identity. | `[]` | No | Accepts user keys such as `bob`, or `All`. Always takes priority over `not_shown`. |
+| `not_shown` | Users whose identity is replaced. | `[All]` | No | Use `[bob]` to hide only bob. Users matching neither list stay visible. |
+| `anonymous_username` | Replacement name. | `someone` | No | Must not be empty. Doesn't change the actual account identity. |
+| `now_playing_info.show_anonymous_username` | Shows the replacement name in the top-right badge. | `true` | No | `false` hides username text for anonymous users. The badge must be enabled. |
+| `now_playing_info.show_anonymous_avatar` | Shows the generic avatar in the badge. | `true` | No | Uses the shipped PNG or a custom `anonymous` image. Priority: WebP, JPG, JPEG, PNG. Replacements update automatically. |
+| `user_transition_info.show_anonymous_avatar` | Shows the generic avatar during session-start transitions. | `true` | No | Uses the same default/custom avatar; updates even during a transition. Transitions always use `anonymous_username`; no separate name toggle. |
+
+Hidden users never fall back to real names or avatars in these areas. Visible users keep all their existing presentation settings. The normal badge and transition master switches still apply. Anonymous Mode doesn't change playback matching or session identity.
 
 ### Scheduled page refresh
 

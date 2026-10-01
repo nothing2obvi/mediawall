@@ -1,3 +1,4 @@
+import type { AnonymousMode, AnonymousIdentity } from "./anonymous-mode.js";
 export type PlaybackSource = "jellyfin" | "navidrome" | "external-music" | "All";
 export type NowPlayingSource = "jellyfin" | "navidrome" | "spotify" | "apple_music" | "external_music";
 export type ArtworkSource = "jellyfin" | "navidrome" | "fetched" | "fallback";
@@ -5,6 +6,7 @@ export type DisplayMode = "now-playing" | "screensaver" | "immich-kiosk";
 export type MediaWallFallbackMode = "centered" | "breathing" | "float" | "spotlight" | "dvd" | "minimal";
 
 export interface MediaWallUser {
+  key?: string;
   name: string;
   jellyfin_user?: string;
   navidrome_user?: string;
@@ -15,6 +17,7 @@ export interface MediaWallUser {
 }
 
 export interface DisplayConfig {
+  anonymous_mode?: AnonymousMode;
   playback_source: PlaybackSource;
   theme: string;
   users: MediaWallUser[];
@@ -288,6 +291,8 @@ export interface ArtworkRef {
 }
 
 export interface NowPlayingState {
+  anonymousIdentity?: AnonymousIdentity;
+  mediaWallUserKey?: string;
   source: NowPlayingSource;
   user: string;
   playing: boolean;
@@ -354,6 +359,7 @@ export type PublicNowPlayingState = Pick<
   | "episodeNumber"
   | "seriesName"
   | "logoText"
+  | "anonymousIdentity"
   | "displayUser"
   | "displayUserAvatarUrl"
   | "mediaWallUser"
@@ -401,6 +407,7 @@ export interface PublicConnectionIssue {
 }
 
 export interface PublicControlCommand {
+  anonymousIdentity?: AnonymousIdentity;
   id: string;
   type: "sound" | "mediawall" | "animation" | "user_transition";
   name: string;
@@ -472,6 +479,7 @@ export interface DisplayState {
 }
 
 export interface DisplaySnapshot {
+  anonymousAvatarUrl?: string;
   libraryRevision?: number;
   cacheCleared?: { id: string; at: number };
   profile: string;

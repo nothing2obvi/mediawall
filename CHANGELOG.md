@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Per-space Anonymous Mode can hide everyone or selected users, with visible-user exceptions, a replacement name, and a replaceable default avatar that updates across displays without a restart.
+
 - Artist artwork now lives in `/library/Artists` with Jellyfin-compatible filenames, live updates, and a browsable Library. Add `./library:/library` to Compose.
 - Replace `external_music.artwork.cache_directory` and `cache_ttl_days` with `album_cache_directory` and `album_cache_ttl_days`. Set `library.directory` for artist images. Existing downloads migrate on startup.
 - `clear cache` leaves Library images alone. Use `clear library-images` to remove artist images, including manual additions.

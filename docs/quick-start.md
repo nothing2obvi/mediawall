@@ -19,6 +19,7 @@ services:
       - ./app/sounds:/app/sounds:ro
       - ./app/custom_logo:/app/custom_logo:ro
       - ./app/collections:/app/collections:ro
+      - ./app/avatars:/app/avatars:ro
       # Only needed when using Navidrome with local artist backdrop/logo files.
       # - /path/to/your/navidrome/music:/navidrome_music:rw
 ```

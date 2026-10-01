@@ -20,6 +20,7 @@ COPY --from=build /app/app/sounds ./sounds
 COPY --from=build /app/app/custom_logo ./custom_logo
 COPY --from=build /app/app/collections ./collections
 COPY --from=build /app/app/avatars ./avatars
+COPY --from=build /app/app/avatars/anonymous.png ./default-assets/anonymous.png
 COPY config.yml ./config.yml
 RUN mkdir -p /app/data /app/custom_logo /app/collections /app/avatars/spotify
 EXPOSE 1221

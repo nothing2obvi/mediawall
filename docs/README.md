@@ -4,6 +4,7 @@
 - [Configuration](configuration.md)
   - [Environment Variables](configuration.md#environment-variables)
 - [Configuration Reference](configuration-reference.md)
+- [Anonymous Mode](anonymous-mode.md)
 - [Jellyfin And Navidrome Notes](jellyfin-and-navidrome-notes.md)
   - [Stopped sessions reported as playing](jellyfin-and-navidrome-notes.md#stopped-sessions-reported-as-playing)
   - [Live TV and radio channels](jellyfin-and-navidrome-notes.md#live-tv-and-radio-channels)
