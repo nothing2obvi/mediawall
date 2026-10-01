@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.2 - 2026-10-01
 
 - Per-space Anonymous Mode can hide everyone or selected users, with visible-user exceptions, a replacement name, and a replaceable default avatar that updates across displays without a restart.
 
