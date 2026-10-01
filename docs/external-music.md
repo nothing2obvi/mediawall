@@ -10,7 +10,7 @@ Connect [Multi-Scrobbler](https://github.com/FoxxMD/multi-scrobbler) to MediaWal
 2. Put it in MediaWall's `.env` beside your Compose file:
 
    ```env
-   EXTERNAL_MUSIC_PRIMARY_TOKEN=paste-your-random-secret-here
+   EXTERNAL_MUSIC_BOB_TOKEN=paste-your-random-secret-here
    ```
 
 3. In MediaWall's `config.yml`, enable external music, reference that environment variable under the user, and include that user in the display space:
@@ -20,19 +20,19 @@ Connect [Multi-Scrobbler](https://github.com/FoxxMD/multi-scrobbler) to MediaWal
      enabled: true
 
    users:
-     primary:
-       external_music_token: "${EXTERNAL_MUSIC_PRIMARY_TOKEN}"
+     bob:
+       external_music_token: "${EXTERNAL_MUSIC_BOB_TOKEN}"
 
    spaces:
      livingroom:
        playback_source: external-music
-       users: [primary]
+       users: [bob]
    ```
 
    Merge these settings into your existing configuration. Use `playback_source: All` if the space should also watch Jellyfin and Navidrome. The environment-variable name is your choice: `MEDIAWALL_LISTENBRAINZ_TOKEN` also works if the YAML references `${MEDIAWALL_LISTENBRAINZ_TOKEN}`. Setting an environment variable alone doesn’t connect it to a user.
 
-4. In Multi-Scrobbler, add a **ListenBrainz client**. Give it a unique ID such as `mediawall-primary`. Set its URL to `http://mediawall-host:1221/apis/listenbrainz` and its token to the same actual secret from `.env`. Replace the hostname and port with values reachable from Multi-Scrobbler. Don’t use `localhost` when that would point to Multi-Scrobbler's own container. Multi-Scrobbler appends `/1/submit-listens` itself.
-5. Configure your Spotify or other supported source to send to this client ID using its `clients` list, and leave Now Playing enabled. See Multi-Scrobbler's [ListenBrainz client configuration](https://github.com/FoxxMD/multi-scrobbler/blob/master/config/listenbrainz.json.example) for its configuration format. MediaWall's `.env` isn’t automatically available to Multi-Scrobbler; enter the same secret there separately or use Multi-Scrobbler's own environment-variable setup.
+4. In Multi-Scrobbler, add a **ListenBrainz client**. Give it a unique ID such as `mediawall-bob`. Set its URL to `http://mediawall-host:1221/apis/listenbrainz` and its token to the same actual secret from `.env`. Replace the hostname and port with values reachable from Multi-Scrobbler. Don’t use `localhost` when that would point to Multi-Scrobbler's own container. Multi-Scrobbler appends `/1/submit-listens` itself.
+5. Configure your Spotify account (for example, `bob-spotify`) or other supported source to send to this client ID using its `clients` list, and leave Now Playing enabled. See Multi-Scrobbler's [ListenBrainz client configuration](https://github.com/FoxxMD/multi-scrobbler/blob/master/config/listenbrainz.json.example) for its configuration format. MediaWall's `.env` isn’t automatically available to Multi-Scrobbler; enter the same secret there separately or use Multi-Scrobbler's own environment-variable setup.
 6. Apply the Multi-Scrobbler configuration and recreate MediaWall with `docker compose up -d --force-recreate` to load the new environment. Play music and open your MediaWall space.
 
 ### Multiple users
@@ -42,8 +42,8 @@ Give each MediaWall user a separate secret. This is how MediaWall knows which pe
 1. Generate one secret per user and put them in MediaWall's `.env`:
 
    ```env
-   EXTERNAL_MUSIC_PRIMARY_TOKEN=first-users-random-secret
-   EXTERNAL_MUSIC_SECONDARY_TOKEN=second-users-different-random-secret
+   EXTERNAL_MUSIC_BOB_TOKEN=first-users-random-secret
+   EXTERNAL_MUSIC_ALICE_TOKEN=second-users-different-random-secret
    ```
 
 2. Reference each variable under the matching user and choose who appears in the space:
@@ -53,23 +53,23 @@ Give each MediaWall user a separate secret. This is how MediaWall knows which pe
      enabled: true
 
    users:
-     primary:
-       external_music_token: "${EXTERNAL_MUSIC_PRIMARY_TOKEN}"
-     secondary:
-       external_music_token: "${EXTERNAL_MUSIC_SECONDARY_TOKEN}"
+     bob:
+       external_music_token: "${EXTERNAL_MUSIC_BOB_TOKEN}"
+     alice:
+       external_music_token: "${EXTERNAL_MUSIC_ALICE_TOKEN}"
 
    spaces:
      livingroom:
        playback_source: All
-       users: [primary, secondary]
+       users: [bob, alice]
        now_playing:
          cycle_users: true
    ```
 
    Use `users: [All]` to include every configured MediaWall user, or put each user in a separate space.
 
-3. Create a separate ListenBrainz client in Multi-Scrobbler for each user, such as `mediawall-primary` and `mediawall-secondary`. Both use the same MediaWall base URL, but each gets that user's secret.
-4. Route each person's music source to the corresponding client ID. Don’t send one person's source to both clients unless you intentionally want it shown for both users.
+3. Create a separate ListenBrainz client in Multi-Scrobbler for each user, such as `mediawall-bob` and `mediawall-alice`. Both use the same MediaWall base URL, but each gets that user's secret.
+4. Route each person's music source to the corresponding client ID, for example `bob-spotify` to `mediawall-bob` and `alice-spotify` to `mediawall-alice`. Don’t send one person's source to both clients unless you intentionally want it shown for both users.
 5. Apply both applications' configuration and recreate MediaWall as in the one-user example.
 
 The `external_music_token` field is the recommended setup. The top-level `external_music.tokens` mapping is an alternative for advanced setups, including a fixed source label; you don’t need both methods for the same token. Keep actual secrets in `.env` and out of shared configuration and Git.

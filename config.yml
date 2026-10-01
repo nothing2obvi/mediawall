@@ -55,17 +55,17 @@ image_providers:
     enabled: true
 
 users:
-  primary:
-    jellyfin_user: "${JELLYFIN_USER}"
-    navidrome_user: "${NAVIDROME_USER}"
-    navidrome_password: "${NAVIDROME_PASSWORD}"
-    external_music_token: "${EXTERNAL_MUSIC_PRIMARY_TOKEN}"
-  secondary:
-    jellyfin_user: "${JELLYFIN_SECONDARY_USER}"
-    navidrome_user: "${NAVIDROME_SECONDARY_USER}"
-    navidrome_password: "${NAVIDROME_SECONDARY_PASSWORD}"
-    external_music_token: "${EXTERNAL_MUSIC_SECONDARY_TOKEN}"
-  jellyfin_all:
+  bob:
+    jellyfin_user: "${JELLYFIN_BOB_USER}"
+    navidrome_user: "${NAVIDROME_BOB_USER}"
+    navidrome_password: "${NAVIDROME_BOB_PASSWORD}"
+    external_music_token: "${EXTERNAL_MUSIC_BOB_TOKEN}"
+  alice:
+    jellyfin_user: "${JELLYFIN_ALICE_USER}"
+    navidrome_user: "${NAVIDROME_ALICE_USER}"
+    navidrome_password: "${NAVIDROME_ALICE_PASSWORD}"
+    external_music_token: "${EXTERNAL_MUSIC_ALICE_TOKEN}"
+  charlie: # Example user that follows every Jellyfin account.
     jellyfin_user: "All"
 
 spaces:

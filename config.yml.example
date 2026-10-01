@@ -1,9 +1,11 @@
 # Example setup with Jellyfin, Navidrome, external music, and Immich Kiosk.
 # Copy to config.yml and adjust the users, libraries, mounts, and features you use.
+# Example account values: JELLYFIN_BOB_USER=bob-jellyfin, NAVIDROME_BOB_USER=bob-navidrome,
+# NAVIDROME_ALICE_USER=alice-navidrome.
 # Set every ${VARIABLE} below in your .env; no credentials are included here.
 # Example URLs: JELLYFIN_URL=http://jellyfin:8096, NAVIDROME_URL=http://navidrome:4533,
 # LIVINGROOM_IMMICH_KIOSK_URL=http://immich-kiosk:3000 (also reachable by your browser).
-# Create your own API keys, passwords, and EXTERNAL_MUSIC_PRIMARY_TOKEN.
+# Create your own API keys, passwords, and EXTERNAL_MUSIC_BOB_TOKEN.
 # Match the external token in Multi-Scrobbler. MUSICBRAINZ_CONTACT should be your contact email.
 # Publish port 1222, mount your music at /music, and mount ./library at /library.
 # The optional staff-picks.png collection image is a placeholder; supply it or leave it blank.
@@ -47,8 +49,8 @@ external_music:
     album_cache_directory: /app/data/external-artwork
     album_cache_ttl_days: 30
   tokens:
-    "${EXTERNAL_MUSIC_PRIMARY_TOKEN}":
-      user: primary
+    "${EXTERNAL_MUSIC_BOB_TOKEN}":
+      user: bob
 
 image_providers:
   musicbrainz:
@@ -64,14 +66,14 @@ image_providers:
     enabled: true
 
 users:
-  primary:
-    jellyfin_user: "${JELLYFIN_PRIMARY_USER}"
-    navidrome_user: "${NAVIDROME_PRIMARY_USER}"
-    navidrome_password: "${NAVIDROME_PRIMARY_PASSWORD}"
-  secondary:
+  bob:
+    jellyfin_user: "${JELLYFIN_BOB_USER}"
+    navidrome_user: "${NAVIDROME_BOB_USER}"
+    navidrome_password: "${NAVIDROME_BOB_PASSWORD}"
+  alice:
     jellyfin_user: "All"
-    navidrome_user: "${NAVIDROME_SECONDARY_USER}"
-    navidrome_password: "${NAVIDROME_SECONDARY_PASSWORD}"
+    navidrome_user: "${NAVIDROME_ALICE_USER}"
+    navidrome_password: "${NAVIDROME_ALICE_PASSWORD}"
 
 spaces:
   livingroom:

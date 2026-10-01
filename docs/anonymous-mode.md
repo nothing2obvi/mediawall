@@ -9,9 +9,9 @@ Define your users and their Jellyfin/Navidrome accounts or external-music tokens
 ```yaml
 users:
   bob:
-    jellyfin_user: bob
-    navidrome_user: bob
-    navidrome_password: "${NAVIDROME_PASSWORD}"
+    jellyfin_user: bob-jellyfin
+    navidrome_user: bob-navidrome
+    navidrome_password: "${NAVIDROME_BOB_PASSWORD}"
     external_music_token: "${EXTERNAL_MUSIC_BOB_TOKEN}"
 
 spaces:

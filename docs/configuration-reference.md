@@ -28,7 +28,7 @@ Put secrets in `.env` and reference them from `config.yml` using `${VARIABLE_NAM
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `EXTERNAL_MUSIC_PRIMARY_TOKEN` | Example shared secret for the primary external-music user. | unset | For that user's external playback | Reference under `users.primary.external_music_token`; enter the same secret in Multi-Scrobbler. Use a different variable and secret for each user. |
+| `EXTERNAL_MUSIC_BOB_TOKEN` | Example shared secret for bob’s external music. | unset | For that user's external playback | Reference under `users.bob.external_music_token`; enter the same secret in Multi-Scrobbler. Use a different variable and secret for each user. |
 | `FANART_API_KEY`, `THEAUDIODB_API_KEY` | Optional artwork provider keys. | unset | No | Reference under `image_providers` in `config.yml`. |
 | `LOG_LEVEL` | Controls server log verbosity. | `info` | No | Options: `debug`, `info`, `warn`, `error`, `silent`. Use `debug` when troubleshooting playback/session/artwork behavior. |
 
@@ -120,13 +120,15 @@ aliases:
 
 ### MediaWall Users
 
+Use names like `bob` and `alice` for MediaWall users. Map each one to their service accounts, such as `bob-jellyfin` and `bob-navidrome`, using the fields below.
+
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `name` | Overrides the name MediaWall uses for this user. | Identifier under `users:` | No | For `primary:`, omit this to use `primary`, or set `name: bob`. Spaces and token mappings still reference `primary`. Set `jellyfin_user` and `navidrome_user` explicitly when service usernames differ: the name is also their fallback. |
-| `jellyfin_user` | Jellyfin username mapped to this MediaWall user. | unset | Required for Jellyfin user matching | Use `All` to watch all active Jellyfin users. Can reference `${JELLYFIN_USER}`. |
+| `name` | Overrides the name MediaWall uses for this user. | Identifier under `users:` | No | For `bob:`, omit this to use `bob`, or set a different display name with `name`. Spaces and token mappings still reference `bob`. Set `jellyfin_user` and `navidrome_user` explicitly when service usernames differ: the name is also their fallback. |
+| `jellyfin_user` | Jellyfin username mapped to this MediaWall user. | unset | Required for Jellyfin user matching | Use `All` to watch all active Jellyfin users. Can reference `${JELLYFIN_BOB_USER}`. |
 | `navidrome_user` | Navidrome username mapped to this MediaWall user. | unset | Required for Navidrome user matching | Use `All` to watch all active Navidrome users. |
 | `navidrome_password` | Navidrome password for this user. | unset | Required for Navidrome | Navidrome needs real credentials for API access; configure one MediaWall user per Navidrome listener you want to distinguish. |
-| `external_music_token` | Secret used by Multi-Scrobbler to send playback for this user. | unset | No | Reference an environment variable, such as `${EXTERNAL_MUSIC_PRIMARY_TOKEN}`. Put the actual secret in `.env` and use the same secret in that user's Multi-Scrobbler ListenBrainz client. See [External Music](external-music.md). |
+| `external_music_token` | Secret used by Multi-Scrobbler to send playback for this user. | unset | No | Reference an environment variable, such as `${EXTERNAL_MUSIC_BOB_TOKEN}`. Put the actual secret in `.env` and use the same secret in that user's Multi-Scrobbler ListenBrainz client. See [External Music](external-music.md). |
 | `sound` | Per-user session-start tone override. | unset | No | Filename from the sounds directory configured for the space. |
 | `end_sound` | Per-user session-ended tone override. | unset | No | Filename from the sounds directory configured for the space. |
 
@@ -138,7 +140,7 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | --- | --- | --- | --- | --- |
 | `playback_source` | Sources watched for Now Playing. | `All` | No | Options: `jellyfin`, `navidrome`, `external-music`, `All`. External playback must also be enabled under `external_music`. `All` watches all enabled services. |
 | `theme` | UI theme for this space. | `All` | No | Use `All` (or omit the setting) for interactive selection, or lock the space to `default`, `Dracula`, `Nord`, `Catppuccin Latte`, `Catppuccin Mocha`, `Gruvbox Dark`, `Gruvbox Light`, `Solarized Dark`, `Solarized Light`, `Tokyo Night`, `One Dark`, `Monokai`, `Rose Pine`, `Everforest`, `Kanagawa`, `Synthwave 84`, `Material Palenight`, `Night Owl`, `Ayu Mirage`, `GitHub Light`, or `Tomorrow Night`. Fixed themes hide and disable interactive controls. The active interactive theme is synchronized and persisted per space. |
-| `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use the identifiers defined under `users:`, for example `[primary, secondary]`. `[All]` includes every configured user. If omitted, the first configured user is used. |
+| `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use the identifiers defined under `users:`, for example `[bob, alice]`. `[All]` includes every configured user. If omitted, the first configured user is used. |
 | `password` | Optional URL password. | unset | No | If omitted or `""`, no `?password=` is required. |
 | `libraries` | Libraries shown in grid, selection, shuffle, and Wallpaper/Screensaver. | `[]` | Recommended | Use Jellyfin library names; `All` allows all Jellyfin libraries. |
 | `idle_timeout` | Playback record cleanup window in seconds. | `30` | No | Mostly internal display/session housekeeping. |
