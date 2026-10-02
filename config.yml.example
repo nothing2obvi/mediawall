@@ -20,6 +20,7 @@ library_scan:
   cron:
     enabled: true
     expression: "0 3 * * *"
+  directory: /app/data/grid-cache
 
 jellyfin:
   url: "${JELLYFIN_URL}"
@@ -51,6 +52,7 @@ external_music:
   tokens:
     "${EXTERNAL_MUSIC_BOB_TOKEN}":
       user: bob
+  track_transition_grace_seconds: 10
 
 image_providers:
   musicbrainz:
@@ -67,6 +69,11 @@ image_providers:
 
 users:
   bob:
+    # Optional per-user overrides have no default; leave them omitted to inherit:
+    # name: bob
+    # sound: bob-start.mp3
+    # end_sound: bob-end.mp3
+    # external_music_token: "${EXTERNAL_MUSIC_BOB_TOKEN}" # Alternative to external_music.tokens
     jellyfin_user: "${JELLYFIN_BOB_USER}"
     navidrome_user: "${NAVIDROME_BOB_USER}"
     navidrome_password: "${NAVIDROME_BOB_PASSWORD}"
@@ -100,6 +107,7 @@ spaces:
       cycle_interval_seconds: 15
       session_cleanup:
         paused_after_seconds: 15
+        missing_after_seconds: 5
       session_timer:
         enabled: true
         size: 42
@@ -207,6 +215,9 @@ spaces:
         show_jellyfin_username: true
         show_navidrome_username: true
         user_font_size: 13
+        user_avatar_resize:
+          enabled: true
+          size: 96
       screensaver_text:
         enabled: true
         text: "Featured on your server"
@@ -224,9 +235,23 @@ spaces:
         order: written
         styles:
           - crossfade
+      music_logo_artist: artists
+      live_tv:
+        channel_image_size: 713
     page_refresh:
       enabled: true
       time: 06:00
+    anonymous_mode:
+      enabled: false
+      shown: []
+      not_shown:
+        - All
+      anonymous_username: someone
+      now_playing_info:
+        show_anonymous_username: true
+        show_anonymous_avatar: true
+      user_transition_info:
+        show_anonymous_avatar: true
 
 aliases:
   artists:
