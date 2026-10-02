@@ -2258,6 +2258,23 @@ function startGridCacheScans(port: number) {
 }
 
 async function runGridCacheScan(port: number, reason: string) {
+  try {
+    await performGridCacheScan(port, reason);
+  } finally {
+    // A source can fail before normal completion. Never leave stale progress
+    // visible or keep cache operations blocked after the scan has stopped.
+    for (const space of Object.keys(config.spaces)) {
+      const progress = libraryScanProgress.get(space);
+      if (progress?.active) {
+        libraryScanProgress.delete(space);
+        touchSpace(space);
+      }
+      scheduleLibraryScanProgressClear(space);
+    }
+  }
+}
+
+async function performGridCacheScan(port: number, reason: string) {
   const startedAt = Date.now();
   let scanned = 0;
   let warmed = 0;
@@ -2286,6 +2303,10 @@ async function runGridCacheScan(port: number, reason: string) {
 
   for (const [space, displayConfig] of Object.entries(config.spaces)) {
     for (const source of scanSources(displayConfig)) {
+      setLibraryScanProgress(space, {
+        active: true, completed: false, source, percent: 0,
+        scanned: 0, total: 0, warmed: 0, updatedAt: Date.now()
+      });
       const libraries = await browseLibrariesForScan(source, displayConfig);
       const batches: Array<{ library: { id: string; name: string; type?: string }; items: Array<{ artwork?: ArtworkRef; thumbUrl?: string }> }> = [];
       let sourceTotal = 0;
@@ -2402,12 +2423,16 @@ function setLibraryScanProgress(space: string, progress: PublicLibraryScanProgre
   if (timer) windowClearTimeout(timer);
   libraryScanClearTimers.delete(space);
   libraryScanProgress.set(space, progress);
+  if (progress.completed) scheduleLibraryScanProgressClear(space);
 }
 
 function scheduleLibraryScanProgressClear(space: string) {
+  const previous = libraryScanClearTimers.get(space);
+  if (previous) clearTimeout(previous);
   const timer = setTimeout(() => {
     libraryScanProgress.delete(space);
     libraryScanClearTimers.delete(space);
+    touchSpace(space);
   }, 2200);
   libraryScanClearTimers.set(space, timer);
 }

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.3 - 2026-10-01
+
+## Fixes
+
+- Fixed Library scanning remaining at 100% after a source request fails. Completed indicators clear automatically, and failed scans no longer leave cache operations blocked.
+- The progress indicator switches to the next source before fetching its library list.
+
+## Documentation and examples
+
+- Added a fuller `config.yml.example`, linked from the README and configuration reference, with missing options included at their defaults.
+- User examples now use `bob` and `alice`, with distinct source accounts such as `bob-jellyfin` and `alice-navidrome`.
+- Clarified that the artist Library migration applies when upgrading from v0.4.1 or earlier to v0.4.2 or later.
+
+## Upgrading
+
+No new runtime configuration breaking changes from v0.4.2. Example environment-variable names have changed for clarity; existing names still work when your own config references them. Keep your existing config and `.env`.
+
+Docker images: `ghcr.io/nothing2obvi/mediawall:v0.4.3` and `ghcr.io/nothing2obvi/mediawall:latest`, for Linux AMD64 and ARM64.
+
 ## 0.4.2 - 2026-10-01
 
 - Per-space Anonymous Mode can hide everyone or selected users, with visible-user exceptions, a replacement name, and a replaceable default avatar that updates across displays without a restart.
