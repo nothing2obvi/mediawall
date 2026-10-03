@@ -22,6 +22,6 @@ COPY --from=build /app/app/collections ./collections
 COPY --from=build /app/app/avatars ./avatars
 COPY --from=build /app/app/avatars/anonymous.png ./default-assets/anonymous.png
 COPY config.yml ./config.yml
-RUN mkdir -p /app/data /app/custom_logo /app/collections /app/avatars/spotify
+RUN mkdir -p /app/data /app/custom_logo /app/collections /app/avatars/spotify /app/server-icons
 EXPOSE 1221
 CMD ["node", "dist/server/index.js"]

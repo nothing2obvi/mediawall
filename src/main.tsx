@@ -67,7 +67,7 @@ function configurePwaIdentity() {
 }
 
 type ArtworkRef = {
-  source: "jellyfin" | "navidrome" | "fetched" | "fallback";
+  source: "jellyfin" | "subsonic" | "fetched" | "fallback";
   itemId: string;
   title: string;
   mediaType: string;
@@ -84,7 +84,7 @@ type ArtworkRef = {
   groupKey?: string;
 };
 
-type NowPlayingSource = "jellyfin" | "navidrome" | "spotify" | "apple_music" | "external_music";
+type NowPlayingSource = "jellyfin" | "subsonic" | "spotify" | "apple_music" | "external_music";
 
 type DisplayState = {
   mode: "now-playing" | "screensaver" | "immich-kiosk";
@@ -133,7 +133,7 @@ type Snapshot = {
   libraryScan?: {
     active: boolean;
     completed: boolean;
-    source: "jellyfin" | "navidrome" | "sounds" | "custom_images" | "library";
+    source: "jellyfin" | "subsonic" | "sounds" | "custom_images" | "library";
     currentLibrary?: string;
     percent: number;
     scanned: number;
@@ -142,7 +142,7 @@ type Snapshot = {
     updatedAt: number;
   };
   connectionIssues?: Array<{
-    source: "jellyfin" | "navidrome";
+    source: "jellyfin" | "subsonic";
     message: string;
   }>;
   controlCommand?: {
@@ -237,6 +237,7 @@ type Snapshot = {
     endSoundTone?: string;
   }>;
   config: {
+    subsonic?: {name: string; iconUrl: string};
     page_refresh?: { enabled: boolean; time: string };
     theme: string;
     now_playing: {
@@ -299,14 +300,15 @@ type Snapshot = {
       sounds: {
         enabled: boolean;
         jellyfin: boolean;
-        navidrome: boolean;
+        subsonic: boolean;
         quiet_hours: {
           enabled: boolean;
           start: string;
           end: string;
         };
         continuous_sessions: {
-          navidrome: boolean;
+          subsonic: boolean;
+          external_music: boolean;
           jellyfin_libraries: string[];
         };
         session_start: {
@@ -330,6 +332,7 @@ type Snapshot = {
       backdrop_background_color: string;
       live_tv?: { channel_image_size: number };
       logo: { max_width: number };
+      music_video_album_art: { size?: number };
       album_art: { size: number };
       fallback_title: { font_size: number };
       nowplaying_text: {
@@ -346,7 +349,7 @@ type Snapshot = {
           size: number;
         };
         show_jellyfin_username: boolean;
-        show_navidrome_username: boolean;
+        show_subsonic_username: boolean;
         user_font_size: number;
       };
       screensaver_text: {
@@ -488,6 +491,9 @@ function rememberedSoundMuted(space: string) {
 
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
+  const preferenceVersion = useRef(0);
+  const pendingPreferences = useRef(0);
+  const preferenceQueue = useRef<Promise<void>>(Promise.resolve());
   const [visible, setVisible] = useState(true);
   const [panel, setPanel] = useState<"none" | "browse">("none");
   const [libraries, setLibraries] = useState<Library[]>([]);
@@ -1340,9 +1346,13 @@ function App() {
   }, [snapshot, cycledArtwork, panel, shuffleOpen, mediaInfoOpen, themeOpen, favoritePicker]);
 
   async function refresh() {
+    const version = preferenceVersion.current;
+    const preferencesWerePending = pendingPreferences.current > 0;
     try {
       const next = await api<Snapshot>(spaceApi());
-      setSnapshot(next);
+      setSnapshot(current => current && (preferencesWerePending || pendingPreferences.current > 0 || version !== preferenceVersion.current)
+        ? { ...next, state: { ...next.state, mediaInfo: current.state.mediaInfo, showSongInfo: current.state.showSongInfo, showAlbumArt: current.state.showAlbumArt, showLogo: current.state.showLogo } }
+        : next);
       setError(undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load display");
@@ -1487,9 +1497,9 @@ function App() {
     const config = snapshot?.config.now_playing.user_transition;
     if (!config?.enabled || !now) return false;
     const id = now.publicSoundSessionKey ?? now.publicSessionId ?? now.signature ?? `${now.source}:${Date.now()}`;
-    const identity = transitionIdentity(now,sourceDisplayName(now.source));
+    const identity = transitionIdentity(now,sourceDisplayName(now.source, snapshot?.config.subsonic));
     const username = identity.username;
-    const verb = now.source !== "jellyfin" || isMusicArtwork(now.artwork, now)
+    const verb = now.source !== "jellyfin" || (now.artwork?.mediaType?.toLowerCase() !== "musicvideo" && isMusicArtwork(now.artwork, now))
       ? "started listening to"
       : "started watching";
     const durationSeconds = Math.max(0.5, config.duration_seconds ?? 3);
@@ -1639,12 +1649,26 @@ function App() {
   }
 
   async function setPreference(patch: Partial<DisplayState>) {
-    const result = await api<{ state: DisplayState }>(spaceApi("/preferences"), {
-      method: "POST",
-      body: JSON.stringify(patch),
-      headers: { "Content-Type": "application/json" }
+    const version = ++preferenceVersion.current;
+    pendingPreferences.current++;
+    setSnapshot(current => current ? { ...current, state: { ...current.state, ...patch } } : current);
+    // Keep rapid changes ordered; old polls and responses must not undo newer toggles.
+    const save = preferenceQueue.current.then(async () => {
+      const result = await api<{ state: DisplayState }>(spaceApi("/preferences"), {
+        method: "POST", body: JSON.stringify(patch), headers: { "Content-Type": "application/json" }
+      });
+      if (version === preferenceVersion.current) {
+        const saved = Object.fromEntries(Object.keys(patch).map(key => [key, result.state[key as keyof DisplayState]]));
+        setSnapshot(current => current ? { ...current, state: { ...current.state, ...saved } } : current);
+      }
     });
-    setSnapshot((current) => current ? { ...current, state: result.state, mode: result.state.mode } : current);
+    preferenceQueue.current = save.catch(() => undefined);
+    try { await save; }
+    catch (error) { showToast("Could not save display settings. Please try again."); }
+    finally {
+      pendingPreferences.current--;
+      if (!pendingPreferences.current) void refresh();
+    }
   }
 
   async function toggleContextualMediaInfo() {
@@ -1906,7 +1930,7 @@ function App() {
         "--fallback-background": snapshot?.config.now_playing.mediawall_fallback.background_color ?? "#565954",
         "--fallback-logo-min": `${snapshot?.config.now_playing.mediawall_fallback.min_logo_width ?? 260}px`,
         "--fallback-logo-max": `${snapshot?.config.now_playing.mediawall_fallback.max_logo_width ?? 760}px`,
-        "--album-art-size": `${snapshot?.config.display.album_art.size ?? 300}px`,
+        "--album-art-size": `${(snapshot?.nowPlaying?.artwork?.mediaType?.toLowerCase() === "musicvideo" ? snapshot.config.display.music_video_album_art?.size : undefined) ?? snapshot?.config.display.album_art.size ?? 300}px`,
         "--ui-scale": String(snapshot?.config.display.ui.scale ?? 1)
       } as React.CSSProperties}
       onPointerMove={revealControls}
@@ -1919,7 +1943,7 @@ function App() {
       ) : (
         <Backdrop artwork={cycledArtwork} onReady={() => setImmichExitPending(false)} />
       )}
-      {userTransition && <UserTransitionIntro intro={{...userTransition,avatarUrl:userTransition.anonymous ? (userTransition.showAnonymousAvatar ? snapshot?.anonymousAvatarUrl : undefined) : userTransition.avatarUrl}} />}
+      {userTransition && <UserTransitionIntro server={snapshot?.config.subsonic} intro={{...userTransition,avatarUrl:userTransition.anonymous ? (userTransition.showAnonymousAvatar ? snapshot?.anonymousAvatarUrl : undefined) : userTransition.avatarUrl}} />}
       {!showMediaWallIdle && cycledArtwork?.mediaType !== "TvChannel" && <div className="shade" />}
       {!showMediaWallIdle && <Identity snapshot={snapshot} artwork={cycledArtwork} />}
       <SessionTimer snapshot={snapshot} />
@@ -2381,7 +2405,8 @@ function MediaWallIdle({ snapshot }: { snapshot: Snapshot }) {
   );
 }
 
-function UserTransitionIntro({ intro }: {
+function UserTransitionIntro({ intro, server }: {
+  server?: {name: string; iconUrl: string};
   intro: {
     source: NowPlayingSource;
     externalMusicSource?: string;
@@ -2399,7 +2424,7 @@ function UserTransitionIntro({ intro }: {
     collectionImages?: Array<{ collectionName: string; url: string; size: number }>;
   };
 }) {
-  const icon = sourceIcon(intro.source, intro.externalMusicSource);
+  const icon = sourceIcon(intro.source, intro.externalMusicSource, server);
   return (
     <section
       className="user-transition-intro"
@@ -2628,7 +2653,7 @@ function LibraryScanProgress({ snapshot }: { snapshot?: Snapshot }) {
         </div>
         <span>{percent}%</span>
       </div>
-      <div className="scan-progress-label">Scanning: {sourceLabel(display.source)}</div>
+      <div className="scan-progress-label">Scanning: {sourceLabel(display.source, snapshot?.config.subsonic?.name)}</div>
     </section>
   );
 }
@@ -2934,11 +2959,9 @@ function MediaInfoDialog({ state, onCancel, onChange, onSave }: {
   const [prefs, setPrefs] = useState(state.mediaInfo);
 
   function toggle(key: keyof DisplayState["mediaInfo"]) {
-    setPrefs((current) => {
-      const next = { ...current, [key]: !current[key] };
-      onChange({ showSongInfo: Object.values(next).some(Boolean), mediaInfo: next });
-      return next;
-    });
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefs(next);
+    onChange({ showSongInfo: Object.values(next).some(Boolean), mediaInfo: next });
   }
 
   return (
@@ -3308,9 +3331,9 @@ function NowPlayingBadge({ snapshot }: { snapshot?: Snapshot }) {
   const now = snapshot?.nowPlaying;
   if (!config?.enabled || !now) return null;
   const source = now.source;
-  const icon = sourceIcon(source, now.externalMusicSource);
+  const icon = sourceIcon(source, now.externalMusicSource, snapshot?.config.subsonic);
   const showLabel = config.show_text || config.show_source_icon;
-  const identity = badgeIdentity(now,source === "navidrome" ? config.show_navidrome_username : config.show_jellyfin_username,config.show_user_avatar);
+  const identity = badgeIdentity(now,source === "subsonic" ? config.show_subsonic_username : config.show_jellyfin_username,config.show_user_avatar);
   const showAvatar = Boolean(identity.avatarUrl);
   const showUsername = Boolean(identity.username);
   const showUserRow = showAvatar || showUsername;
@@ -3416,7 +3439,7 @@ function nowPlayingBackdropSignature(artwork?: ArtworkRef) {
 
 function isMusicArtwork(artwork?: ArtworkRef, now?: Snapshot["nowPlaying"]) {
   const type = artwork?.mediaType?.toLowerCase() ?? "";
-  return artwork?.source === "navidrome"
+  return artwork?.source === "subsonic"
     || type.includes("music")
     || type === "audio"
     || Boolean(now?.album || now?.artist);
@@ -3429,7 +3452,8 @@ function mediaInfoEnabled(state: DisplayState) {
 function mediaKind(artwork?: ArtworkRef, now?: Snapshot["nowPlaying"]): "movie" | "episode" | "music" | "live-tv" | "other" {
   const type = artwork?.mediaType?.toLowerCase() ?? "";
   if (type === "tvchannel") return "live-tv";
-  const isMusic = type.includes("music") || type === "audio" || artwork?.source === "navidrome" || Boolean(now?.album || now?.artist);
+  if (type === "musicvideo") return "music";
+  const isMusic = type.includes("music") || type === "audio" || artwork?.source === "subsonic" || Boolean(now?.album || now?.artist);
   const isEpisode = type.includes("episode") || type.includes("series") || Boolean(now?.seasonNumber || now?.episodeNumber || now?.seriesName);
   const isMovie = type.includes("movie") || type === "video";
   if (isMovie) return "movie";
@@ -3442,9 +3466,9 @@ function formatSessionCount(position: number, count: number) {
   return `${position} of ${count}`;
 }
 
-function sourceLabel(source: "jellyfin" | "navidrome" | "sounds" | "custom_images" | "library") {
+function sourceLabel(source: "jellyfin" | "subsonic" | "sounds" | "custom_images" | "library", serverName = "Navidrome") {
   if (source === "jellyfin") return "Jellyfin";
-  if (source === "navidrome") return "Navidrome";
+  if (source === "subsonic") return serverName;
   if (source === "sounds") return "Sounds";
   if (source === "library") return "Library";
   return "Custom Logo";
@@ -3465,16 +3489,16 @@ const externalServiceLogos: Record<string, string> = {
   "yamaha-musiccast": musiccastLogo,
   "yandex-music": yandexMusicLogo,
 };
-function sourceIcon(source: NowPlayingSource | undefined, service?: string) {
+function sourceIcon(source: NowPlayingSource | undefined, service?: string, server?: {name: string; iconUrl: string}) {
   if (source === "external_music") return externalServiceLogos[externalServiceKey(service) ?? ""] ?? mediaWallLogo;
-  if (source === "navidrome") return navidromeLogo;
+  if (source === "subsonic") return server?.iconUrl ? mediaUrl(server.iconUrl) : navidromeLogo;
   if (source === "spotify") return spotifyLogo;
   if (source === "apple_music") return appleMusicLogo;
   return jellyfinLogo;
 }
 
-function sourceDisplayName(source: NowPlayingSource | undefined) {
-  if (source === "navidrome") return "Navidrome";
+function sourceDisplayName(source: NowPlayingSource | undefined, server?: {name: string; iconUrl: string}) {
+  if (source === "subsonic") return server?.name ?? "Navidrome";
   if (source === "spotify") return "Spotify";
   if (source === "apple_music") return "Apple Music";
   if (source === "external_music") return "External Music";
@@ -3497,7 +3521,7 @@ function safeToneName(tone: string | undefined, available: string[]) {
 
 function soundSourceAllowed(source: NowPlayingSource, sounds: Snapshot["config"]["now_playing"]["sounds"]) {
   if (source === "jellyfin") return sounds.jellyfin;
-  if (source === "navidrome") return sounds.navidrome;
+  if (source === "subsonic") return sounds.subsonic;
   return true;
 }
 
@@ -3584,12 +3608,12 @@ function artworkWithBackdropIndex(artwork: ArtworkRef, imageIndex: number): Artw
       thumbUrl: `/api/jellyfin/image/${encodeURIComponent(artwork.itemId)}/Backdrop/${imageIndex}?quality=92${tagQuery}`
     };
   }
-  if (artwork.source === "navidrome" && artwork.imageType === "Backdrop") {
+  if (artwork.source === "subsonic" && artwork.imageType === "Backdrop") {
     return {
       ...artwork,
       imageIndex,
-      backdropUrl: `/api/navidrome/local-artist/${encodeURIComponent(artwork.itemId)}/${imageIndex}`,
-      thumbUrl: `/api/navidrome/local-artist/${encodeURIComponent(artwork.itemId)}/${imageIndex}`
+      backdropUrl: `/api/subsonic/local-artist/${encodeURIComponent(artwork.itemId)}/${imageIndex}`,
+      thumbUrl: `/api/subsonic/local-artist/${encodeURIComponent(artwork.itemId)}/${imageIndex}`
     };
   }
   if (artwork.source === "fetched" && artwork.imageType === "Backdrop") {

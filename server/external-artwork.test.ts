@@ -61,9 +61,10 @@ function localClients(artwork: ArtworkRef | null = localArtwork, albumCover?: st
   return {
     jellyfin: {
       artworkForArtistName: async () => artwork ?? undefined,
+      albumCoverForMusicVideo: async () => undefined,
       albumCoverForName: async () => albumCover
     },
-    navidrome: {
+    subsonic: {
       localArtistArtworks: () => [],
       albumCoverForName: async () => undefined
     }
@@ -114,7 +115,7 @@ async function fixture(preference: "local" | "fetched", local: ArtworkRef | null
   const resolver = new ExternalArtworkResolver(
     config(root, preference, backdropCount),
     clients.jellyfin as never,
-    clients.navidrome as never,
+    clients.subsonic as never,
     root
   );
   return { root, resolver };
@@ -155,8 +156,8 @@ for (const [encountered, resolvedName] of [["a子", "ako"], ["ako", "a子"]] as 
       },
       albumCoverForName: async () => undefined
     };
-    const navidrome = { localArtistArtworks: () => [], albumCoverForName: async () => undefined };
-    const resolver = new ExternalArtworkResolver(value, jellyfin as never, navidrome as never, root);
+    const subsonic = { localArtistArtworks: () => [], albumCoverForName: async () => undefined };
+    const resolver = new ExternalArtworkResolver(value, jellyfin as never, subsonic as never, root);
     const resolved = await resolver.resolveExternal(state({
       artist: encountered,
       artists: [encountered],
@@ -193,7 +194,7 @@ test("external sessions preserve album-artist identifiers for canonical artwork 
   assert.deepEqual(receiver.activePlaybacks("primary")[0]?.externalIds?.albumArtistMbids, [mbid]);
 });
 
-test("1. local preference uses an existing Jellyfin/Navidrome artist", async (t) => {
+test("1. local preference uses an existing Jellyfin/Subsonic artist", async (t) => {
   const item = await fixture("local");
   t.after(() => fsp.rm(item.root, { recursive: true, force: true }));
   const mock = mockFanart([{ name: "one", width: 2400, height: 1400 }]);
@@ -304,12 +305,12 @@ test("adding a provider credential invalidates an earlier empty cache entry", as
   const clients = localClients(null);
   const withoutKey = config(root, "fetched");
   withoutKey.image_providers.fanart.api_key = "";
-  const first = new ExternalArtworkResolver(withoutKey, clients.jellyfin as never, clients.navidrome as never, root);
+  const first = new ExternalArtworkResolver(withoutKey, clients.jellyfin as never, clients.subsonic as never, root);
   assert.equal((await first.resolveExternal(state())).artwork, undefined);
 
   const mock = mockFanart([{ name: "one", width: 2400, height: 1400 }]);
   t.after(mock.restore);
-  const withKey = new ExternalArtworkResolver(config(root, "fetched"), clients.jellyfin as never, clients.navidrome as never, root);
+  const withKey = new ExternalArtworkResolver(config(root, "fetched"), clients.jellyfin as never, clients.subsonic as never, root);
   assert.equal((await withKey.resolveExternal(state())).artwork?.source, "fetched");
   assert.equal(mock.calls().providerCalls, 1);
 });
@@ -320,8 +321,8 @@ test("11. switching preference changes the selected artwork source", async (t) =
   const clients = localClients();
   const mock = mockFanart([{ name: "one", width: 2400, height: 1400 }]);
   t.after(mock.restore);
-  const local = new ExternalArtworkResolver(config(root, "local"), clients.jellyfin as never, clients.navidrome as never, root);
-  const fetched = new ExternalArtworkResolver(config(root, "fetched"), clients.jellyfin as never, clients.navidrome as never, root);
+  const local = new ExternalArtworkResolver(config(root, "local"), clients.jellyfin as never, clients.subsonic as never, root);
+  const fetched = new ExternalArtworkResolver(config(root, "fetched"), clients.jellyfin as never, clients.subsonic as never, root);
   assert.equal((await local.resolveExternal(state())).artwork?.source, "jellyfin");
   assert.equal((await fetched.resolveExternal(state())).artwork?.source, "fetched");
 });
@@ -335,7 +336,7 @@ test("Spotify source avatars support common formats and case-insensitive usernam
   const avatars = new SourceAvatarStore(root);
   assert.equal(path.basename(avatars.avatarPath("spotify", "primary") ?? ""), "Primary.WeBp");
   assert.equal(avatars.avatarPath("spotify", "missing"), undefined);
-  assert.equal(avatars.avatarPath("navidrome", "primary"), undefined);
+  assert.equal(avatars.avatarPath("subsonic", "primary"), undefined);
 });
 
 test("Jellyfin avatar fallback only returns URLs for users with profile images", async () => {
@@ -371,5 +372,48 @@ test("artwork logs identify providers, counts, rejection reasons, cache reuse an
   await item.resolver.resolveExternal(state({ albumArtUrl: "https://example.test/cover?token=private-secret" }));
   assert.equal(lines.length, count, "unchanged polling should not repeat selection logs");
   assert.equal(item.resolver.imageSource("/api/jellyfin/image/123/Backdrop"), "Jellyfin");
-  assert.equal(item.resolver.imageSource("/api/navidrome/local-artist/Artist/0"), "local files");
+  assert.equal(item.resolver.imageSource("/api/subsonic/local-artist/Artist/0"), "local files");
+});
+
+test("music-video cover lookup preserves video artwork and tolerates missing metadata or provider failure", async t => {
+  const root=await fsp.mkdtemp(path.join(os.tmpdir(),"music-video-cover-"));
+  try {
+    const clients=localClients();
+    const resolver=new ExternalArtworkResolver(config(root,"fetched"),clients.jellyfin as any,clients.subsonic as any,root);
+    const video=state({source:"jellyfin",itemId:"video",album:"Album",artwork:{...localArtwork,itemId:"video",mediaType:"MusicVideo",backdropCount:2}});
+    const lookup=t.mock.method(resolver as any,"resolveAlbumCover",async()=>"/provider/album.jpg");
+    const resolved=await resolver.resolveMusicVideo(video);
+    assert.equal(resolved.albumArtUrl,"/provider/album.jpg");assert.deepEqual(resolved.artwork,video.artwork);
+    await resolver.resolveMusicVideo({...video,album:undefined});
+    await resolver.resolveMusicVideo({...video,albumArtUrl:"/jellyfin/album.jpg"});
+    assert.equal(lookup.mock.callCount(),1);
+    lookup.mock.mockImplementation(async()=>{throw new Error("provider unavailable");});
+    const failed=await resolver.resolveMusicVideo(video);
+    assert.deepEqual(failed.artwork,video.artwork);assert.equal(failed.albumArtUrl,undefined);
+  } finally {await fsp.rm(root,{recursive:true,force:true});}
+});
+
+test("music videos never replace missing folder artwork with external artist artwork", async t => {
+  const root=await fsp.mkdtemp(path.join(os.tmpdir(),"music-video-artist-"));
+  try {
+    const clients=localClients();const resolver=new ExternalArtworkResolver(config(root,"local"),clients.jellyfin as any,clients.subsonic as any,root);
+    t.mock.method(resolver as any,"editedArtist",async()=>undefined);
+    const lookup=t.mock.method(resolver as any,"resolveLocalArtist",async()=>({...localArtwork,backdropCount:3}));
+    const video=state({source:"jellyfin",artist:"Performing Artist",albumArtist:"Different Album Artist",album:undefined,albumArtUrl:"/existing-cover.jpg",artwork:{...localArtwork,itemId:"video",mediaType:"MusicVideo",backdropUrl:undefined}});
+    const resolved=await resolver.resolveMusicVideo(video);
+    assert.equal(resolved.artwork?.itemId,"video");assert.equal(resolved.artwork?.backdropUrl,undefined);
+    assert.equal(resolved.artwork?.mediaType,"MusicVideo");assert.equal(resolved.albumArtUrl,"/existing-cover.jpg");
+    assert.equal(lookup.mock.callCount(),0);
+  } finally {await fsp.rm(root,{recursive:true,force:true});}
+});
+
+test("music-video Jellyfin track covers win without changing metadata or normal music",async t=>{
+ const root=await fsp.mkdtemp(path.join(os.tmpdir(),"music-video-priority-"));t.after(()=>fsp.rm(root,{recursive:true,force:true}));
+ const clients=localClients();const cfg=config(root,"fetched");cfg.aliases.artists={"Artist":["Alias"]};
+ const matching=t.mock.method(clients.jellyfin,"albumCoverForMusicVideo",async(...args:any[])=>{assert.deepEqual(args[1],["Alias","Artist"]);return "/jellyfin/matched-album";});
+ const resolver=new ExternalArtworkResolver(cfg,clients.jellyfin as any,clients.subsonic as any,root);
+ const provider=t.mock.method(resolver as any,"resolveAlbumCover",async()=>{throw new Error("Must prefer Jellyfin track");});
+ const video=state({source:"jellyfin",title:"Song (Remix)",artist:"Alias",album:"Video metadata album",artwork:{...localArtwork,mediaType:"MusicVideo"}});
+ const result=await resolver.resolveMusicVideo(video);assert.equal(result.albumArtUrl,"/jellyfin/matched-album");assert.equal(result.title,video.title);assert.equal(result.artist,video.artist);assert.equal(result.album,video.album);assert.equal(provider.mock.callCount(),0);
+ const audio={...video,artwork:localArtwork};assert.equal(await resolver.resolveMusicVideo(audio),audio);assert.equal(matching.mock.callCount(),1);
 });

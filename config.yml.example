@@ -1,9 +1,9 @@
-# Example setup with Jellyfin, Navidrome, external music, and Immich Kiosk.
+# Example setup with Jellyfin, Subsonic, external music, and Immich Kiosk.
 # Copy to config.yml and adjust the users, libraries, mounts, and features you use.
-# Example account values: JELLYFIN_BOB_USER=bob-jellyfin, NAVIDROME_BOB_USER=bob-navidrome,
-# NAVIDROME_ALICE_USER=alice-navidrome.
+# Example account values: JELLYFIN_BOB_USER=bob-jellyfin, SUBSONIC_BOB_USER=bob-subsonic,
+# SUBSONIC_BOB2_USER=bob2-subsonic.
 # Set every ${VARIABLE} below in your .env; no credentials are included here.
-# Example URLs: JELLYFIN_URL=http://jellyfin:8096, NAVIDROME_URL=http://navidrome:4533,
+# Example URLs: JELLYFIN_URL=http://jellyfin:8096, SUBSONIC_URL=http://navidrome:4533,
 # LIVINGROOM_IMMICH_KIOSK_URL=http://immich-kiosk:3000 (also reachable by your browser).
 # Create your own API keys, passwords, and EXTERNAL_MUSIC_BOB_TOKEN.
 # Match the external token in Multi-Scrobbler. MUSICBRAINZ_CONTACT should be your contact email.
@@ -26,9 +26,11 @@ jellyfin:
   url: "${JELLYFIN_URL}"
   api_key: "${JELLYFIN_API_KEY}"
 
-navidrome:
+subsonic:
+  name: "Navidrome"
+  icon: "navidrome"
   enabled: true
-  url: "${NAVIDROME_URL}"
+  url: "${SUBSONIC_URL}"
   artwork:
     jellyfin_fallback: true
     local_files: true
@@ -37,7 +39,7 @@ navidrome:
       - local
       - fetched
     path_mappings:
-      - navidrome: "/music"
+      - subsonic: "/music"
         mediawall: "/music"
 
 external_music:
@@ -75,12 +77,12 @@ users:
     # end_sound: bob-end.mp3
     # external_music_token: "${EXTERNAL_MUSIC_BOB_TOKEN}" # Alternative to external_music.tokens
     jellyfin_user: "${JELLYFIN_BOB_USER}"
-    navidrome_user: "${NAVIDROME_BOB_USER}"
-    navidrome_password: "${NAVIDROME_BOB_PASSWORD}"
-  alice:
+    subsonic_user: "${SUBSONIC_BOB_USER}"
+    subsonic_password: "${SUBSONIC_BOB_PASSWORD}"
+  bob2:
     jellyfin_user: "All"
-    navidrome_user: "${NAVIDROME_ALICE_USER}"
-    navidrome_password: "${NAVIDROME_ALICE_PASSWORD}"
+    subsonic_user: "${SUBSONIC_BOB2_USER}"
+    subsonic_password: "${SUBSONIC_BOB2_PASSWORD}"
 
 spaces:
   livingroom:
@@ -160,15 +162,17 @@ spaces:
       sounds:
         enabled: true
         jellyfin: true
-        navidrome: true
+        subsonic: true
         quiet_hours:
           enabled: false
           start: "23:00"
           end: "08:00"
         continuous_sessions:
-          navidrome: true
+          subsonic: true
           jellyfin_libraries:
             - Music
+            - Music Videos
+          external_music: true
         session_start:
           retrigger_after_inactive_seconds: 30
         session_end:
@@ -213,7 +217,7 @@ spaces:
         user_avatar_size: 60
 
         show_jellyfin_username: true
-        show_navidrome_username: true
+        show_subsonic_username: true
         user_font_size: 13
         user_avatar_resize:
           enabled: true
@@ -238,6 +242,8 @@ spaces:
       music_logo_artist: artists
       live_tv:
         channel_image_size: 713
+      # Inherits album_art.size; set size here to override it for music videos.
+      music_video_album_art: {}
     page_refresh:
       enabled: true
       time: 06:00

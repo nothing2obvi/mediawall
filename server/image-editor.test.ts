@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 import { loadConfig } from "./config.js";
 import { ImageEditor, JellyfinImageAdapter, LocalImageAdapter, ExternalImageAdapter, editorTarget, type EditorTarget } from "./image-editor.js";
 import { ExternalArtworkResolver } from "./external-artwork.js";
-import { NavidromeClient } from "./navidrome.js";
+import { SubsonicClient } from "./subsonic.js";
 import { JellyfinClient } from "./jellyfin.js";
 import { EditorClock } from "./editor-clock.js";
 import { clearArtworkCache } from "./artwork-cache.js";
@@ -22,8 +22,8 @@ function png() { const b=Buffer.alloc(24); b.set([137,80,78,71,13,10,26,10]); b.
 async function fixture(t: any) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(),"mediawall-editor-")); t.after(()=>fs.rm(root,{recursive:true,force:true}));
   const cfg = loadConfig(); cfg.library.directory=path.join(root,"library"); cfg.external_music.artwork.album_cache_directory=path.join(root,"external"); cfg.library_scan.directory=path.join(root,"grid");
-  cfg.navidrome.artwork.local_files=true; cfg.navidrome.artwork.path_mappings=[{navidrome:"/music",mediawall:path.join(root,"music")}];
-  const jellyfin=new JellyfinClient(cfg), nav=new NavidromeClient(cfg,jellyfin);
+  cfg.subsonic.artwork.local_files=true; cfg.subsonic.artwork.path_mappings=[{subsonic:"/music",mediawall:path.join(root,"music")}];
+  const jellyfin=new JellyfinClient(cfg), nav=new SubsonicClient(cfg,jellyfin);
   const dir=path.join(root,"external","artists",key);await fs.mkdir(dir,{recursive:true});
   const cache={version:2,configuration:"test",resolvedAt:Date.now(),artist:"Album Artist",providers:["fanart.tv"],logo:{file:"logo.png",provider:"fanart.tv",sourceUrl:"https://images.test/logo"},backdrops:[0,1,2].map(i=>({file:`backdrop-${i}.png`,provider:"fanart.tv",sourceUrl:`https://images.test/${i}`,width:2400,height:1400}))};
   for(const image of [cache.logo,...cache.backdrops])await fs.writeFile(path.join(dir,image.file),png());
@@ -33,7 +33,7 @@ async function fixture(t: any) {
 }
 test("source and canonical entity come from displayed artwork, not playback service",()=>{
   assert.equal(editorTarget(snapshot("jellyfin")).source,"jellyfin");
-  assert.equal(editorTarget(snapshot("navidrome")).source,"local");
+  assert.equal(editorTarget(snapshot("subsonic")).source,"local");
   assert.equal(editorTarget(snapshot()).source,"external");
   assert.equal(editorTarget(snapshot()).name,"Album Artist");
   for(const kind of ["Movie","Series"])assert.equal(editorTarget(snapshot("jellyfin",kind)).kind,kind);
@@ -80,7 +80,7 @@ test("local adapter touches only selected artwork and persists order across inst
   await adapter.remove(local,(await adapter.list(local)).find(i=>i.type==="Backdrop")!);assert.equal(f.nav.localArtistImagePaths(local.id).length,3);
   await adapter.remove(local,(await adapter.list(local)).find(i=>i.type==="Logo")!);assert.equal(f.nav.localArtistLogoPath(local.id),undefined);
   assert.ok(await fs.stat(path.join(dir,"track.flac")));assert.ok(await fs.stat(path.join(dir,"album.jpg")));
-  const fresh=new NavidromeClient(f.cfg,new JellyfinClient(f.cfg));assert.deepEqual(fresh.localArtistImagePaths(local.id),f.nav.localArtistImagePaths(local.id));
+  const fresh=new SubsonicClient(f.cfg,new JellyfinClient(f.cfg));assert.deepEqual(fresh.localArtistImagePaths(local.id),f.nav.localArtistImagePaths(local.id));
 });
 test("editor rejects stale revisions, unknown search results, unsupported types and cross-space sessions",async()=>{
   const adapter={list:async()=>[],search:async()=>[],add:async()=>{},upload:async()=>{},remove:async()=>{},move:async()=>{}};
@@ -160,7 +160,7 @@ for (const source of ["external", "local"] as const) test(`${source} uploads app
   await adapter.upload(entity, "Logo", image);
   after = await adapter.list(entity);
   assert.equal(after.filter(i=>i.type==="Logo").length, 1);
-  if (source === "local") assert.notEqual(after.find(i=>i.type==="Logo")!.id,before.find(i=>i.type==="Logo")!.id);
+  if (source === "local") assert.equal(after.find(i=>i.type==="Logo")!.id,before.find(i=>i.type==="Logo")!.id);
   else assert.equal(after.find(i=>i.type==="Logo")!.id,"logo.png");
   assert.equal(after.filter(i=>i.type==="Backdrop").length, before.filter(i=>i.type==="Backdrop").length + 2);
   assert.ok(await fs.stat(path.join(dir,"track.flac")));
@@ -227,7 +227,7 @@ test("local/external result paging caches provider lookup and registers selectab
     searches++;
     return Array.from({length:65},(_,i)=>({id:String(i),type,url:`https://fixture/${i}`,provider:i%2 ? "theaudiodb" : "fanart.tv"}));
   },add:async(_target:EditorTarget,image:{id:string})=>{selected=image.id;},upload:async()=>{},remove:async()=>{},move:async()=>{}};
-  for (const source of ["fetched","navidrome"]) {
+  for (const source of ["fetched","subsonic"]) {
     const editor = new ImageEditor({external:adapter,local:adapter,jellyfin:adapter});
     const model = await editor.open("room",snapshot(source));
     const first = await editor.searchPage("room",model.id,"Backdrop");
@@ -243,4 +243,37 @@ test("local/external result paging caches provider lookup and registers selectab
     await assert.rejects(editor.searchPage("room",model.id,"Primary" as any),/Unsupported/);
   }
   assert.equal(searches,2,"one provider lookup per editor and type despite paging/filtering");
+});
+
+test("local uploads use Jellyfin names, reserve occupied slots and preserve media", async t => {
+  const f=await fixture(t), dir=path.join(f.root,"music","Album Artist");await fs.mkdir(dir,{recursive:true});
+  const local={...target,source:"local" as const,id:"Album Artist"};
+  const adapter=new LocalImageAdapter(f.resolver,f.nav,f.cfg);
+  const {decodeImageUpload}=await import("./image-upload.js");const image=decodeImageUpload(png().toString("base64"));
+  await fs.writeFile(path.join(dir,"backdrop.jpg"),png());
+  await fs.writeFile(path.join(dir,"backdrop1.png"),Buffer.from("not artwork"));
+  await fs.writeFile(path.join(dir,".mediawall-images.json"),JSON.stringify({backdrops:[path.join(dir,"backdrop.jpg")],logo:null}));
+  await fs.writeFile(path.join(dir,"track.flac"),Buffer.from("music unchanged"));
+  await adapter.upload(local,"Backdrop",image);
+  assert.deepEqual(await fs.readFile(path.join(dir,"backdrop2.png")),image.buffer);
+  assert.equal(await fs.readFile(path.join(dir,"backdrop1.png"),"utf8"),"not artwork");
+  await adapter.upload(local,"Logo",image);
+  assert.deepEqual(await fs.readFile(path.join(dir,"logo.png")),image.buffer);
+  const replacement={...image,buffer:Buffer.concat([image.buffer,Buffer.from("new image bytes")])};
+  await adapter.upload(local,"Logo",replacement);
+  assert.deepEqual(await fs.readFile(path.join(dir,"logo.png")),replacement.buffer);
+  assert.equal(await fs.readFile(path.join(dir,"track.flac"),"utf8"),"music unchanged");
+  const manifest=JSON.parse(await fs.readFile(path.join(dir,".mediawall-images.json"),"utf8"));
+  assert.equal(manifest.logo,path.join(dir,"logo.png"));
+  assert.equal(manifest.backdrops.at(-1),path.join(dir,"backdrop2.png"));
+});
+
+test("local logo replacement rolls back if the manifest cannot be saved", async t => {
+  const f=await fixture(t),dir=path.join(f.root,"music","Album Artist");await fs.mkdir(dir,{recursive:true});
+  const local={...target,source:"local" as const,id:"Album Artist"};const adapter=new LocalImageAdapter(f.resolver,f.nav,f.cfg);
+  const original=png();await fs.writeFile(path.join(dir,"logo.png"),original);
+  await fs.writeFile(path.join(dir,".mediawall-images.json.tmp"),"occupied");
+  const {decodeImageUpload}=await import("./image-upload.js");const image=decodeImageUpload(Buffer.concat([original,Buffer.from("new")]).toString("base64"));
+  await assert.rejects(adapter.upload(local,"Logo",image));
+  assert.deepEqual(await fs.readFile(path.join(dir,"logo.png")),original);
 });

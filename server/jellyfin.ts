@@ -181,7 +181,10 @@ export class JellyfinClient {
     const isAudio = item.MediaType === "Audio" || item.Type === "Audio";
     if (!isAudio) {
       const displayItem = await this.displayItemForVideo(item).catch(() => item);
-      const artwork = this.artworkFromItem(displayItem, displayItem.Name ?? item.SeriesName ?? item.Name ?? "Now Playing", displayItem.Type ?? item.Type ?? "Media");
+      const videoArtistArtwork = item.Type === "MusicVideo"
+        ? await this.musicVideoFolderArtwork(displayItem) : undefined;
+      const artwork = videoArtistArtwork ?? (item.Type === "MusicVideo" ? undefined : this.artworkFromItem(displayItem, displayItem.Name ?? item.SeriesName ?? item.Name ?? "Now Playing", displayItem.Type ?? item.Type ?? "Media"))
+        ?? (item.Type === "MusicVideo" ? { source: "jellyfin" as const, itemId: item.Id, title: item.Name, mediaType: "MusicVideo", imageType: "Backdrop" as const, imageIndex: 0, backdropCount: 0 } : undefined);
       return {
         source: "jellyfin",
         user: jellyfinUser,
@@ -192,12 +195,20 @@ export class JellyfinClient {
         sessionKey,
         activityAt,
         playbackPositionTicks,
-        title: item.Name,
+        title: displayItem.Name ?? item.Name,
+        ...(item.Type === "MusicVideo" ? {
+          artist: displayItem.Artists?.[0] ?? displayItem.ArtistItems?.[0]?.Name ?? displayItem.AlbumArtist,
+          artists: displayItem.Artists ?? displayItem.ArtistItems?.map((artist: JellyfinItem) => artist.Name).filter(Boolean),
+          albumArtist: displayItem.AlbumArtist ?? displayItem.AlbumArtists?.[0]?.Name,
+          album: displayItem.Album,
+          albumArtUrl: displayItem.AlbumId && displayItem.AlbumPrimaryImageTag
+            ? this.imageUrl(displayItem.AlbumId, "Primary", 0, displayItem.AlbumPrimaryImageTag) : undefined
+        } : {}),
         year: item.ProductionYear,
-        seasonNumber: item.ParentIndexNumber,
-        episodeNumber: item.IndexNumber,
-        seriesName: item.SeriesName,
-        logoText: displayItem.Name ?? item.SeriesName ?? item.Name,
+        seasonNumber: item.Type === "MusicVideo" ? undefined : item.ParentIndexNumber,
+        episodeNumber: item.Type === "MusicVideo" ? undefined : item.IndexNumber,
+        seriesName: item.Type === "MusicVideo" ? undefined : item.SeriesName,
+        logoText: item.Type === "MusicVideo" ? videoArtistArtwork?.title ?? displayItem.Artists?.[0] ?? displayItem.Name : displayItem.Name ?? item.SeriesName ?? item.Name,
         itemId: item.Id,
         libraryName,
         artwork,
@@ -356,6 +367,57 @@ export class JellyfinClient {
     return artist ? this.artworkFromItem(artist, artist.Name ?? name ?? "Artist", "MusicArtist") : undefined;
   }
 
+  private musicVideoCovers = new Map<string, { at: number; url?: string }>();
+
+  async albumCoverForMusicVideo(title: string, artists: string[], user: string) {
+    if (!this.configured() || !title || !artists.length) return undefined;
+    const normalize = (value: string) => value.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+    const titles = [normalize(title)];
+    while (true) {
+      const stripped = titles.at(-1)!.replace(/\s*\([^()]*\)\s*$/, "").trim();
+      if (!stripped || stripped === titles.at(-1)) break;
+      titles.push(stripped);
+    }
+    const names = artists.map(normalize);
+    const key = JSON.stringify([user, titles, names]);
+    const cached = this.musicVideoCovers.get(key);
+    if (cached && Date.now() - cached.at < 60_000) return cached.url;
+    const userId = await this.userIdFor(user);
+    const views = await this.getJson<{ Items?: JellyfinItem[] }>(`/Users/${encodeURIComponent(userId)}/Views`);
+    const candidates: Array<{ item: JellyfinItem; titleRank: number; artistRank: number }> = [];
+    for (const library of views.Items ?? []) {
+      if (String(library.CollectionType).toLowerCase() !== "music") continue;
+      const params = new URLSearchParams({ ParentId: library.Id, UserId: userId, Recursive: "true",
+        IncludeItemTypes: "Audio", SearchTerm: titles.at(-1)!, Fields: "Artists,ArtistItems,AlbumId,AlbumPrimaryImageTag,ImageTags" });
+      const tracks = await this.pagedItems("/Items", params, 200, Number.MAX_SAFE_INTEGER);
+      for (const item of tracks) {
+        const titleRank = titles.indexOf(normalize(String(item.Name ?? "")));
+        const trackArtists = [...(item.Artists ?? []), ...(item.ArtistItems ?? []).map((entry: JellyfinItem) => entry.Name)]
+          .filter((name): name is string => typeof name === "string").map(normalize);
+        const artistRank = names.findIndex(name => trackArtists.includes(name));
+        if (titleRank >= 0 && artistRank >= 0) candidates.push({ item, titleRank, artistRank });
+      }
+    }
+    candidates.sort((a, b) => a.titleRank - b.titleRank || a.artistRank - b.artistRank || String(a.item.Id).localeCompare(String(b.item.Id)));
+    let url: string | undefined;
+    // Only consider the most specific matching release, even if it lacks artwork.
+    const best = candidates[0];
+    for (const { item, titleRank, artistRank } of candidates) {
+      if (titleRank !== best.titleRank || artistRank !== best.artistRank) break;
+      if (item.AlbumId && item.AlbumPrimaryImageTag) url = this.imageUrl(item.AlbumId, "Primary", 0, item.AlbumPrimaryImageTag);
+      else if (item.ImageTags?.Primary) url = this.imageUrl(item.Id, "Primary", 0, item.ImageTags.Primary);
+      else if (item.AlbumId) {
+        const albums = await this.getJson<{ Items?: JellyfinItem[] }>(`/Items?${new URLSearchParams({Ids:item.AlbumId, UserId:userId, Fields:"ImageTags"})}`);
+        const album = albums.Items?.find(entry => entry.Id === item.AlbumId);
+        if (album?.ImageTags?.Primary) url = this.imageUrl(album.Id, "Primary", 0, album.ImageTags.Primary);
+      }
+      if (url) break;
+    }
+    if (this.musicVideoCovers.size >= 256) this.musicVideoCovers.clear();
+    this.musicVideoCovers.set(key, { at: Date.now(), url });
+    return url;
+  }
+
   async albumCoverForName(albumName?: string, artistName?: string) {
     if (!albumName || !this.configured()) return undefined;
     const params = new URLSearchParams({
@@ -437,7 +499,31 @@ export class JellyfinClient {
     return item;
   }
 
+  private async musicVideoFolderArtwork(item: JellyfinItem): Promise<ArtworkRef | undefined> {
+    // Jellyfin includes inherited folder image IDs/tags in playback metadata.
+    // Use those directly; /Items/{id} is not available on every Jellyfin server.
+    if (item.ParentBackdropItemId && item.ParentBackdropImageTags?.length) {
+      return this.artworkFromItem({
+        Id: item.ParentBackdropItemId,
+        BackdropImageTags: item.ParentBackdropImageTags,
+        ParentLogoItemId: item.ParentLogoItemId,
+        ParentLogoImageTag: item.ParentLogoImageTag
+      }, item.Artists?.[0] ?? item.AlbumArtist ?? "Artist", "MusicVideo");
+    }
+    const ancestors = item.Id
+      ? await this.getJson<JellyfinItem[]>(`/Items/${encodeURIComponent(item.Id)}/Ancestors`).catch(() => []) : [];
+    for (const id of [...new Set([item.ParentId, item.ParentBackdropItemId, item.ParentLogoItemId].filter(Boolean))]) {
+      const folder = ancestors.find((entry) => entry.Id === id)
+        ?? await this.getItem(String(id)).catch(() => undefined);
+      if (!folder || ["CollectionFolder", "UserRootFolder", "AggregateFolder"].includes(folder.Type)) continue;
+      const artwork = this.artworkFromItem(folder, folder.Name ?? item.Artists?.[0] ?? "Artist", "MusicVideo");
+      if (artwork) return artwork;
+    }
+    return undefined;
+  }
+
   private async displayItemForVideo(item: JellyfinItem) {
+    if (item.Type === "MusicVideo" && item.Id) return { ...item, ...await this.getItem(item.Id) };
     if (item.Type === "Episode") return this.seriesForEpisode(item);
     if (item.Type === "Video" && item.ParentId) {
       const parent = await this.getItem(item.ParentId).catch(() => undefined);

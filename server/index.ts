@@ -1,3 +1,5 @@
+import { normalizeSubsonicState } from "./subsonic-compat.js";
+import { resolveServerIcon, serverIconPresentation } from "./server-icons.js";
 import { anonymousIdentity, mappedUserKey } from "./anonymous-mode.js";
 import { updatePlaybackProgress, type PlaybackProgress } from "./playback-progress.js";
 import { watchesSource } from "./playback-source.js";
@@ -12,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig, findDisplay, themeNames } from "./config.js";
 import { JellyfinClient, fallbackArtwork, movieCollectionLookupKey } from "./jellyfin.js";
-import { NavidromeClient } from "./navidrome.js";
+import { SubsonicClient } from "./subsonic.js";
 import { ExternalMusicReceiver, authorizationToken } from "./external-music.js";
 import { ExternalArtworkResolver } from "./external-artwork.js";
 import { SourceAvatarStore } from "./source-avatars.js";
@@ -27,12 +29,12 @@ const appRoot = path.resolve(__dirname, "../..");
 const config = loadConfig();
 const jellyfin = new JellyfinClient(config);
 const collectionIndex = new JellyfinCollectionIndex(config, jellyfin);
-const navidrome = new NavidromeClient(config, jellyfin);
+const subsonic = new SubsonicClient(config, jellyfin);
 const externalMusic = new ExternalMusicReceiver(config);
-const externalArtwork = new ExternalArtworkResolver(config, jellyfin, navidrome, appRoot);
+const externalArtwork = new ExternalArtworkResolver(config, jellyfin, subsonic, appRoot);
 const sourceAvatars = new SourceAvatarStore(appRoot);
 const states = new StateStore();
-const imageEditor = new ImageEditor({ jellyfin: new JellyfinImageAdapter(jellyfin), local: new LocalImageAdapter(externalArtwork, navidrome, config), external: new ExternalImageAdapter(externalArtwork) });
+const imageEditor = new ImageEditor({ jellyfin: new JellyfinImageAdapter(jellyfin), local: new LocalImageAdapter(externalArtwork, subsonic, config), external: new ExternalImageAdapter(externalArtwork) });
 const editorSnapshots = new Map<string, DisplaySnapshot>();
 const artworkVersions = new Map<string, number>();
 const editorClock = new EditorClock((space, elapsed) => {
@@ -47,6 +49,22 @@ const editorClock = new EditorClock((space, elapsed) => {
   }
 });
 const app = express();
+// Keep previously issued artwork URLs usable after the integration rename.
+app.use((req, _res, next) => {
+  if (req.url.startsWith("/api/navidrome/")) req.url=req.url.replace("/api/navidrome/","/api/subsonic/");
+  if (req.url.startsWith("/api/artwork/navidrome/")) req.url=req.url.replace("/api/artwork/navidrome/","/api/artwork/subsonic/");
+  next();
+});
+const customServerIcons = process.env.NODE_ENV === "production" ? path.join(appRoot,"server-icons") : path.join(appRoot,"app/server-icons");
+const packagedServerIcons = fs.existsSync(path.join(publicDir,"logos")) ? path.join(publicDir,"logos") : path.join(appRoot,"src/logos");
+app.get("/api/subsonic/server-icon", (_req,res) => {
+  const file=resolveServerIcon(config.subsonic.icon,customServerIcons,packagedServerIcons)
+    ?? resolveServerIcon("navidrome",customServerIcons,packagedServerIcons);
+  if(!file) {res.sendStatus(404);return;}
+  res.setHeader("Cache-Control","no-cache");
+  res.setHeader("Content-Security-Policy","sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:");
+  res.sendFile(file);
+});
 const favoritesShuffleLibrary = "Favorites";
 let cacheCleared: {id: string; at: number} | undefined;
 let clearingCache = false;
@@ -127,6 +145,7 @@ app.use((req, res, next) => {
 });
 app.use("/api/space/:space/image-editor/mutate", express.json({limit: "15mb"}));
 app.use(express.json());
+app.use("/api/space", (req, _res, next) => { if (req.body) req.body = normalizeSubsonicState(req.body); next(); });
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path.startsWith("/api/space/") && !req.path.includes("/image-editor")) {
     res.on("finish", () => {
@@ -153,7 +172,8 @@ app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     jellyfinConfigured: jellyfin.configured(),
-    navidromeConfigured: navidrome.configured(),
+    subsonicConfigured: subsonic.configured(),
+    navidromeConfigured: subsonic.configured(), // Legacy health clients.
     externalMusicConfigured: externalMusic.configured()
   });
 });
@@ -227,7 +247,7 @@ app.get("/api/space/:space/events", (req, res) => {
   });
 });
 
-app.use(["/api/jellyfin", "/api/navidrome", "/api/external-artwork", "/api/avatars"], (req, res, next) => {
+app.use(["/api/jellyfin", "/api/subsonic", "/api/external-artwork", "/api/avatars"], (req, res, next) => {
   if (mediaAssetAllowed(req)) {
     next();
     return;
@@ -292,28 +312,28 @@ app.get("/api/jellyfin/user-image/:userId/Primary", async (req, res) => {
   }
 });
 
-app.get("/api/navidrome/cover/:coverArtId", async (req, res) => {
+app.get("/api/subsonic/cover/:coverArtId", async (req, res) => {
   try {
     const coverArtId = String(req.params.coverArtId);
-    const result = await cachedImage(`navidrome-cover:${coverArtId}`, () => navidrome.proxyCoverArt(coverArtId));
+    const result = await cachedImage(`subsonic-cover:${coverArtId}`, () => subsonic.proxyCoverArt(coverArtId));
     if (!result.buffer) {
       res.sendStatus(result.status);
       return;
     }
     sendImageResult(res, result);
   } catch (error) {
-    logger.error("Navidrome cover proxy failed", error);
+    logger.error("Subsonic cover proxy failed", error);
     res.sendStatus(502);
   }
 });
 
-app.get("/api/navidrome/artist-image", async (req, res) => {
+app.get("/api/subsonic/artist-image", async (req, res) => {
   const artistName = typeof req.query.artist === "string" ? req.query.artist : undefined;
   try {
     const imageUrl = String(req.query.url ?? "");
     const result = await cachedImage(
-      `navidrome-artist:${imageUrl}`,
-      () => navidrome.proxyArtistImage(imageUrl),
+      `subsonic-artist:${imageUrl}`,
+      () => subsonic.proxyArtistImage(imageUrl),
       { revalidateAfterMs: 60_000, cacheControl: "no-store", allowStaleOnError: false }
     );
     if (!result.buffer) {
@@ -322,20 +342,20 @@ app.get("/api/navidrome/artist-image", async (req, res) => {
     }
     sendImageResult(res, result);
   } catch (error) {
-    logger.error("Navidrome artist image proxy failed", error);
+    logger.error("Subsonic artist image proxy failed", error);
     sendLocalArtistImage(artistName, res, 502);
   }
 });
 
-app.get("/api/navidrome/local-artist/:artistName", (req, res) => {
+app.get("/api/subsonic/local-artist/:artistName", (req, res) => {
   sendLocalArtistImage(String(req.params.artistName), res, 404);
 });
 
-app.get("/api/navidrome/local-artist/:artistName/:imageIndex", (req, res) => {
+app.get("/api/subsonic/local-artist/:artistName/:imageIndex", (req, res) => {
   sendLocalArtistImage(String(req.params.artistName), res, 404, Number(req.params.imageIndex));
 });
 
-app.get("/api/navidrome/local-artist-logo/:artistName", (req, res) => {
+app.get("/api/subsonic/local-artist-logo/:artistName", (req, res) => {
   sendLocalArtistLogo(String(req.params.artistName), res, 404);
 });
 
@@ -837,8 +857,8 @@ app.get("/api/space/:space/items/:itemId/backdrops", async (req, res) => {
   const resolved = resolveDisplay(req.params.space, undefined, res, req.query.password);
   if (!resolved) return;
   const source = String(req.query.source ?? "jellyfin");
-  if (source === "navidrome") {
-    res.json({ backdrops: navidrome.localArtistArtworks(String(req.query.title ?? req.params.itemId)) });
+  if (source === "subsonic" || source === "navidrome") {
+    res.json({ backdrops: subsonic.localArtistArtworks(String(req.query.title ?? req.params.itemId)) });
     return;
   }
   if (source === "fetched") {
@@ -971,7 +991,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
   if (
     !useMediaWallFallback
     && state.mode === "screensaver"
-    && (state.current?.source === "jellyfin" || state.current?.source === "navidrome")
+    && (state.current?.source === "jellyfin" || state.current?.source === "subsonic")
     && !startupArtworkRefreshes.has(space)
   ) {
     startupArtworkRefreshes.add(space);
@@ -1230,7 +1250,7 @@ function isUiIndicatorKind(value: string): value is PublicUiIndicator["kind"] {
 function versionArtwork(snapshot: DisplaySnapshot): DisplaySnapshot {
   const update = (art?: ArtworkRef) => {
     if (!art) return art;
-    const source = art.source === "fetched" ? "external" : art.source === "navidrome" ? "local" : art.source;
+    const source = art.source === "fetched" ? "external" : art.source === "subsonic" ? "local" : art.source;
     const version = artworkVersions.get(`${source}:${art.itemId}`); if (!version) return art;
     const url = (value?: string) => {
       if (!value) return undefined;
@@ -1248,6 +1268,7 @@ function publicDisplayConfig(displayConfig: DisplayConfig): DisplaySnapshot["con
   const { directory: _directory, ...safeSounds } = safeConfig.now_playing.sounds;
   return {
     ...safeConfig,
+    subsonic: serverIconPresentation(config.subsonic.name,config.subsonic.icon,customServerIcons,packagedServerIcons),
     now_playing: {
       ...safeConfig.now_playing,
       sounds: {
@@ -1334,8 +1355,8 @@ async function enabledConnectionIssues(displayConfig: DisplayConfig): Promise<Pu
   const cacheKey = [
     displayConfig.playback_source,
     jellyfin.configured() ? "jellyfin-configured" : "jellyfin-missing",
-    config.navidrome.enabled ? "navidrome-enabled" : "navidrome-disabled",
-    navidrome.configured() ? "navidrome-configured" : "navidrome-missing"
+    config.subsonic.enabled ? "subsonic-enabled" : "subsonic-disabled",
+    subsonic.configured() ? "subsonic-configured" : "subsonic-missing"
   ].join(":");
   const cached = connectionIssueCache.get(cacheKey);
   if (cached && now - cached.checkedAt < 15_000) return cached.issues;
@@ -1354,13 +1375,13 @@ async function enabledConnectionIssues(displayConfig: DisplayConfig): Promise<Pu
       }
     }
   }
-  if ((watchesSource(displayConfig.playback_source, "navidrome")) && config.navidrome.enabled) {
+  if ((watchesSource(displayConfig.playback_source, "subsonic")) && config.subsonic.enabled) {
     try {
-      await navidrome.reachable();
-      noteConnectionSuccess("navidrome");
+      await subsonic.reachable();
+      noteConnectionSuccess("subsonic");
     } catch {
-      if (noteConnectionFailure("navidrome") >= 2) {
-        issues.push({ source: "navidrome", message: "Navidrome is not connecting." });
+      if (noteConnectionFailure("subsonic") >= 2) {
+        issues.push({ source: "subsonic", message: `${config.subsonic.name} is not connecting.` });
       }
     }
   }
@@ -1368,13 +1389,13 @@ async function enabledConnectionIssues(displayConfig: DisplayConfig): Promise<Pu
   return issues;
 }
 
-function noteConnectionFailure(source: "jellyfin" | "navidrome") {
+function noteConnectionFailure(source: "jellyfin" | "subsonic") {
   const count = (connectionIssueFailures.get(source) ?? 0) + 1;
   connectionIssueFailures.set(source, count);
   return count;
 }
 
-function noteConnectionSuccess(source: "jellyfin" | "navidrome") {
+function noteConnectionSuccess(source: "jellyfin" | "subsonic") {
   connectionIssueFailures.delete(source);
 }
 
@@ -1779,8 +1800,8 @@ async function refreshArtwork(artwork: ArtworkRef) {
   if (artwork.source === "jellyfin") {
     return jellyfin.artworkForItem(artwork.itemId, artwork.imageIndex);
   }
-  if (artwork.source === "navidrome") {
-    const local = navidrome.localArtistArtworks(artwork.itemId);
+  if (artwork.source === "subsonic") {
+    const local = subsonic.localArtistArtworks(artwork.itemId);
     return local[artwork.imageIndex] ?? local[0];
   }
   return artwork;
@@ -2101,7 +2122,7 @@ function isMediaInfoPrefs(value: unknown): value is DisplaySnapshot["state"]["me
 }
 
 function sendLocalArtistImage(artistName: string | undefined, res: express.Response, fallbackStatus: number, imageIndex = 0) {
-  const imagePath = artistName ? navidrome.localArtistImagePaths(artistName)[imageIndex] : undefined;
+  const imagePath = artistName ? subsonic.localArtistImagePaths(artistName)[imageIndex] : undefined;
   if (!imagePath) {
     res.sendStatus(fallbackStatus);
     return;
@@ -2111,7 +2132,7 @@ function sendLocalArtistImage(artistName: string | undefined, res: express.Respo
 }
 
 function sendLocalArtistLogo(artistName: string | undefined, res: express.Response, fallbackStatus: number) {
-  const imagePath = artistName ? navidrome.localArtistLogoPath(artistName) : undefined;
+  const imagePath = artistName ? subsonic.localArtistLogoPath(artistName) : undefined;
   if (!imagePath) {
     res.sendStatus(fallbackStatus);
     return;
@@ -2218,8 +2239,8 @@ function sendImageResult(res: express.Response, result: CachedImageResult) {
 }
 
 async function browseLibraries(displayConfig: DisplayConfig) {
-  const libraries = useNavidromeBrowse(displayConfig)
-    ? await navidrome.browseLibraries({...displayConfig,libraries:displayConfig.libraries.filter(n=>!["library","mediawall-library"].includes(n.toLowerCase()))})
+  const libraries = useSubsonicBrowse(displayConfig)
+    ? await subsonic.browseLibraries({...displayConfig,libraries:displayConfig.libraries.filter(n=>!["library","mediawall-library"].includes(n.toLowerCase()))})
     : await jellyfin.browseLibraries(displayConfig);
   if (!displayConfig.libraries.length || displayConfig.libraries.some(n=>["all","library","mediawall-library"].includes(n.toLowerCase()))) libraries.push({id:"mediawall-library", name:"Library", type:"music"});
   return libraries.sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }));
@@ -2227,22 +2248,22 @@ async function browseLibraries(displayConfig: DisplayConfig) {
 
 async function browseItems(displayConfig: DisplayConfig, libraryId: string, libraryType: string) {
   if (libraryId === "mediawall-library") return externalArtwork.libraryItems();
-  if (useNavidromeBrowse(displayConfig)) return navidrome.browseItems(libraryId);
+  if (useSubsonicBrowse(displayConfig)) return subsonic.browseItems(libraryId);
   return jellyfin.browseItems(libraryId, jellyfin.browseUser(displayConfig), libraryType, displayConfig.display.music_artist_images);
 }
 
-async function browseLibrariesForScan(source: "jellyfin" | "navidrome", displayConfig: DisplayConfig) {
-  if (source === "navidrome") return navidrome.browseLibraries(displayConfig);
+async function browseLibrariesForScan(source: "jellyfin" | "subsonic", displayConfig: DisplayConfig) {
+  if (source === "subsonic") return subsonic.browseLibraries(displayConfig);
   return jellyfin.browseLibraries(displayConfig);
 }
 
-async function browseItemsForScan(source: "jellyfin" | "navidrome", displayConfig: DisplayConfig, libraryId: string, libraryType: string) {
-  if (source === "navidrome") return navidrome.browseItems(libraryId);
+async function browseItemsForScan(source: "jellyfin" | "subsonic", displayConfig: DisplayConfig, libraryId: string, libraryType: string) {
+  if (source === "subsonic") return subsonic.browseItems(libraryId);
   return jellyfin.browseItems(libraryId, jellyfin.browseUser(displayConfig), libraryType, displayConfig.display.music_artist_images);
 }
 
-function useNavidromeBrowse(displayConfig: DisplayConfig) {
-  return displayConfig.playback_source === "navidrome" || (!jellyfin.configured() && navidrome.configured());
+function useSubsonicBrowse(displayConfig: DisplayConfig) {
+  return displayConfig.playback_source === "subsonic" || (!jellyfin.configured() && subsonic.configured());
 }
 
 function startGridCacheScans(port: number) {
@@ -2407,13 +2428,13 @@ async function runLocalAssetScan(space: string, displayConfig: DisplayConfig, so
   await delay(2000);
 }
 
-function scanSources(displayConfig: DisplayConfig): Array<"jellyfin" | "navidrome"> {
-  const sources: Array<"jellyfin" | "navidrome"> = [];
+function scanSources(displayConfig: DisplayConfig): Array<"jellyfin" | "subsonic"> {
+  const sources: Array<"jellyfin" | "subsonic"> = [];
   if ((watchesSource(displayConfig.playback_source, "jellyfin")) && jellyfin.configured()) {
     sources.push("jellyfin");
   }
-  if ((watchesSource(displayConfig.playback_source, "navidrome")) && navidrome.configured()) {
-    sources.push("navidrome");
+  if ((watchesSource(displayConfig.playback_source, "subsonic")) && subsonic.configured()) {
+    sources.push("subsonic");
   }
   return sources;
 }
@@ -2565,22 +2586,23 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
           source_user: user.jellyfin_user ?? user.name,
           users: [user]
         })).map((playback) => withMediaWallUserSound({...playback,mediaWallUserKey:mappedUserKey(playback,user,config.users)}, user.name, user.sound, user.end_sound));
-        candidates.push(...playbacks.map((playback) => applyCollectionPresentation(playback, space, displayConfig, user.name)));
+        const resolved = await Promise.all(playbacks.map((playback) => externalArtwork.resolveMusicVideo(playback)));
+        candidates.push(...resolved.map((playback) => applyCollectionPresentation(playback, space, displayConfig, user.name)));
       } catch (error) {
         logger.warn("Jellyfin playback source poll failed", error);
       }
     }
-    if (watchesSource(displayConfig.playback_source, "navidrome")) {
+    if (watchesSource(displayConfig.playback_source, "subsonic")) {
       try {
-        const playbacks = await navidrome.activePlaybacks({
+        const playbacks = await subsonic.activePlaybacks({
           ...displayConfig,
-          source_user: user.navidrome_user ?? user.name,
+          source_user: user.subsonic_user ?? user.name,
           users: [user]
         });
-        const resolved = await Promise.all(playbacks.map((playback) => externalArtwork.resolveNavidrome(playback)));
+        const resolved = await Promise.all(playbacks.map((playback) => externalArtwork.resolveSubsonic(playback)));
         candidates.push(...resolved.map((playback) => withMediaWallUserSound({...playback,mediaWallUserKey:mappedUserKey(playback,user,config.users)}, user.name, user.sound, user.end_sound)));
       } catch (error) {
-        logger.warn("Navidrome playback source poll failed", error);
+        logger.warn("Subsonic playback source poll failed", error);
       }
     }
     if (config.external_music.enabled && (watchesSource(displayConfig.playback_source, "external-music"))) {
@@ -2900,7 +2922,7 @@ function playbackContinuityKey(state: NowPlayingState) {
   if (state.source === "jellyfin" && parts[0] === "jellyfin") {
     return [state.source, state.user, ...parts.slice(1, 5)].filter(Boolean).join(":");
   }
-  if (state.source === "navidrome" && parts[0] === "navidrome") {
+  if (state.source === "subsonic" && parts[0] === "subsonic") {
     return [state.source, state.user, ...parts.slice(2, 4)].filter(Boolean).join(":");
   }
   return [state.source, state.user, state.displayUser].filter(Boolean).join(":");
@@ -2919,7 +2941,7 @@ function publicSoundSessions(displayKey: string, displayConfig: DisplayConfig): 
     .filter((record) =>
       record.state.playing
       && record.active
-      && (record.state.source === "jellyfin" || record.state.source === "navidrome" || record.state.source === "spotify" || record.state.source === "apple_music" || record.state.source === "external_music")
+      && (record.state.source === "jellyfin" || record.state.source === "subsonic" || record.state.source === "spotify" || record.state.source === "apple_music" || record.state.source === "external_music")
     )
     .map((record) => {
       const identity = soundSessionIdentity(record.state, displayConfig);
@@ -2954,10 +2976,10 @@ function hashPublicKey(value: string) {
 
 function soundSessionIdentity(state: NowPlayingState, displayConfig: DisplayConfig) {
   const user = soundUserIdentity(state);
-  if (state.source === "navidrome" && displayConfig.now_playing.sounds.continuous_sessions.navidrome) {
-    return `${user}:continuous:navidrome`;
+  if (state.source === "subsonic" && displayConfig.now_playing.sounds.continuous_sessions.subsonic) {
+    return `${user}:continuous:subsonic`;
   }
-  if (state.source === "spotify" || state.source === "apple_music" || state.source === "external_music") {
+  if ((state.source === "spotify" || state.source === "apple_music" || state.source === "external_music") && displayConfig.now_playing.sounds.continuous_sessions.external_music) {
     return `${user}:continuous:${state.source}`;
   }
   if (state.source === "jellyfin" && jellyfinContinuousSessionName(state, displayConfig)) {
@@ -2967,8 +2989,8 @@ function soundSessionIdentity(state: NowPlayingState, displayConfig: DisplayConf
 }
 
 function soundSessionContinuous(state: NowPlayingState, displayConfig: DisplayConfig) {
-  if (state.source === "navidrome") return displayConfig.now_playing.sounds.continuous_sessions.navidrome;
-  if (state.source === "spotify" || state.source === "apple_music" || state.source === "external_music") return true;
+  if (state.source === "subsonic") return displayConfig.now_playing.sounds.continuous_sessions.subsonic;
+  if (state.source === "spotify" || state.source === "apple_music" || state.source === "external_music") return displayConfig.now_playing.sounds.continuous_sessions.external_music;
   return Boolean(jellyfinContinuousSessionName(state, displayConfig));
 }
 
@@ -2976,6 +2998,7 @@ function jellyfinContinuousSessionName(state: NowPlayingState, displayConfig: Di
   if (state.source !== "jellyfin") return undefined;
   const continuousLibraries = normalizedNameSet(displayConfig.now_playing.sounds.continuous_sessions.jellyfin_libraries);
   if (state.libraryName && continuousLibraries.has(state.libraryName.toLowerCase())) return state.libraryName.toLowerCase();
+  if (state.artwork?.mediaType?.toLowerCase() === "musicvideo") return !state.libraryName && continuousLibraries.has("music videos") ? "music videos" : undefined;
   if (jellyfinMusicLike(state) && continuousLibraries.has("music")) return "music";
   return undefined;
 }

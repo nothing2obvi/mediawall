@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { AppConfig, ArtworkRef, DisplaySnapshot } from "./types.js";
 import type { JellyfinClient } from "./jellyfin.js";
-import type { NavidromeClient } from "./navidrome.js";
+import type { SubsonicClient } from "./subsonic.js";
 import { ExternalArtworkResolver, imageDimensions } from "./external-artwork.js";
 
 export type ImageType = "Logo" | "Backdrop";
@@ -28,7 +28,7 @@ export function editorTarget(snapshot: DisplaySnapshot): EditorTarget {
   const playing = snapshot.state.mode === "now-playing" ? snapshot.nowPlaying : undefined;
   const art = playing?.artwork ?? snapshot.state.current;
   if (!art || art.source === "fallback") throw new Error("No editable artwork is displayed");
-  const source = art.source === "jellyfin" ? "jellyfin" : art.source === "navidrome" ? "local" : "external";
+  const source = art.source === "jellyfin" ? "jellyfin" : art.source === "subsonic" ? "local" : "external";
   const name = art.mediaType === "MusicArtist" ? (playing?.artworkArtist ?? playing?.albumArtist ?? art.title) : art.title;
   return { source, id: art.itemId, name, kind: art.mediaType };
 }
@@ -36,7 +36,7 @@ export function artworkAfterEdit(model: EditorModel, previous?: ArtworkRef): Art
   const backdrops = model.images.filter(image => image.type === "Backdrop");
   const logo = model.images.find(image => image.type === "Logo");
   return {
-    ...previous, source: model.target.source === "external" ? "fetched" : model.target.source === "local" ? "navidrome" : "jellyfin",
+    ...previous, source: model.target.source === "external" ? "fetched" : model.target.source === "local" ? "subsonic" : "jellyfin",
     itemId: model.target.id, title: model.target.name, mediaType: model.target.kind,
     imageType: "Backdrop", imageIndex: 0, backdropCount: backdrops.length,
     backdropUrl: backdrops[0]?.url, thumbUrl: backdrops[0]?.url, logoUrl: logo?.url,
@@ -211,9 +211,9 @@ export class ExternalImageAdapter implements ImageAdapter {
   }
 }
 export class LocalImageAdapter extends ExternalImageAdapter {
-  constructor(resolver: ExternalArtworkResolver, private navidrome: NavidromeClient, private config: AppConfig) { super(resolver); }
+  constructor(resolver: ExternalArtworkResolver, private subsonic: SubsonicClient, private config: AppConfig) { super(resolver); }
   private async files(t: EditorTarget) {
-    const files = [...this.navidrome.localArtistImagePaths(t.id), this.navidrome.localArtistLogoPath(t.id)].filter((v): v is string => Boolean(v));
+    const files = [...this.subsonic.localArtistImagePaths(t.id), this.subsonic.localArtistLogoPath(t.id)].filter((v): v is string => Boolean(v));
     for (const file of files) await this.safe(file);
     return files;
   }
@@ -235,14 +235,14 @@ export class LocalImageAdapter extends ExternalImageAdapter {
       if (!isImage) throw new Error("File content is not a supported artwork image; refusing to modify it");
     }
     const real = await fs.realpath(file);
-    const roots = await Promise.all(this.config.navidrome.artwork.path_mappings.map(m => fs.realpath(m.mediawall).catch(() => "")));
+    const roots = await Promise.all(this.config.subsonic.artwork.path_mappings.map(m => fs.realpath(m.mediawall).catch(() => "")));
     if (!roots.some(root => root && real.startsWith(root + path.sep))) throw new Error("Artwork is outside configured local music roots");
     return real;
   }
   private async directory(t: EditorTarget) {
     const files = await this.files(t);
     if (files.length) return path.dirname(files[0]);
-    for (const m of this.config.navidrome.artwork.path_mappings) {
+    for (const m of this.config.subsonic.artwork.path_mappings) {
       const dir = path.resolve(m.mediawall, t.id);
       if (!dir.startsWith(path.resolve(m.mediawall) + path.sep)) continue;
       if (await fs.stat(dir).then(s => s.isDirectory()).catch(() => false)) return this.safe(dir, true);
@@ -250,11 +250,11 @@ export class LocalImageAdapter extends ExternalImageAdapter {
     throw new Error("No existing artist directory; refusing to create a media-library directory");
   }
   async list(t: EditorTarget): Promise<EditorImage[]> {
-    const backdrops = this.navidrome.localArtistImagePaths(t.id), logo = this.navidrome.localArtistLogoPath(t.id);
+    const backdrops = this.subsonic.localArtistImagePaths(t.id), logo = this.subsonic.localArtistLogoPath(t.id);
     return Promise.all((await this.files(t)).map(async file => {
       const stat = await fs.stat(file), type = file === logo ? "Logo" as const : "Backdrop" as const;
       return { id: crypto.createHash("sha256").update(file).digest("hex"), type, provider: "Local",
-        url: (type === "Logo" ? `/api/navidrome/local-artist-logo/${encodeURIComponent(t.id)}` : `/api/navidrome/local-artist/${encodeURIComponent(t.id)}/${backdrops.indexOf(file)}`) + `?v=${stat.mtimeMs}`,
+        url: (type === "Logo" ? `/api/subsonic/local-artist-logo/${encodeURIComponent(t.id)}` : `/api/subsonic/local-artist/${encodeURIComponent(t.id)}/${backdrops.indexOf(file)}`) + `?v=${stat.mtimeMs}`,
         ...imageDimensions(await fs.readFile(file)) };
     }));
   }
@@ -272,25 +272,55 @@ export class LocalImageAdapter extends ExternalImageAdapter {
 
   async upload(t: EditorTarget, type: ImageType, image: ImageUpload) {
     const dir = await this.directory(t);
-    const backdrops = this.navidrome.localArtistImagePaths(t.id), oldLogo = this.navidrome.localArtistLogoPath(t.id);
-    const file = path.join(dir, `${type.toLowerCase()}-${crypto.randomUUID()}.${image.extension}`);
-    await fs.writeFile(file, image.buffer, {flag: "wx"});
+    const backdrops = this.subsonic.localArtistImagePaths(t.id), oldLogo = this.subsonic.localArtistLogoPath(t.id);
+    const entries = await fs.readdir(dir);
+    let name = `logo.${image.extension}`;
+    if (type === "Backdrop") {
+      // Reserve each numbered slot across extensions, including untracked files.
+      const occupied = new Set(entries.map(entry => entry.replace(/\.[^.]+$/, "").toLowerCase()));
+      let index = 0;
+      while (occupied.has(index ? `backdrop${index}` : "backdrop")) index++;
+      name = `${index ? `backdrop${index}` : "backdrop"}.${image.extension}`;
+    }
+    const existing = entries.find(entry => entry.toLowerCase() === name.toLowerCase());
+    const file = path.join(dir, existing ?? name);
+    if (oldLogo) await this.safe(oldLogo);
+    let previous: Buffer | undefined;
+    if (existing) {
+      if (type !== "Logo" || file !== oldLogo) throw new Error("Artwork filename is already occupied; refusing to overwrite an unrelated file");
+      await this.safe(file);
+      previous = await fs.readFile(file);
+    }
+    if (previous) {
+      const temporary = path.join(dir, `.mediawall-upload-${crypto.randomUUID()}.tmp`);
+      try {
+        await fs.writeFile(temporary, image.buffer, {flag: "wx"});
+        await fs.rename(temporary, file);
+      } finally { await fs.unlink(temporary).catch(() => undefined); }
+    } else {
+      await fs.writeFile(file, image.buffer, {flag: "wx"});
+    }
     try { await this.manifest(t, type === "Backdrop" ? [...backdrops, file] : backdrops, type === "Logo" ? file : oldLogo); }
-    catch (error) { await fs.unlink(file).catch(() => undefined); throw error; }
-    if (type === "Logo" && oldLogo) { await this.safe(oldLogo); await fs.unlink(oldLogo); }
+    catch (error) {
+      if (previous) await fs.writeFile(file, previous);
+      else await fs.unlink(file).catch(() => undefined);
+      throw error;
+    }
+    if (type === "Logo" && oldLogo && oldLogo !== file) await fs.unlink(oldLogo);
+
   }
   async remove(t: EditorTarget, image: EditorImage) {
     const file = (await this.files(t)).find(f => crypto.createHash("sha256").update(f).digest("hex") === image.id);
     if (!file) throw new Error("Artwork file no longer exists");
-    const backdrops = this.navidrome.localArtistImagePaths(t.id).filter(f => f !== file);
-    const logo = image.type === "Logo" ? undefined : this.navidrome.localArtistLogoPath(t.id);
+    const backdrops = this.subsonic.localArtistImagePaths(t.id).filter(f => f !== file);
+    const logo = image.type === "Logo" ? undefined : this.subsonic.localArtistLogoPath(t.id);
     await this.manifest(t, backdrops, logo);
     await this.safe(file);
     await fs.unlink(file);
   }
   async move(t: EditorTarget, from: number, to: number) {
-    const backdrops = this.navidrome.localArtistImagePaths(t.id);
+    const backdrops = this.subsonic.localArtistImagePaths(t.id);
     const [file] = backdrops.splice(from, 1); backdrops.splice(to, 0, file);
-    await this.manifest(t, backdrops, this.navidrome.localArtistLogoPath(t.id));
+    await this.manifest(t, backdrops, this.subsonic.localArtistLogoPath(t.id));
   }
 }

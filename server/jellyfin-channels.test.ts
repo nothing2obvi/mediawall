@@ -35,3 +35,39 @@ test("a live channel without an image still produces a text-only session",async 
   assert.equal(playing.playing,true);assert.equal(playing.logoText,"Radio");assert.equal(playing.artwork?.backdropUrl,undefined);
   assert.equal(display.display.live_tv.channel_image_size,713);
 });
+
+test("music videos use their Music Videos artist folder instead of the Music library artist", async t => {
+  const cfg=loadConfig();cfg.jellyfin.url="http://jellyfin.test";cfg.jellyfin.api_key="test";
+  const display=Object.values(cfg.spaces)[0];display.source_user="viewer";
+  t.mock.method(globalThis,"fetch",async(input:unknown)=>{
+    const pathname=new URL(String(input)).pathname;
+    if(pathname==="/Sessions")return Response.json([{Id:"session",UserName:"viewer",NowPlayingItem:{Id:"video",Type:"MusicVideo",MediaType:"Video",Name:"Song",IndexNumber:3,ParentIndexNumber:1}}]);
+    if(pathname==="/Items/video")return Response.json({Id:"video",Type:"MusicVideo",Name:"Song",ParentId:"video-artist-folder",Artists:["Artist"],ArtistItems:[{Id:"music-library-artist",Name:"Artist"}],AlbumArtist:"Album Artist",Album:"Album",BackdropImageTags:["backdrop-one","backdrop-two"],ImageTags:{Primary:"video-poster",Logo:"video-logo"}});
+    if(pathname==="/Items/music-library-artist")throw new Error("Must not use Music library artist");
+    if(pathname==="/Items/video-artist-folder")return Response.json({Id:"video-artist-folder",Type:"Folder",Name:"Artist",BackdropImageTags:["artist-one","artist-two"],ImageTags:{Logo:"artist-logo"}});
+    return Response.json([]);
+  });
+  const [playing]=await new JellyfinClient(cfg).activePlaybacks(display);
+  assert.equal(playing.artwork?.mediaType,"MusicVideo");
+  assert.equal(playing.artwork?.backdropCount,2);
+  assert.deepEqual(playing.artwork?.backdropTags,["artist-one","artist-two"]);
+  assert.equal(playing.artwork?.itemId,"video-artist-folder");
+  assert.match(playing.artwork!.backdropUrl!,/video-artist-folder\/Backdrop\/0\?tag=artist-one/);
+  assert.match(playing.artwork!.logoUrl!,/video-artist-folder\/Logo/);
+  assert.equal(playing.episodeNumber,undefined);assert.equal(playing.seasonNumber,undefined);
+  assert.equal(playing.album,"Album");assert.equal(playing.artist,"Artist");assert.equal(playing.albumArtist,"Album Artist");
+  assert.equal(playing.albumArtUrl,undefined,"video poster must not be used as an album cover");
+});
+
+test("music video inherited folder tags work when Jellyfin item detail requests return 400", async t => {
+  const cfg=loadConfig();cfg.jellyfin.url="http://jellyfin.test";cfg.jellyfin.api_key="test";
+  const display=Object.values(cfg.spaces)[0];display.source_user="viewer";
+  t.mock.method(globalThis,"fetch",async(input:unknown)=>new URL(String(input)).pathname==="/Sessions"
+    ? Response.json([{Id:"session",UserName:"viewer",NowPlayingItem:{Id:"video",Type:"MusicVideo",Name:"Song",Artists:["Artist"],ParentId:"video-folder",ParentBackdropItemId:"video-folder",ParentBackdropImageTags:["one","two","three"],ParentLogoItemId:"video-folder",ParentLogoImageTag:"logo",Album:"Album"}}])
+    : new Response("",{status:400}));
+  const [playing]=await new JellyfinClient(cfg).activePlaybacks(display);
+  assert.equal(playing.artwork?.itemId,"video-folder");assert.equal(playing.artwork?.backdropCount,3);
+  assert.match(playing.artwork!.backdropUrl!,/video-folder\/Backdrop\/0\?tag=one/);
+  assert.match(playing.artwork!.logoUrl!,/video-folder\/Logo\?tag=logo/);
+  assert.equal(playing.album,"Album");
+});

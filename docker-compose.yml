@@ -14,6 +14,8 @@ services:
       - ./app/custom_logo:/app/custom_logo:ro
       - ./app/collections:/app/collections:ro
       - ./app/avatars:/app/avatars:ro
-      # Optional. Mount local music files when using Navidrome local artwork lookup and editing.
+      # Optional custom Subsonic server icons.
+      # - ./app/server-icons:/app/server-icons:ro
+      # Optional. Mount local music files when using Subsonic local artwork lookup and editing.
       # - /path/to/music:/navidrome_music:rw
     restart: unless-stopped

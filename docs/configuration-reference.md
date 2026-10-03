@@ -13,11 +13,11 @@ For a fuller setup, see [config.yml.example](../config.yml.example). Copy it to 
 | `library` | Folder for MediaWall artist images. |
 | `library_scan` | Startup and scheduled artwork scans. |
 | `jellyfin` | Jellyfin connection used for playback sessions, users, libraries, and artwork. |
-| `navidrome` | Navidrome connection and artwork fallback/local-file behavior. |
+| `subsonic` | Subsonic connection and artwork fallback/local-file behavior. |
 | `external_music` | ListenBrainz-compatible receiver settings for external music bridges such as Multi-Scrobbler. |
 | `image_providers` | Settings for MediaWall’s image providers. |
 | `aliases` | Alternate artist names used to find artwork. |
-| `users` | MediaWall users that map Jellyfin and/or Navidrome accounts together. |
+| `users` | MediaWall users that map Jellyfin and/or Subsonic accounts together. |
 | `spaces` | Display routes such as `/livingroom`, each with its own users, libraries, Now Playing behavior, and display settings. |
 
 ## Reference
@@ -50,7 +50,7 @@ Library images are scanned at startup and when files change. Scheduled scans als
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `enabled` | Enables scheduled artwork scans and preloads cached images. | `true` | No | Includes Jellyfin, Navidrome/local artwork, and Library. Library file-change detection still works when this is off. |
+| `enabled` | Enables scheduled artwork scans and preloads cached images. | `true` | No | Includes Jellyfin, Subsonic/local artwork, and Library. Library file-change detection still works when this is off. |
 | `directory` | Cache directory. | `/app/data/grid-cache` | No | Mount `/app/data` to persist it. |
 | `ttl_days` | How long cached images stay fresh. | `30` | No | Stale cached images are refreshed by scans. |
 | `scan_on_startup` | Runs a scan after startup. | `true` | No | Useful after container restarts. |
@@ -64,17 +64,21 @@ Library images are scanned at startup and when files change. Scheduled scans als
 | `url` | Jellyfin base URL. | `""` | Required for Jellyfin | Use `${JELLYFIN_URL}`. Jellyfin is recommended for rich artwork. |
 | `api_key` | Jellyfin API key. | `""` | Required for Jellyfin | Only one Jellyfin API key is needed, and it must belong to an admin user. Per-user Jellyfin API keys are not required; the configured Jellyfin username matches sessions by username. |
 
-### Navidrome
+### Subsonic
+
+Primarily tested with Navidrome. [Existing Navidrome configs remain supported](jellyfin-and-subsonic-notes.md#existing-navidrome-configs).
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `enabled` | Enables Navidrome support. | `false` | No | Turn on for Navidrome Now Playing. |
-| `url` | Navidrome base URL. | `""` | Required if Navidrome enabled | Use `${NAVIDROME_URL}`. |
-| `artwork.jellyfin_fallback` | Lets Navidrome playback use matching Jellyfin artist artwork. | `true` | No | Requires Jellyfin to be configured. |
-| `artwork.local_files` | Enables local artist artwork for Navidrome-only setups. | `true` | No | If using Navidrome without Jellyfin, enable this for backdrop/logo-based grids. |
-| `artwork.order` | Artwork source priority for Navidrome playback. | `["jellyfin", "local"]` | No | Options are `jellyfin`, `local`, and `fetched`. The first complete source wins; lower-priority sources may fill a missing logo or backdrop. |
-| `artwork.path_mappings` | Maps Navidrome paths to paths visible inside the MediaWall container. | `[]` | No | Each mapping has `navidrome` and `mediawall`. |
-| `path_mappings.navidrome` | Navidrome-side path prefix. | unset | Required per mapping | Example: `/music`. |
+| `enabled` | Enables Subsonic support. | `false` | No | Turn on for Subsonic Now Playing. |
+| `name` | Server name shown on displays. | `Navidrome` | No | For example, `Gonic` or `LMS`. |
+| `icon` | Packaged or custom server icon key. | `navidrome` | No | Filename without extension. See [server icons](jellyfin-and-subsonic-notes.md#server-name-and-icon). |
+| `url` | Subsonic base URL. | `""` | Required if Subsonic enabled | Use `${SUBSONIC_URL}`. |
+| `artwork.jellyfin_fallback` | Lets Subsonic playback use matching Jellyfin artist artwork. | `true` | No | Requires Jellyfin to be configured. |
+| `artwork.local_files` | Enables local artist artwork for Subsonic-only setups. | `true` | No | If using Subsonic without Jellyfin, enable this for backdrop/logo-based grids. |
+| `artwork.order` | Artwork source priority for Subsonic playback. | `["jellyfin", "local"]` | No | Options are `jellyfin`, `local`, and `fetched`. The first complete source wins; lower-priority sources may fill a missing logo or backdrop. |
+| `artwork.path_mappings` | Maps Subsonic paths to paths visible inside the MediaWall container. | `[]` | No | Each mapping has `subsonic` and `mediawall`. |
+| `path_mappings.subsonic` | Subsonic-side path prefix. | unset | Required per mapping | Example: `/music`. |
 | `path_mappings.mediawall` | MediaWall-container path prefix. | `/navidrome_music` | No | Used for local artist artwork lookup. Older configs using `jellyfin` are still accepted for compatibility. |
 
 ### External Music
@@ -84,7 +88,7 @@ Library images are scanned at startup and when files change. Scheduled scans als
 | `enabled` | Enables the ListenBrainz-compatible receiver. | `false` | No | Multi-Scrobbler should use the base URL `/apis/listenbrainz`; it appends `/1/submit-listens`. |
 | `track_transition_grace_seconds` | Extra time to retain the current external track while waiting for the next update. | `10` | No | Range: `0`–`60` seconds. Avoids brief fallback between tracks. A new track replaces the old one immediately for the same user/service. Stopping playback also delays fallback by this amount, plus the space's missing-session grace. |
 | `session_timeout_seconds` | Minimum lifetime for a received `playing_now` event. | `90` | No | Minimum: `5`. If a track duration is supplied, the longer of this timeout and the track duration (capped at 12 hours) is used, plus transition grace. A later update refreshes or replaces it. |
-| `artwork.preference` | Chooses whether to prefer Jellyfin/local or Library/provider artwork. | `local` | No | Options: `local`, `fetched`. Other sources fill missing artwork. Jellyfin/local lookups follow the `navidrome.artwork.jellyfin_fallback` and `local_files` switches. |
+| `artwork.preference` | Chooses whether to prefer Jellyfin/local or Library/provider artwork. | `local` | No | Options: `local`, `fetched`. Other sources fill missing artwork. Jellyfin/local lookups follow the `subsonic.artwork.jellyfin_fallback` and `local_files` switches. |
 | `artwork.minimum_backdrop_resolution` | Minimum accepted fetched backdrop dimensions. | `1920x1080` | No | This filters candidates; images are not resized to this value. |
 | `artwork.backdrop_count` | Maximum backdrops downloaded for a new artist. | `3` | No | Providers may return fewer usable images. Doesn’t limit images you add yourself. |
 | `artwork.album_cache_directory` | Album-cover cache and old artist-cache migration source. | `/app/data/external-artwork` | No | Keep `/app/data` persistent. Replaces `cache_directory`; artist images now live under `library.directory`. |
@@ -120,14 +124,14 @@ aliases:
 
 ### MediaWall Users
 
-Use names like `bob` and `alice` for MediaWall users. Map each one to their service accounts, such as `bob-jellyfin` and `bob-navidrome`, using the fields below.
+Use names like `bob` and `bob2` for MediaWall users. Map each one to their service accounts, such as `bob-jellyfin` and `bob-subsonic`, using the fields below.
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `name` | Overrides the name MediaWall uses for this user. | Identifier under `users:` | No | For `bob:`, omit this to use `bob`, or set a different display name with `name`. Spaces and token mappings still reference `bob`. Set `jellyfin_user` and `navidrome_user` explicitly when service usernames differ: the name is also their fallback. |
+| `name` | Overrides the name MediaWall uses for this user. | Identifier under `users:` | No | For `bob:`, omit this to use `bob`, or set a different display name with `name`. Spaces and token mappings still reference `bob`. Set `jellyfin_user` and `subsonic_user` explicitly when service usernames differ: the name is also their fallback. |
 | `jellyfin_user` | Jellyfin username mapped to this MediaWall user. | unset | Required for Jellyfin user matching | Use `All` to watch all active Jellyfin users. Can reference `${JELLYFIN_BOB_USER}`. |
-| `navidrome_user` | Navidrome username mapped to this MediaWall user. | unset | Required for Navidrome user matching | Use `All` to watch all active Navidrome users. |
-| `navidrome_password` | Navidrome password for this user. | unset | Required for Navidrome | Navidrome needs real credentials for API access; configure one MediaWall user per Navidrome listener you want to distinguish. |
+| `subsonic_user` | Subsonic username mapped to this MediaWall user. | unset | Required for Subsonic user matching | Use `All` to watch all active Subsonic users. |
+| `subsonic_password` | Subsonic password for this user. | unset | Required for Subsonic | Subsonic needs real credentials for API access; configure one MediaWall user per Subsonic listener you want to distinguish. |
 | `external_music_token` | Secret used by Multi-Scrobbler to send playback for this user. | unset | No | Reference an environment variable, such as `${EXTERNAL_MUSIC_BOB_TOKEN}`. Put the actual secret in `.env` and use the same secret in that user's Multi-Scrobbler ListenBrainz client. See [External Music](external-music.md). |
 | `sound` | Per-user session-start tone override. | unset | No | Filename from the sounds directory configured for the space. |
 | `end_sound` | Per-user session-ended tone override. | unset | No | Filename from the sounds directory configured for the space. |
@@ -138,9 +142,9 @@ Per-user sounds override the global tones for any space where that MediaWall use
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
-| `playback_source` | Sources watched for Now Playing. | `All` | No | Options: `jellyfin`, `navidrome`, `external-music`, `All`. External playback must also be enabled under `external_music`. `All` watches all enabled services. |
+| `playback_source` | Sources watched for Now Playing. | `All` | No | Options: `jellyfin`, `subsonic`, `external-music`, `All`. External playback must also be enabled under `external_music`. `All` watches all enabled services. |
 | `theme` | UI theme for this space. | `All` | No | Use `All` (or omit the setting) for interactive selection, or lock the space to `default`, `Dracula`, `Nord`, `Catppuccin Latte`, `Catppuccin Mocha`, `Gruvbox Dark`, `Gruvbox Light`, `Solarized Dark`, `Solarized Light`, `Tokyo Night`, `One Dark`, `Monokai`, `Rose Pine`, `Everforest`, `Kanagawa`, `Synthwave 84`, `Material Palenight`, `Night Owl`, `Ayu Mirage`, `GitHub Light`, or `Tomorrow Night`. Fixed themes hide and disable interactive controls. The active interactive theme is synchronized and persisted per space. |
-| `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use the identifiers defined under `users:`, for example `[bob, alice]`. `[All]` includes every configured user. If omitted, the first configured user is used. |
+| `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use the identifiers defined under `users:`, for example `[bob, bob2]`. `[All]` includes every configured user. If omitted, the first configured user is used. |
 | `password` | Optional URL password. | unset | No | If omitted or `""`, no `?password=` is required. |
 | `libraries` | Libraries shown in grid, selection, shuffle, and Wallpaper/Screensaver. | `[]` | Recommended | Use Jellyfin library names; `All` allows all Jellyfin libraries. |
 | `idle_timeout` | Playback record cleanup window in seconds. | `30` | No | Mostly internal display/session housekeeping. |
@@ -194,10 +198,10 @@ spaces:
 | `user_transition.enabled` | Shows a user-intro screen the first time a session becomes visible. | `true` | No | It does not repeat when session cycling comes back to that same session. The sound starts at this same visible-session moment when sounds are enabled and allowed. |
 | `user_transition.duration_seconds` | User-intro duration. | `5` | No | Separate from the normal session display interval. |
 | `user_transition.background_color` | User-intro background color. | `#000000` | No | Use a hex color. |
-| `user_transition.avatar_size` | User-intro Jellyfin avatar size. | `240` | No | Pixels. Navidrome intros do not show avatars. |
+| `user_transition.avatar_size` | User-intro Jellyfin avatar size. | `240` | No | Pixels. Subsonic intros do not show avatars. |
 | `user_transition.username_font_size` | User-intro username font size. | `126` | No | Pixels. MediaWall constrains it responsively on smaller screens. |
 | `user_transition.message_font_size` | User-intro message font size. | `71` | No | Controls the `started watching` / `started listening to` line. MediaWall constrains it responsively on smaller screens. |
-| `user_transition.source_icon_size` | User-intro Jellyfin/Navidrome source icon size. | `150` | No | Pixels. MediaWall constrains it responsively on smaller screens. |
+| `user_transition.source_icon_size` | User-intro Jellyfin/Subsonic source icon size. | `150` | No | Pixels. MediaWall constrains it responsively on smaller screens. |
 | `mediawall_fallback.modes` | Ordered list of MediaWall banner fallback animations used across separate no-session rounds. | `["dvd"]` | No | Options: `centered`, `breathing`, `float`, `spotlight`, `dvd`, `minimal`, `All`. Use `All` to include every mode. If you list specific modes, the next no-session period advances to the next mode in that written order. |
 | `mediawall_fallback.image` | Image used by MediaWall fallback animations. | `banner` | No | Options: `banner`, `banner_white`, `custom`. `custom` uses the first image from `custom_logo.directory`. |
 | `mediawall_fallback.background_color` | Background color used behind the intentional MediaWall/logo fallback screen. | `#565954` | No | Use a hex color such as `#4f524d`. |
@@ -236,12 +240,13 @@ For one collection, the first eligible group in written config order wins. If an
 | --- | --- | --- | --- | --- |
 | `enabled` | Master switch for session sounds. | `true` | No | Does not affect visual behavior. |
 | `jellyfin` | Allows Jellyfin sounds. | `true` | No | Applies to start and end sounds. |
-| `navidrome` | Allows Navidrome sounds. | `true` | No | Applies to start and end sounds. |
+| `subsonic` | Allows Subsonic sounds. | `true` | No | Applies to start and end sounds. |
 | `quiet_hours.enabled` | Suppresses sounds during quiet hours. | `false` | No | Suppresses start and end sounds; no retroactive sounds after quiet hours end. |
 | `quiet_hours.start` | Quiet-hours start. | `23:00` | No | `HH:MM`, local system time. |
 | `quiet_hours.end` | Quiet-hours end. | `08:00` | No | Cross-midnight ranges are supported. |
-| `continuous_sessions.navidrome` | Treats Navidrome item changes as one sound session. | `true` | No | Track changes do not trigger new start sounds. |
-| `continuous_sessions.jellyfin_libraries` | Jellyfin libraries treated as continuous for sounds. | `["Music"]` | No | Exact library names, not hardcoded to music. |
+| `continuous_sessions.subsonic` | Treats Subsonic item changes as one sound session. | `true` | No | Track changes do not trigger new start sounds. |
+| `continuous_sessions.external_music` | Treats Spotify and other external-music track changes as one sound session. | `true` | No | Set to `false` to allow start sounds for each track, subject to the other sound settings. |
+| `continuous_sessions.jellyfin_libraries` | Jellyfin libraries treated as continuous for sounds. | `["Music", "Music Videos"]` | No | Exact library names, not hardcoded to music. |
 | `session_start.retrigger_after_inactive_seconds` | Inactive cooldown before continuous sessions can start-sound again. | `30` | No | Requires uninterrupted inactivity. |
 | `session_end.enabled` | Enables session-ended sounds. | `false` | No | Item changes in continuous sessions do not count as endings. |
 | `session_end.tone` | Default session-ended tone. | `close.mp3` | No | `close.mp3` is bundled and normalized; user-supplied custom sounds are not normalized. |
@@ -271,7 +276,7 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 | `music_logo_artist` | Music logo and fallback text artist credit. | `artists` | No | Options: `artists`, `albumartist`. `music_artist_images` controls which artist artwork/backdrops are selected; this setting controls whether the visible logo/text follows the track's credited artists or the album artist. |
 | `cycle_interval_seconds` | Wallpaper/Screensaver cycle interval. | `15` | No | When shuffle is off, items go library-by-library and alphabetically. |
 | `screensaver_interval` | Legacy alias for cycle interval. | `15` | No | Prefer `cycle_interval_seconds`. |
-| `require_logos` | Requires logos for display/grid eligibility. | `true` | No | Navidrome-only items need local logo files. |
+| `require_logos` | Requires logos for display/grid eligibility. | `true` | No | Subsonic-only items need local logo files. |
 | `backdrop_background_color` | Background color behind normal media display when no usable backdrop is available or a backdrop cannot load. | `#050508` | No | Separate from `mediawall_fallback.background_color`, which only controls the intentional MediaWall/logo fallback screen. |
 | `multiple_backdrops.mode` | Multiple-backdrop behavior. | `single_backdrop` | No | Options: `single_backdrop`, `cycle`. |
 | `multiple_backdrops.single_backdrop` | Single-backdrop selection mode. | `random` | No | Options: `first`, `numbered`, `random`. |
@@ -282,7 +287,8 @@ ffmpeg -i input.mp3 -af loudnorm=I=-18:TP=-1.5:LRA=11 -ar 44100 -ac 2 -b:a 128k 
 | `animations.duration_seconds` | Animation duration. | `26` | No | Duration of one animation direction before it alternates. |
 | `logo.max_width` | Logo image maximum width. | `520` | No | Pixels. |
 | `live_tv.channel_image_size` | Centered Live TV channel image bounding-box size. | `713` | No | Pixels; integer from `32` to `4096`, constrained to fit the viewport. Preserves aspect ratio and follows display animation settings. Channel name and Live TV label are independently controlled through Media Info. |
-| `album_art.size` | Now Playing album cover size. | `300` | No | Pixels. |
+| `album_art.size` | Now Playing album cover size. | `300` | No | Pixels. Also used for music videos unless overridden below. |
+| `music_video_album_art.size` | Music-video album cover size. | Inherits `album_art.size` | No | Pixels. Uses the same album-cover visibility toggle and keyboard shortcut as music. |
 | `fallback_title.font_size` | Fallback title text size. | `86` | No | Used when title text rendering applies. |
 
 ### Backdrop Animations
@@ -319,14 +325,14 @@ display:
 | `text` | Now Playing badge label. | `Now playing on` | No | Text can be customized. |
 | `show_text` | Shows badge label text. | `true` | No | Can be disabled while leaving icon/user visible. |
 | `font_size` | Badge label font size. | `16` | No | Pixels. |
-| `show_source_icon` | Shows Jellyfin/Navidrome icon. | `true` | No | Can be disabled independently. |
+| `show_source_icon` | Shows Jellyfin/Subsonic icon. | `true` | No | Can be disabled independently. |
 | `icon_size` | Source icon size. | `24` | No | Pixels. |
-| `show_user_avatar` | Shows Jellyfin avatar. | `false` | No | Navidrome does not provide avatars. |
+| `show_user_avatar` | Shows Jellyfin avatar. | `false` | No | Subsonic does not provide avatars. |
 | `user_avatar_size` | Jellyfin avatar size. | `24` | No | Pixels. |
 | `user_avatar_resize.enabled` | Downloads smaller Jellyfin avatars. | `true` | No | Helpful for animated GIF avatars and older devices such as older iPads. |
 | `user_avatar_resize.size` | Requested Jellyfin avatar image size. | `96` | No | Pixels. This affects the image fetched from Jellyfin, not the rendered UI size. |
 | `show_jellyfin_username` | Shows Jellyfin username. | `false` | No | Aligns cleanly if avatar/text/icon are disabled. |
-| `show_navidrome_username` | Shows Navidrome username. | `false` | No | Useful because Navidrome has no avatars. |
+| `show_subsonic_username` | Shows Subsonic username. | `false` | No | Useful because Subsonic has no avatars. |
 | `user_font_size` | Username font size. | `13` | No | Pixels. |
 
 ### Screensaver Text

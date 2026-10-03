@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AppConfig } from "./types.js";
-export const cacheWarning = "Clear MediaWall artwork cache? This removes cached grid/wallpaper images and cached album covers. MediaWall Library images, original Jellyfin artwork, local/Navidrome artwork, audio files and personal assets are not removed.";
+export const cacheWarning = "Clear MediaWall artwork cache? This removes cached grid/wallpaper images and cached album covers. MediaWall Library images, original Jellyfin artwork, local/Subsonic artwork, audio files and personal assets are not removed.";
 export async function clearArtworkCache(config: AppConfig, appRoot: string) {
   let removed = 0;
   const unlinkFile = async (file: string) => {

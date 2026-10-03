@@ -20,14 +20,14 @@ services:
       - ./app/custom_logo:/app/custom_logo:ro
       - ./app/collections:/app/collections:ro
       - ./app/avatars:/app/avatars:ro
-      # Only needed when using Navidrome with local artist backdrop/logo files.
-      # - /path/to/your/navidrome/music:/navidrome_music:rw
+      # Only needed when using Subsonic with local artist backdrop/logo files.
+      # - /path/to/your/subsonic/music:/navidrome_music:rw
 ```
 
 Then:
 
 1. Copy `.env.example` to `.env`.
-2. Fill in Jellyfin and/or Navidrome connection values, or follow [External Music](external-music.md) for Multi-Scrobbler.
+2. Fill in Jellyfin and/or Subsonic connection values, or follow [External Music](external-music.md) for Multi-Scrobbler.
 3. Edit `config.yml` for your spaces and libraries.
 4. Start the app:
 

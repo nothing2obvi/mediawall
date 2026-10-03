@@ -36,7 +36,7 @@ type ArtistIndexResponse = {
   artists?: {
     index?: Array<{
       name?: string;
-      artist?: NavidromeArtist | NavidromeArtist[];
+      artist?: SubsonicArtist | SubsonicArtist[];
     }>;
   };
 };
@@ -47,7 +47,7 @@ type SearchResponse = {
   };
 };
 
-type NavidromeArtist = {
+type SubsonicArtist = {
   id?: string;
   name?: string;
   coverArt?: string;
@@ -55,27 +55,27 @@ type NavidromeArtist = {
   albumCount?: number;
 };
 
-export class NavidromeClient {
+export class SubsonicClient {
   private workingBaseUrl?: string;
   private authUser?: { username: string; password: string };
 
   constructor(private config: AppConfig, private jellyfin: JellyfinClient) {}
 
   private get baseUrl() {
-    return this.config.navidrome.url.replace(/\/+$/, "");
+    return this.config.subsonic.url.replace(/\/+$/, "");
   }
 
   configured() {
     return Boolean(
-      this.config.navidrome.enabled
+      this.config.subsonic.enabled
       && this.baseUrl
-      && Object.values(this.config.users).some((user) => user.navidrome_user && !isAllUsers(user.navidrome_user) && user.navidrome_password)
+      && Object.values(this.config.users).some((user) => user.subsonic_user && !isAllUsers(user.subsonic_user) && user.subsonic_password)
     );
   }
 
   async reachable() {
-    if (!this.config.navidrome.enabled) return true;
-    if (!this.configured()) throw new Error("Navidrome is enabled but has no usable user credentials");
+    if (!this.config.subsonic.enabled) return true;
+    if (!this.configured()) throw new Error("Subsonic is enabled but has no usable user credentials");
     await this.getJson<Record<string, never>>("/rest/ping.view");
     return true;
   }
@@ -86,13 +86,13 @@ export class NavidromeClient {
 
   async activePlaybacks(displayConfig: DisplayConfig): Promise<NowPlayingState[]> {
     if (!this.configured()) return [];
-    const requestedUser = displayConfig.users[0]?.navidrome_user ?? displayConfig.source_user;
+    const requestedUser = displayConfig.users[0]?.subsonic_user ?? displayConfig.source_user;
     const includeAllUsers = isAllUsers(requestedUser) || isAllUsers(displayConfig.source_user);
     const authUser = includeAllUsers
-      ? firstNavidromeUser(this.config)
+      ? firstSubsonicUser(this.config)
       : {
         username: requestedUser,
-        password: displayConfig.users[0]?.navidrome_password ?? ""
+        password: displayConfig.users[0]?.subsonic_password ?? ""
       };
     if (!authUser?.username || !authUser.password) return [];
     this.authUser = authUser;
@@ -106,14 +106,14 @@ export class NavidromeClient {
   }
 
   private async nowPlayingFromEntry(entry: NowPlayingEntry, displayConfig: DisplayConfig): Promise<NowPlayingState> {
-    const requestedUser = displayConfig.users[0]?.navidrome_user ?? displayConfig.source_user;
-    const navidromeUser = entry.username ?? requestedUser;
-    const displayUser = navidromeUser;
-    const activityAt = navidromeTimestamp(entry.minutesAgo);
+    const requestedUser = displayConfig.users[0]?.subsonic_user ?? displayConfig.source_user;
+    const subsonicUser = entry.username ?? requestedUser;
+    const displayUser = subsonicUser;
+    const activityAt = subsonicTimestamp(entry.minutesAgo);
     const reportedState = String(entry.state ?? "").toLowerCase();
     const paused = reportedState === "paused";
     const stopped = reportedState === "stopped";
-    const stale = reportedState ? stopped : navidromeEntryStale(entry, displayConfig.now_playing.session_cleanup.paused_after_seconds);
+    const stale = reportedState ? stopped : subsonicEntryStale(entry, displayConfig.now_playing.session_cleanup.paused_after_seconds);
     const positionMs = numberOrUndefined(entry.positionMs);
     const artworkArtist = this.artworkArtistName(entry, displayConfig);
     const logoText = this.logoArtistCredit(entry, displayConfig);
@@ -130,9 +130,9 @@ export class NavidromeClient {
 
     const coverArtUrl = entry.coverArt ? this.coverArtUrl(entry.coverArt) : undefined;
     const artwork: ArtworkRef = displayArtwork ?? {
-      source: "navidrome",
-      itemId: entry.artistId ?? entry.id ?? entry.coverArt ?? artworkArtist ?? entry.artist ?? entry.title ?? "navidrome",
-      title: artworkArtist ?? entry.artist ?? entry.album ?? entry.title ?? "Navidrome",
+      source: "subsonic",
+      itemId: entry.artistId ?? entry.id ?? entry.coverArt ?? artworkArtist ?? entry.artist ?? entry.title ?? "subsonic",
+      title: artworkArtist ?? entry.artist ?? entry.album ?? entry.title ?? "Subsonic",
       mediaType: "MusicArtist",
       imageType: "Primary",
       imageIndex: 0,
@@ -140,14 +140,14 @@ export class NavidromeClient {
     };
 
     return {
-      source: "navidrome",
-      user: navidromeUser,
+      source: "subsonic",
+      user: subsonicUser,
       displayUser,
       playing: !stopped,
       paused,
       stale,
       sessionKey: [
-        "navidrome",
+        "subsonic",
         entry.username ?? displayConfig.source_user,
         entry.playerId,
         entry.playerName,
@@ -173,15 +173,15 @@ export class NavidromeClient {
   }
 
   private async resolveNowPlayingArtwork(entry: NowPlayingEntry, artistName?: string) {
-    const order = this.config.navidrome.artwork.order.length
-      ? this.config.navidrome.artwork.order
+    const order = this.config.subsonic.artwork.order.length
+      ? this.config.subsonic.artwork.order
       : ["jellyfin", "local"] as const;
     for (const source of order) {
-      if (source === "jellyfin" && this.config.navidrome.artwork.jellyfin_fallback && artistName) {
+      if (source === "jellyfin" && this.config.subsonic.artwork.jellyfin_fallback && artistName) {
         const artwork = await this.jellyfin.artworkForArtistName(artistName).catch(() => undefined);
         if (artwork) return artwork;
       }
-      if (source === "local" && this.config.navidrome.artwork.local_files && artistName) {
+      if (source === "local" && this.config.subsonic.artwork.local_files && artistName) {
         const artwork = this.localArtistArtworks(artistName)[0];
         if (artwork) return artwork;
       }
@@ -205,12 +205,12 @@ export class NavidromeClient {
   }
 
   coverArtUrl(id: string) {
-    return `/api/navidrome/cover/${encodeURIComponent(id)}`;
+    return `/api/subsonic/cover/${encodeURIComponent(id)}`;
   }
 
   async albumCoverForName(albumName?: string, artistName?: string) {
     if (!albumName || !this.configured()) return undefined;
-    this.authUser = firstNavidromeUser(this.config);
+    this.authUser = firstSubsonicUser(this.config);
     const response = await this.getJson<SearchResponse>("/rest/search3.view", new URLSearchParams({
       query: `${artistName ?? ""} ${albumName}`.trim(),
       songCount: "0",
@@ -228,7 +228,7 @@ export class NavidromeClient {
   }
 
   async proxyCoverArt(id: string) {
-    this.authUser = firstNavidromeUser(this.config);
+    this.authUser = firstSubsonicUser(this.config);
     return this.fetchWithFallback("/rest/getCoverArt.view", new URLSearchParams({ id }), false);
   }
 
@@ -238,7 +238,7 @@ export class NavidromeClient {
       const candidate = new URL(base);
       return candidate.protocol === parsed.protocol && candidate.host === parsed.host;
     });
-    if (!allowed) throw new Error(`Unsupported Navidrome image URL: ${url}`);
+    if (!allowed) throw new Error(`Unsupported Subsonic image URL: ${url}`);
     return fetch(url, { signal: AbortSignal.timeout(6500) });
   }
 
@@ -249,7 +249,7 @@ export class NavidromeClient {
 
   async browseItems(_libraryId: string) {
     if (!this.configured()) return [];
-    this.authUser = firstNavidromeUser(this.config);
+    this.authUser = firstSubsonicUser(this.config);
     const response = await this.getJson<ArtistIndexResponse>("/rest/getArtists.view");
     const artists = normalizeArray(response.artists?.index).flatMap((index) => normalizeArray(index.artist));
     return artists
@@ -276,7 +276,7 @@ export class NavidromeClient {
   }
 
   private localImageManifest(artistName: string): { backdrops: string[]; logo?: string } | undefined {
-    for (const mapping of this.config.navidrome.artwork.path_mappings) {
+    for (const mapping of this.config.subsonic.artwork.path_mappings) {
       const root = path.resolve(mapping.mediawall), dir = path.resolve(root, artistName);
       if (!dir.startsWith(root + path.sep)) continue;
       try {
@@ -291,33 +291,33 @@ export class NavidromeClient {
 
   localArtistArtworks(artistName: string): ArtworkRef[] {
     const logoUrl = this.localArtistLogoPath(artistName)
-      ? `/api/navidrome/local-artist-logo/${encodeURIComponent(artistName)}`
+      ? `/api/subsonic/local-artist-logo/${encodeURIComponent(artistName)}`
       : undefined;
     const edited = Boolean(this.localImageManifest(artistName));
     const images = this.localArtistImagePaths(artistName);
-    if (edited && !images.length) return [{ source: "navidrome" as const, edited: true, itemId: artistName,
+    if (edited && !images.length) return [{ source: "subsonic" as const, edited: true, itemId: artistName,
       title: artistName, mediaType: "MusicArtist", imageType: "Backdrop" as const, imageIndex: 0, backdropCount: 0, logoUrl }];
     return images.map((imagePath, index, paths) => ({
       edited,
-      source: "navidrome" as const,
+      source: "subsonic" as const,
       itemId: artistName,
       title: artistName,
       mediaType: "MusicArtist",
       imageType: "Backdrop" as const,
       imageIndex: index,
-      backdropUrl: `/api/navidrome/local-artist/${encodeURIComponent(artistName)}/${index}`,
+      backdropUrl: `/api/subsonic/local-artist/${encodeURIComponent(artistName)}/${index}`,
       logoUrl,
       logoTag: undefined,
-      thumbUrl: `/api/navidrome/local-artist/${encodeURIComponent(artistName)}/${index}`,
+      thumbUrl: `/api/subsonic/local-artist/${encodeURIComponent(artistName)}/${index}`,
       backdropCount: paths.length
     } satisfies ArtworkRef));
   }
 
   localArtistLogoPath(artistName: string) {
-    if (!this.config.navidrome.artwork.local_files) return undefined;
+    if (!this.config.subsonic.artwork.local_files) return undefined;
     const manifest = this.localImageManifest(artistName);
     if (manifest) return manifest.logo;
-    const roots = this.config.navidrome.artwork.path_mappings.map((mapping) => mapping.mediawall);
+    const roots = this.config.subsonic.artwork.path_mappings.map((mapping) => mapping.mediawall);
     const filenames = [
       "logo.png",
       "logo.webp",
@@ -358,10 +358,10 @@ export class NavidromeClient {
   }
 
   localArtistImagePaths(artistName: string) {
-    if (!this.config.navidrome.artwork.local_files) return [];
+    if (!this.config.subsonic.artwork.local_files) return [];
     const manifest = this.localImageManifest(artistName);
     if (manifest) return manifest.backdrops;
-    const roots = this.config.navidrome.artwork.path_mappings.map((mapping) => mapping.mediawall);
+    const roots = this.config.subsonic.artwork.path_mappings.map((mapping) => mapping.mediawall);
     const filenames = [
       "fanart.jpg",
       "fanart.jpeg",
@@ -416,30 +416,30 @@ export class NavidromeClient {
 
   private localArtistImageUrl(artistName?: string) {
     return artistName && this.localArtistImagePath(artistName)
-      ? `/api/navidrome/local-artist/${encodeURIComponent(artistName)}`
+      ? `/api/subsonic/local-artist/${encodeURIComponent(artistName)}`
       : undefined;
   }
 
   private artistImageProxyUrl(url: string, artistName?: string) {
     const params = new URLSearchParams({ url });
     if (artistName) params.set("artist", artistName);
-    return `/api/navidrome/artist-image?${params}`;
+    return `/api/subsonic/artist-image?${params}`;
   }
 
   private async getJson<T>(path: string, params = new URLSearchParams()): Promise<T> {
     params.set("f", "json");
     const response = await this.fetchWithFallback(path, params, true);
-    if (!response.ok) throw new Error(`Navidrome ${response.status} for ${path}`);
+    if (!response.ok) throw new Error(`Subsonic ${response.status} for ${path}`);
     const payload = await response.json() as SubsonicResponse<T>;
     const body = payload["subsonic-response"];
     if (body.status !== "ok") {
-      throw new Error(`Navidrome API error: ${body.error?.message ?? "unknown error"}`);
+      throw new Error(`Subsonic API error: ${body.error?.message ?? "unknown error"}`);
     }
     return body;
   }
 
   private authParams() {
-    const authUser = this.authUser ?? firstNavidromeUser(this.config);
+    const authUser = this.authUser ?? firstSubsonicUser(this.config);
     return new URLSearchParams({
       u: authUser?.username ?? "",
       p: authUser?.password ?? "",
@@ -466,12 +466,12 @@ export class NavidromeClient {
       } catch (error) {
         lastError = error;
         if (base === this.baseUrl) {
-          logger.warn(`Navidrome request to configured URL failed; trying Docker host gateway for ${path}`);
+          logger.warn(`Subsonic request to configured URL failed; trying Docker host gateway for ${path}`);
         }
       }
     }
 
-    throw lastError instanceof Error ? lastError : new Error(`Unable to reach Navidrome for ${path}`);
+    throw lastError instanceof Error ? lastError : new Error(`Unable to reach Subsonic for ${path}`);
   }
 
   private candidateBaseUrls() {
@@ -499,13 +499,13 @@ function normalizeArray<T>(value: T | T[] | undefined) {
   return Array.isArray(value) ? value : [value];
 }
 
-function navidromeTimestamp(minutesAgo: NowPlayingEntry["minutesAgo"]) {
+function subsonicTimestamp(minutesAgo: NowPlayingEntry["minutesAgo"]) {
   if (minutesAgo === undefined || minutesAgo === null) return undefined;
   const minutes = Number(minutesAgo);
   return Number.isFinite(minutes) ? Date.now() - (minutes * 60_000) : undefined;
 }
 
-function navidromeEntryStale(entry: NowPlayingEntry, inactiveAfterSeconds: number) {
+function subsonicEntryStale(entry: NowPlayingEntry, inactiveAfterSeconds: number) {
   const minutesAgo = Number(entry.minutesAgo);
   const durationSeconds = Number(entry.duration);
   if (!Number.isFinite(minutesAgo)) return false;
@@ -539,11 +539,11 @@ function splitArtistCredit(value: unknown) {
     .filter(Boolean);
 }
 
-function firstNavidromeUser(config: AppConfig) {
+function firstSubsonicUser(config: AppConfig) {
   const user = Object.values(config.users).find((candidate) =>
-    candidate.navidrome_user && !isAllUsers(candidate.navidrome_user) && candidate.navidrome_password
+    candidate.subsonic_user && !isAllUsers(candidate.subsonic_user) && candidate.subsonic_password
   );
-  return user ? { username: user.navidrome_user!, password: user.navidrome_password! } : undefined;
+  return user ? { username: user.subsonic_user!, password: user.subsonic_password! } : undefined;
 }
 
 function isAllUsers(name?: string) {

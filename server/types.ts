@@ -1,7 +1,7 @@
 import type { AnonymousMode, AnonymousIdentity } from "./anonymous-mode.js";
-export type PlaybackSource = "jellyfin" | "navidrome" | "external-music" | "All";
-export type NowPlayingSource = "jellyfin" | "navidrome" | "spotify" | "apple_music" | "external_music";
-export type ArtworkSource = "jellyfin" | "navidrome" | "fetched" | "fallback";
+export type PlaybackSource = "jellyfin" | "subsonic" | "external-music" | "All";
+export type NowPlayingSource = "jellyfin" | "subsonic" | "spotify" | "apple_music" | "external_music";
+export type ArtworkSource = "jellyfin" | "subsonic" | "fetched" | "fallback";
 export type DisplayMode = "now-playing" | "screensaver" | "immich-kiosk";
 export type MediaWallFallbackMode = "centered" | "breathing" | "float" | "spotlight" | "dvd" | "minimal";
 
@@ -9,8 +9,8 @@ export interface MediaWallUser {
   key?: string;
   name: string;
   jellyfin_user?: string;
-  navidrome_user?: string;
-  navidrome_password?: string;
+  subsonic_user?: string;
+  subsonic_password?: string;
   external_music_token?: string;
   sound?: string;
   end_sound?: string;
@@ -91,14 +91,15 @@ export interface DisplayConfig {
     sounds: {
       enabled: boolean;
       jellyfin: boolean;
-      navidrome: boolean;
+      subsonic: boolean;
       quiet_hours: {
         enabled: boolean;
         start: string;
         end: string;
       };
       continuous_sessions: {
-        navidrome: boolean;
+        subsonic: boolean;
+        external_music: boolean;
         jellyfin_libraries: string[];
       };
       session_start: {
@@ -144,6 +145,7 @@ export interface DisplayConfig {
     logo: {
       max_width: number;
     };
+    music_video_album_art: { size?: number };
     album_art: {
       size: number;
     };
@@ -164,7 +166,7 @@ export interface DisplayConfig {
         size: number;
       };
       show_jellyfin_username: boolean;
-      show_navidrome_username: boolean;
+      show_subsonic_username: boolean;
       user_font_size: number;
     };
     screensaver_text: {
@@ -231,14 +233,16 @@ export interface AppConfig {
     url: string;
     api_key: string;
   };
-  navidrome: {
+  subsonic: {
+    name: string;
+    icon: string;
     enabled: boolean;
     url: string;
     artwork: {
       jellyfin_fallback: boolean;
       local_files: boolean;
       order: Array<"jellyfin" | "local" | "fetched">;
-      path_mappings: Array<{ navidrome: string; mediawall: string; jellyfin?: string }>;
+      path_mappings: Array<{ subsonic: string; mediawall: string; jellyfin?: string }>;
     };
   };
   external_music: {
@@ -392,7 +396,7 @@ export interface PublicSoundSession {
 export interface PublicLibraryScanProgress {
   active: boolean;
   completed: boolean;
-  source: "jellyfin" | "navidrome" | "sounds" | "custom_images" | "library";
+  source: "jellyfin" | "subsonic" | "sounds" | "custom_images" | "library";
   currentLibrary?: string;
   percent: number;
   scanned: number;
@@ -402,7 +406,7 @@ export interface PublicLibraryScanProgress {
 }
 
 export interface PublicConnectionIssue {
-  source: "jellyfin" | "navidrome";
+  source: "jellyfin" | "subsonic";
   message: string;
 }
 
@@ -485,6 +489,7 @@ export interface DisplaySnapshot {
   profile: string;
   display: string;
   config: Omit<DisplayConfig, "password" | "users" | "now_playing"> & {
+    subsonic: { name: string; iconUrl: string };
     users: Array<Pick<MediaWallUser, "name" | "sound">>;
     now_playing: Omit<DisplayConfig["now_playing"], "sounds"> & {
       sounds: Omit<DisplayConfig["now_playing"]["sounds"], "directory"> & { available: string[] };

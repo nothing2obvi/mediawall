@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.5.0 - 2026-10-03
+
+## New features
+
+- **Subsonic-compatible music servers:** the existing Navidrome integration now uses Subsonic naming, with configurable server names and icons. Navidrome remains the primary tested server; other implementations aren't claimed as verified.
+- **Server icons:** packaged choices include Navidrome, Gonic, Subsonic, Airsonic-Advanced, Ampache, Nextcloud, Funkwhale, and LMS. Custom icons can use the dedicated `./app/server-icons:/app/server-icons:ro` mount. Packaged image metadata was cleaned without changing the visuals.
+- **Jellyfin music videos:** use all backdrops and the logo from the artist folder inside the Music Videos library. Album/track text and album-cover controls match music playback, while user transitions say "watching."
+- **Music-video album covers:** first search Jellyfin music-type libraries for matching artist/title artwork. Exact titles win across libraries. If needed, trailing parenthetical groups are removed one at a time, so an exact remix beats the plain song. Artist aliases, casing, and whitespace are handled without broad fuzzy matching. Existing artwork providers remain the fallback, and displayed metadata stays unchanged.
+- **Consistent music sound controls:** external music now has its own `continuous_sessions.external_music` setting. Jellyfin's default continuous libraries include both `Music` and `Music Videos`.
+
+### Fixes
+
+- Reduced flicker when changing media-info options by keeping older responses from overwriting newer selections.
+- Local artist artwork uploads now use Jellyfin-compatible `logo.ext`, `backdrop.ext`, `backdrop1.ext`, and subsequent names. Existing files aren't bulk-renamed. Collision checks and rollback protect existing artwork; audio and video files aren't modified.
+
+### Breaking changes and upgrade notes
+
+No mandatory configuration migration from v0.4.3. Keep your existing config, `.env`, mounted paths, and artwork.
+
+- **Canonical source identity is now `subsonic`.** Custom clients consuming source fields should accept `subsonic` instead of `navidrome`. Existing Navidrome artwork URLs and the legacy health field remain available, and saved artwork selections are normalized automatically.
+- **New examples use `SUBSONIC_*` variables.** Existing `NAVIDROME_*` variables still work when your YAML references them. If copying the new examples, update the references and `.env` together.
+- **Changed sound defaults:** configs that omit the Jellyfin continuous-library list now include `Music Videos`. Explicit lists are preserved. Set `continuous_sessions.external_music: false` to allow external track changes to start new sound sessions; the default is `true`.
+- Music videos may display a different album cover because a matching Jellyfin music track now takes priority. Video artist/title metadata and artist-folder backdrops/logos aren't replaced by that match.
+- Music-video cover size inherits `display.album_art.size`; use `display.music_video_album_art.size` for a separate size.
+- The combined source guide is now `docs/jellyfin-and-subsonic-notes.md`.
+
+For earlier breaking changes, including the v0.4.2 Library migration and removed v0.3-era settings, see [Upgrading](https://github.com/nothing2obvi/mediawall/blob/v0.5.0/docs/upgrading.md).
+
+### Legacy Navidrome configuration
+
+The following remain supported: `navidrome:`, `playback_source: navidrome`, `navidrome_user`, `navidrome_password`, `path_mappings[].navidrome`, `sounds.navidrome`, `continuous_sessions.navidrome`, and `show_navidrome_username`. New configs should use the equivalent `subsonic` names.
+
+Both forms use the same implementation. If both are supplied, explicit Subsonic values win, including `false`, empty strings, and empty lists; legacy values fill only missing settings. The default server name is `Navidrome` and the default icon is `navidrome`.
+
+### Validation and images
+
+93 automated tests passed, covering artwork matching, legacy settings and precedence, icons, playback states, authentication, and existing artwork behavior. The production build passed. Live Navidrome authentication and Now Playing reads succeeded; there were no active sessions during that check.
+
+Docker images for **linux/amd64** and **linux/arm64**:
+
+- `ghcr.io/nothing2obvi/mediawall:v0.5.0`
+- `ghcr.io/nothing2obvi/mediawall:latest`
+
 ## 0.4.3 - 2026-10-01
 
 ## Fixes

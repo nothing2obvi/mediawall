@@ -17,7 +17,7 @@ export interface AnonymousIdentity {
 }
 const normalized = (s:string) => s.trim().toLowerCase();
 export function mappedUserKey(state: NowPlayingState, user: MediaWallUser, allUsers: Record<string,MediaWallUser>) {
-  const sourceField = state.source === "jellyfin" ? "jellyfin_user" : state.source === "navidrome" ? "navidrome_user" : undefined;
+  const sourceField = state.source === "jellyfin" ? "jellyfin_user" : state.source === "subsonic" ? "subsonic_user" : undefined;
   if (sourceField && normalized(user[sourceField] ?? "") === "all") {
     const match=Object.entries(allUsers).find(([,u])=>normalized(u[sourceField] ?? u.name)===normalized(state.user));
     return match?.[0] ?? state.user;

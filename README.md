@@ -17,7 +17,9 @@
 
 ## TL;DR
 
-MediaWall is a way to take advantage of an old iPad, a Raspberry Pi with a display, or any spare screen by turning it into a live window into your Jellyfin and Navidrome servers. It can show what you and your users are currently watching or listening to, cycle through artwork from your libraries as a screensaver, or display favorite media as wallpapers. With Multi-Scrobbler, it can also show Now Playing from external music sources such as Spotify. It also supports custom sounds, layouts, and fallback screens. Basically, it's a fun little project that's an overengineered way to view active sessions and make your media library visible instead of leaving all that artwork buried in storage.
+MediaWall is a self-hosted display for Jellyfin, Subsonic-compatible music servers, and external music sources like Spotify. Subsonic support is primarily tested with Navidrome.
+
+MediaWall is a way to take advantage of an old iPad, a Raspberry Pi with a display, or any spare screen by turning it into a live window into your Jellyfin and Subsonic-compatible music servers. It can show what you and your users are currently watching or listening to, cycle through artwork from your libraries as a screensaver, or display favorite media as wallpapers. With Multi-Scrobbler, it can also show Now Playing from external music sources such as Spotify. It also supports custom sounds, layouts, and fallback screens. Basically, it's a fun little project that's an overengineered way to view active sessions and make your media library visible instead of leaving all that artwork buried in storage.
 
 ## What's your use case for MediaWall?
 
@@ -65,9 +67,9 @@ In line with my ongoing obsession with the images and artwork in Jellyfin, as se
 
 Then I realized I had an old iPad laying around doing absolutely nothing. I wanted something that would work on that, or on something like a Raspberry Pi connected to a display. MediaWall was born.
 
-MediaWall is a display app for Jellyfin, Navidrome and other external music sources via Multi-Scrobbler built around three main features, and it's meant to work well on an old iPad, a Raspberry Pi connected to a monitor, or really any device with a browser. Each display space also has a phone-friendly remote at the same route with `-remote` appended, so you can control the display without walking over to it.
+MediaWall is a display app for Jellyfin, Subsonic-compatible music servers, and external music sources via Multi-Scrobbler built around three main features, and it's meant to work well on an old iPad, a Raspberry Pi connected to a monitor, or really any device with a browser. Each display space also has a phone-friendly remote at the same route with `-remote` appended, so you can control the display without walking over to it.
 
-The first, and most prominent, is **Now Playing**. MediaWall shows what's currently being watched or listened to across your Jellyfin and Navidrome servers or external music sources, along with artwork, user information, media details, and optional sound notifications when sessions start or end.
+The first, and most prominent, is **Now Playing**. MediaWall shows what's currently being watched or listened to across your Jellyfin and Subsonic-compatible music servers or external music sources, along with artwork, user information, media details, and optional sound notifications when sessions start or end.
 
 The sound system is customizable too. You can use one global sound, assign custom sounds to individual users, and control when sounds should or shouldn't play. This is especially useful with music libraries, where you probably don't want a notification every time the next song starts.
 
@@ -79,7 +81,7 @@ Third is **Wallpaper mode**. If MediaWall lands on something you particularly li
 
 While nothing is playing, MediaWall can cycle through your library artwork in Screensaver mode, show the bundled MediaWall screensaver or one with your own custom logo, or hand the display over to a configured **Immich Kiosk** setup. That way, even between playback sessions, the screen can keep working as a digital photo frame.
 
-So depending on how you use it, MediaWall can be a live window into your Jellyfin and Navidrome servers, a Jellyfin-powered digital art display, or basically a very overengineered way to give an old iPad, Raspberry Pi, or spare screen something useful to do.
+So depending on how you use it, MediaWall can be a live window into your Jellyfin and Subsonic-compatible music servers, a Jellyfin-powered digital art display, or basically a very overengineered way to give an old iPad, Raspberry Pi, or spare screen something useful to do.
 
 Is this necessary? No!
 
@@ -91,7 +93,7 @@ Is it a kind of fun excuse to use more electricity and tinker with something? Ye
 
 Put MediaWall on an iPad, tablet, TV, or Raspberry Pi display in a shared room and use it as a live window into your media server.
 
-If someone is watching something on Jellyfin or listening to music through Navidrome, MediaWall can automatically show active sessions with backdrop artwork, logos, playback information, source icons, and, if you want, the name or avatar of the person using it.
+If someone is watching something on Jellyfin or listening to music through a Subsonic-compatible server, MediaWall can automatically show active sessions with backdrop artwork, logos, playback information, source icons, and, if you want, the name or avatar of the person using it.
 
 So instead of asking, "What are we listening to?" or checking Jellyfin manually, you can just glance at the display.
 
@@ -115,18 +117,18 @@ That's really the idea behind MediaWall: it can be a Now Playing display, a home
 
 ## What It Does
 
-- Shows active playback sessions from Jellyfin, Navidrome, or both, including Jellyfin Live TV channels
+- Shows active playback sessions from Jellyfin, Subsonic-compatible servers, or both, including Jellyfin Live TV channels
 - Shows active playback sessions from external music sources such as Spotify through Multi-Scrobbler.
 - Supports multiple MediaWall users per space, including Jellyfin `All` users.
 - Can show a configurable user-intro transition when a Now Playing session first appears.
 - Falls back to a default MediaWall screen, shuffled artwork, or an optional per-space Immich Kiosk display when nothing is playing.
 - Provides a full-screen Wallpaper/Screensaver mode with library browsing, favorites, shuffle, logos, media info, transitions, and subtle backdrop motion.
-- Uses Jellyfin, Navidrome, and Spotify backdrops/logos where available.
-- Can use Navidrome playback for music-focused setups, and Navidrome can use Jellyfin's images when both services are configured.
-- Can use local artist backdrop and logo files for Navidrome-only artwork.
+- Uses Jellyfin, Subsonic-compatible servers, and Spotify backdrops/logos where available.
+- Can use Subsonic playback for music-focused setups, and Subsonic servers can use Jellyfin's images when both services are configured.
+- Can use local artist backdrop and logo files for Subsonic-only artwork.
 - Includes an image editor for logos and backdrops, with provider search, uploads, enlarged previews, ordering, and deletion across Jellyfin, local artwork, and the external artwork cache.
 
-Jellyfin is recommended because MediaWall can use its rich backdrop, logo, user avatar, movie, series, and artist metadata. Navidrome isn't strictly required, and Jellyfin isn't strictly required for a music-only wall: Navidrome can drive Now Playing and local artist backdrop files can provide artwork. If both Jellyfin and Navidrome are configured, Navidrome playback can match against Jellyfin artist data so the Now Playing and Wallpaper/Screensaver views still benefit from Jellyfin's images.
+Subsonic-compatible servers such as Navidrome can drive a music-only wall using local artist artwork or matching Jellyfin artist images. Jellyfin is recommended because MediaWall can use its rich backdrop, logo, user avatar, movie, series, and artist metadata.
 
 ## [Documentation](docs/README.md)
 

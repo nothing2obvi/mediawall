@@ -1,3 +1,4 @@
+import { normalizeSubsonicState } from "./subsonic-compat.js";
 import fs from "node:fs";
 import path from "node:path";
 import type { ArtworkRef, DisplayConfig, DisplayState, TransitionStyle } from "./types.js";
@@ -18,7 +19,7 @@ function readAll(): StateFile {
   ensureStateDir();
   if (!fs.existsSync(statePath)) return {};
   try {
-    return JSON.parse(fs.readFileSync(statePath, "utf8")) as StateFile;
+    return normalizeSubsonicState(JSON.parse(fs.readFileSync(statePath, "utf8"))) as StateFile;
   } catch {
     return {};
   }

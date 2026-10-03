@@ -7,7 +7,7 @@
 The color tells you where edits are saved:
 
 - **Purple: Jellyfin.** Edits change images on your Jellyfin server. Search uses Jellyfin's enabled providers.
-- **Blue: local/Navidrome files.** Edits change artwork in your mapped music folder, which must be writable. Audio and video files aren't touched.
+- **Blue: local/Subsonic files.** Edits change artwork in your mapped music folder, which must be writable. Audio and video files aren't touched.
 - **Orange: MediaWall Library.** Edits save artist images under `/library/Artists`. Search uses MediaWall's configured providers.
 
 The color follows the artwork, not the music service. Spotify using Jellyfin images gets a purple button. Music edits apply to the displayed artist; album covers are handled automatically.
@@ -24,6 +24,12 @@ Use **+** to upload: drop a file or click **Choose file**, check the preview, an
 
 Saved edits appear on the display automatically. Closing a dialog doesn't undo them. Editing holds the display in place without pausing your music or video.
 
+### Local Subsonic filenames
+
+Local artist edits save into the existing artist folder using Jellyfin-compatible names: `logo.png`, `backdrop.jpg`, `backdrop1.jpg`, and so on, with the extension matching the image format. New backdrops use the first free numbered slot without overwriting existing files. MediaWall keeps your chosen backdrop order in `.mediawall-images.json`.
+
+Older UUID-named images still work; they aren't renamed automatically. Replacing an older logo saves it under `logo.ext`. The music mount must be writable. Audio and video files aren't modified.
+
 ### Clearing the cache
 
 To refresh cached grid images and album covers:
@@ -34,4 +40,4 @@ docker exec -it mediawall npm run mediawall -- clear cache
 
 Type `clear` to confirm, or add `--yes` for a script. Wait for any active scan to finish. The display shows a success message and plays the trash sound if sounds are enabled and the browser allows audio.
 
-This doesn't delete Library images. Those have a [separate clearing command](external-music-images.md#clearing-library-images), which also removes manually added artist images. Neither command deletes Jellyfin artwork, Navidrome artwork, music, or video files.
+This doesn't delete Library images. Those have a [separate clearing command](external-music-images.md#clearing-library-images), which also removes manually added artist images. Neither command deletes Jellyfin artwork, Subsonic artwork, music, or video files.

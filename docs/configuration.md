@@ -11,9 +11,9 @@ JELLYFIN_URL=http://jellyfin.example.local:8096
 JELLYFIN_API_KEY=replace-with-a-jellyfin-admin-api-key
 JELLYFIN_BOB_USER=bob-jellyfin
 
-NAVIDROME_URL=http://navidrome.example.local:4533
-NAVIDROME_BOB_USER=bob-navidrome
-NAVIDROME_BOB_PASSWORD=replace-with-a-navidrome-password
+SUBSONIC_URL=http://navidrome.example.local:4533
+SUBSONIC_BOB_USER=bob-subsonic
+SUBSONIC_BOB_PASSWORD=replace-with-a-subsonic-password
 
 LIVINGROOM_PASSWORD=
 HOMELAB_PASSWORD=
@@ -23,7 +23,7 @@ LOG_LEVEL=info
 
 The Jellyfin API key should belong to a Jellyfin admin user. MediaWall uses it to read sessions, users, libraries, and artwork. Choose which Jellyfin users to watch in `config.yml`, or use `All`.
 
-For Navidrome, configure each Navidrome account you want MediaWall to distinguish as its own MediaWall user. For example, you can add `NAVIDROME_BOB_USER`, `NAVIDROME_BOB_PASSWORD`, `NAVIDROME_ALICE_USER`, and `NAVIDROME_ALICE_PASSWORD`, then reference those from separate `users` entries in `config.yml`.
+For Subsonic, configure each Subsonic account you want MediaWall to distinguish as its own MediaWall user. For example, you can add `SUBSONIC_BOB_USER`, `SUBSONIC_BOB_PASSWORD`, `SUBSONIC_BOB2_USER`, and `SUBSONIC_BOB2_PASSWORD`, then reference those from separate `users` entries in `config.yml`.
 
 Use a separate password variable for each protected space. In addition to `LIVINGROOM_PASSWORD=` and `HOMELAB_PASSWORD=`, you can create any others you need, such as `OFFICE_PASSWORD=` or `KITCHEN_PASSWORD=`, then reference them from the matching space.
 

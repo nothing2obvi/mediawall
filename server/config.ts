@@ -1,3 +1,4 @@
+import { normalizeSubsonicConfig } from "./subsonic-compat.js";
 import { logger } from "./logger.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -52,8 +53,8 @@ loadDotEnv();
 const mediaWallUserSchema = z.object({
   name: z.string().optional(),
   jellyfin_user: z.string().optional(),
-  navidrome_user: z.string().optional(),
-  navidrome_password: z.string().optional(),
+  subsonic_user: z.string().optional(),
+  subsonic_password: z.string().optional(),
   external_music_token: z.string().optional(),
   sound: z.string().optional(),
   end_sound: z.string().optional()
@@ -69,7 +70,7 @@ const anonymousModeSchema = z.object({
 });
 const spaceSchema = z.object({
   anonymous_mode: anonymousModeSchema.optional(),
-  playback_source: z.enum(["jellyfin", "navidrome", "external-music", "All"]).default("All"),
+  playback_source: z.enum(["jellyfin", "subsonic", "external-music", "All"]).default("All"),
   theme: z.enum([...themeNames, "All"]).default("All"),
   users: z.array(z.string()).default([]),
   libraries: z.array(z.string()).default([]),
@@ -174,16 +175,17 @@ const spaceSchema = z.object({
     sounds: z.object({
       enabled: z.boolean().default(true),
       jellyfin: z.boolean().default(true),
-      navidrome: z.boolean().default(true),
+      subsonic: z.boolean().default(true),
       quiet_hours: z.object({
         enabled: z.boolean().default(false),
         start: z.string().default("23:00"),
         end: z.string().default("08:00")
       }).default({ enabled: false, start: "23:00", end: "08:00" }),
       continuous_sessions: z.object({
-        navidrome: z.boolean().default(true),
-        jellyfin_libraries: z.array(z.string()).default(["Music"])
-      }).default({ navidrome: true, jellyfin_libraries: ["Music"] }),
+        subsonic: z.boolean().default(true),
+        external_music: z.boolean().default(true),
+        jellyfin_libraries: z.array(z.string()).default(["Music", "Music Videos"])
+      }).default({ subsonic: true, external_music: true, jellyfin_libraries: ["Music", "Music Videos"] }),
       session_start: z.object({
         retrigger_after_inactive_seconds: z.number().min(0).default(30)
       }).default({ retrigger_after_inactive_seconds: 30 }),
@@ -198,9 +200,9 @@ const spaceSchema = z.object({
     }).default({
       enabled: true,
       jellyfin: true,
-      navidrome: true,
+      subsonic: true,
       quiet_hours: { enabled: false, start: "23:00", end: "08:00" },
-      continuous_sessions: { navidrome: true, jellyfin_libraries: ["Music"] },
+      continuous_sessions: { subsonic: true, external_music: true, jellyfin_libraries: ["Music", "Music Videos"] },
       session_start: { retrigger_after_inactive_seconds: 30 },
       session_end: { enabled: false, tone: "close.mp3" },
       trigger: "new_session",
@@ -245,9 +247,9 @@ const spaceSchema = z.object({
     sounds: {
       enabled: true,
       jellyfin: true,
-      navidrome: true,
+      subsonic: true,
       quiet_hours: { enabled: false, start: "23:00", end: "08:00" },
-      continuous_sessions: { navidrome: true, jellyfin_libraries: ["Music"] },
+      continuous_sessions: { subsonic: true, external_music: true, jellyfin_libraries: ["Music", "Music Videos"] },
       session_start: { retrigger_after_inactive_seconds: 30 },
       session_end: { enabled: false, tone: "close.mp3" },
       trigger: "new_session",
@@ -292,6 +294,7 @@ const spaceSchema = z.object({
     logo: z.object({
       max_width: z.number().default(520)
     }).default({ max_width: 520 }),
+    music_video_album_art: z.object({ size: z.number().min(1).optional() }).default({}),
     album_art: z.object({
       size: z.number().default(300)
     }).default({ size: 300 }),
@@ -315,7 +318,7 @@ const spaceSchema = z.object({
       }).optional(),
       show_username: z.boolean().optional(),
       show_jellyfin_username: z.boolean().optional(),
-      show_navidrome_username: z.boolean().optional(),
+      show_subsonic_username: z.boolean().optional(),
       user_font_size: z.number().default(13)
     }).transform((value) => ({
       ...value,
@@ -325,7 +328,7 @@ const spaceSchema = z.object({
         size: value.user_avatar_request_size ?? 96
       },
       show_jellyfin_username: value.show_jellyfin_username ?? value.show_username ?? value.show_user ?? false,
-      show_navidrome_username: value.show_navidrome_username ?? value.show_username ?? value.show_user ?? false
+      show_subsonic_username: value.show_subsonic_username ?? value.show_username ?? value.show_user ?? false
     })).default({
       enabled: false,
       text: "Now playing on",
@@ -337,7 +340,7 @@ const spaceSchema = z.object({
       user_avatar_size: 24,
       user_avatar_resize: { enabled: true, size: 96 },
       show_jellyfin_username: false,
-      show_navidrome_username: false,
+      show_subsonic_username: false,
       user_font_size: 13
     }),
     screensaver_text: z.object({
@@ -404,6 +407,7 @@ const spaceSchema = z.object({
     animations: { enabled: true, style: "kenburns", scale: 1.08, duration_seconds: 26 },
     logo: { max_width: 520 },
     live_tv: { channel_image_size: 713 },
+    music_video_album_art: {},
     album_art: { size: 300 },
     fallback_title: { font_size: 86 },
     nowplaying_text: {
@@ -417,7 +421,7 @@ const spaceSchema = z.object({
       user_avatar_size: 24,
       user_avatar_resize: { enabled: true, size: 96 },
       show_jellyfin_username: false,
-      show_navidrome_username: false,
+      show_subsonic_username: false,
       user_font_size: 13
     },
     screensaver_text: {
@@ -461,7 +465,9 @@ const configSchema = z.object({
     url: z.string().default(""),
     api_key: z.string().default("")
   }).default({ url: "", api_key: "" }),
-  navidrome: z.object({
+  subsonic: z.object({
+    name: z.string().trim().min(1).default("Navidrome"),
+    icon: z.string().regex(/^[a-zA-Z0-9_-]+$/).default("navidrome"),
     enabled: z.boolean().default(false),
     url: z.string().default(""),
     artwork: z.object({
@@ -469,16 +475,17 @@ const configSchema = z.object({
       local_files: z.boolean().default(true),
       order: z.array(z.enum(["jellyfin", "local", "fetched"])).default(["jellyfin", "local"]),
       path_mappings: z.array(z.object({
-        navidrome: z.string(),
+        subsonic: z.string(),
         mediawall: z.string().optional(),
         jellyfin: z.string().optional()
       }).transform((mapping) => ({
-        navidrome: mapping.navidrome,
+        subsonic: mapping.subsonic,
         mediawall: mapping.mediawall ?? mapping.jellyfin ?? "/navidrome_music",
         jellyfin: mapping.jellyfin
       }))).default([])
     }).default({ jellyfin_fallback: true, local_files: true, order: ["jellyfin", "local"], path_mappings: [] })
   }).default({
+    name: "Navidrome", icon: "navidrome",
     enabled: false,
     url: "",
     artwork: { jellyfin_fallback: true, local_files: true, order: ["jellyfin", "local"], path_mappings: [] }
@@ -575,7 +582,7 @@ export function loadConfig(): AppConfig {
   const configPath = path.resolve(process.env.MEDIAWALL_CONFIG ?? "config.yml");
   const raw = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "{}";
   const expanded = expandEnv(raw);
-  const rawConfig = YAML.parse(expanded) ?? {};
+  const rawConfig = normalizeSubsonicConfig(YAML.parse(expanded) ?? {});
   const errors: string[] = [];
   const removed = (present: boolean, message: string) => { if (present) {logger.error(`Configuration migration: ${message}`);errors.push(message);} };
   removed("displays" in rawConfig, "displays is deprecated and removed. Define display routes under spaces instead.");
@@ -586,14 +593,14 @@ export function loadConfig(): AppConfig {
   for (const [name, space] of Object.entries(rawConfig.spaces ?? {}) as [string, any][]) {
     if (!space || typeof space !== "object") continue;
     removed("playback_user" in space, `spaces.${name}.playback_user was removed. Configure top-level users, then users: [primary] or users: [All] in this space.`);
-    removed(space.playback_source !== undefined && !["jellyfin", "navidrome", "external-music", "All"].includes(space.playback_source), `spaces.${name}.playback_source: the old both value is deprecated and removed. Choices are jellyfin, navidrome, external-music, All (case-sensitive). Use All to watch every source.`);
+    removed(space.playback_source !== undefined && !["jellyfin", "subsonic", "external-music", "All"].includes(space.playback_source), `spaces.${name}.playback_source: the old both value is deprecated and removed. Choices are jellyfin, subsonic, external-music, All (case-sensitive). Use All to watch every source.`);
     if (space.display?.screensaver_interval !== undefined) logger.warn(`Configuration migration: spaces.${name}.display.screensaver_interval is deprecated. Use cycle_interval_seconds instead.`);
     removed(space.display?.breathing !== undefined, `spaces.${name}.display.breathing was replaced by display.animations. Set enabled: true and style: breathe; other choices are pan, kenburns, drift, focus, zoom, All.`);
     if (space.display?.album_art?.size === undefined) logger.info(`Configuration defaults for ${name}: album_art.size is now 300px. Set display.album_art.size to keep a different size.`);
     if (space.display?.live_tv?.channel_image_size === undefined) logger.info(`Configuration defaults for ${name}: live_tv.channel_image_size is 713px. Set display.live_tv.channel_image_size to override it.`);
   }
-  for (const mapping of rawConfig.navidrome?.artwork?.path_mappings ?? []) {
-    if (mapping.jellyfin !== undefined) logger.warn("Configuration migration: navidrome.artwork.path_mappings[].jellyfin is deprecated. Rename it to mediawall; keep navidrome as the source path.");
+  for (const mapping of rawConfig.subsonic?.artwork?.path_mappings ?? []) {
+    if (mapping.jellyfin !== undefined) logger.warn("Configuration migration: subsonic.artwork.path_mappings[].jellyfin is deprecated. Rename it to mediawall; keep subsonic as the source path.");
   }
   if (errors.length) throw new Error(errors.join("\n"));
   const parsed = configSchema.parse(rawConfig);
@@ -604,7 +611,7 @@ export function loadConfig(): AppConfig {
     library: parsed.library,
     library_scan: parsed.library_scan,
     jellyfin: parsed.jellyfin,
-    navidrome: parsed.navidrome,
+    subsonic: parsed.subsonic,
     external_music: normalizeExternalMusic(parsed.external_music, users),
     image_providers: parsed.image_providers,
     aliases: parsed.aliases,
@@ -625,8 +632,8 @@ function normalizeUsers(input: Record<string, z.infer<typeof mediaWallUserSchema
       key: name,
       name: user.name ?? name,
       jellyfin_user: user.jellyfin_user,
-      navidrome_user: user.navidrome_user,
-      navidrome_password: user.navidrome_password,
+      subsonic_user: user.subsonic_user,
+      subsonic_password: user.subsonic_password,
       external_music_token: user.external_music_token,
       sound: user.sound,
       end_sound: user.end_sound
@@ -646,7 +653,7 @@ function normalizeSpaces(input: Record<string, z.infer<typeof spaceSchema>>, use
     const resolvedUsers = sourceUsers.map((name) => users[name] ?? {
       name,
       jellyfin_user: name,
-      navidrome_user: name
+      subsonic_user: name
     });
     const firstUser = resolvedUsers[0]?.name ?? "default";
     spaces[spaceName] = {

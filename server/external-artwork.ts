@@ -6,7 +6,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import type { AppConfig, ArtworkRef, NowPlayingState } from "./types.js";
 import { JellyfinClient } from "./jellyfin.js";
-import { NavidromeClient } from "./navidrome.js";
+import { SubsonicClient } from "./subsonic.js";
 import { logger } from "./logger.js";
 
 type CachedImage = {
@@ -63,8 +63,8 @@ export class ExternalArtworkResolver {
     const provider = this.imageProviders.get(url.split("?")[0]);
     if (provider) return `${url.startsWith("/api/external-artwork/artists/") ? "MediaWall Library" : "Album cache"} (${provider})`;
     if (url.startsWith("/api/jellyfin/")) return "Jellyfin";
-    if (url.startsWith("/api/navidrome/local-")) return "local files";
-    if (url.startsWith("/api/navidrome/")) return "Navidrome";
+    if (url.startsWith("/api/subsonic/local-")) return "local files";
+    if (url.startsWith("/api/subsonic/")) return "Subsonic";
     if (url.startsWith("/api/external-artwork/artists/")) return "MediaWall Library (manually added or provider unknown)";
     if (url.startsWith("/api/external-artwork/")) return "Album cache (provider unknown)";
     if (url.startsWith("/")) return "MediaWall local asset";
@@ -90,7 +90,7 @@ export class ExternalArtworkResolver {
   constructor(
     private readonly config: AppConfig,
     private readonly jellyfin: JellyfinClient,
-    private readonly navidrome: NavidromeClient,
+    private readonly subsonic: SubsonicClient,
     appRoot: string
   ) {
     const configured = config.external_music.artwork.album_cache_directory;
@@ -127,7 +127,28 @@ export class ExternalArtworkResolver {
     return { ...base, artwork: artwork ?? state.artwork, albumArtUrl };
   }
 
-  async resolveNavidrome(state: NowPlayingState) {
+  async resolveMusicVideo(state: NowPlayingState) {
+    if (state.source !== "jellyfin" || state.artwork?.mediaType !== "MusicVideo") return state;
+    const artist = state.artist ?? state.artists?.[0] ?? state.albumArtist;
+    if (!artist) return state;
+    await this.ready;
+    if (this.clearing) await this.clearing;
+    const names = artistLookupNames(artist, this.config.aliases.artists);
+    let artwork = state.artwork;
+    let albumArtUrl = state.albumArtUrl;
+    try {
+      albumArtUrl = await this.jellyfin.albumCoverForMusicVideo(state.title ?? "", names, state.user) ?? albumArtUrl;
+    } catch (error) { logger.warn("Music video Jellyfin track artwork lookup failed; trying existing artwork sources", error); }
+    if (!albumArtUrl && state.album) {
+      try {
+        albumArtUrl = await this.resolveAlbumCover(names, state.album, undefined, this.config.external_music.artwork.preference);
+      } catch (error) { logger.warn("Music video album cover lookup failed; keeping artist artwork", error); }
+    }
+    this.logSelection(`music-video:${state.itemId}`, `source=jellyfin music_video=${JSON.stringify(state.title)} artist=${JSON.stringify(artist)}`, artwork, albumArtUrl, "Jellyfin Music Videos artist-folder backdrops and logo; album metadata lookup when available");
+    return { ...state, artworkArtist: artist, artwork, albumArtUrl };
+  }
+
+  async resolveSubsonic(state: NowPlayingState) {
     await this.ready;
     if(this.clearing)await this.clearing;
     const artworkArtist = artworkArtistFor(state);
@@ -136,11 +157,11 @@ export class ExternalArtworkResolver {
     const pinned = await this.editedArtist(lookupArtists);
     if (pinned) return { ...state, artworkArtist, artwork: pinned };
     let artwork: ArtworkRef | undefined;
-    for (const source of this.config.navidrome.artwork.order) {
+    for (const source of this.config.subsonic.artwork.order) {
       let candidate: ArtworkRef | undefined;
-      if (source === "local" && this.config.navidrome.artwork.local_files) {
-        candidate = await this.resolveNavidromeLocalArtist(lookupArtists);
-      } else if (source === "jellyfin" && this.config.navidrome.artwork.jellyfin_fallback) {
+      if (source === "local" && this.config.subsonic.artwork.local_files) {
+        candidate = await this.resolveSubsonicLocalArtist(lookupArtists);
+      } else if (source === "jellyfin" && this.config.subsonic.artwork.jellyfin_fallback) {
         candidate = await this.resolveJellyfinArtist(lookupArtists);
       } else if (source === "fetched") {
         candidate = await this.resolveFetchedArtist(lookupArtists, state.externalIds);
@@ -148,8 +169,8 @@ export class ExternalArtworkResolver {
       artwork = mergeArtwork(artwork, candidate);
       if (artwork?.backdropUrl && artwork.logoUrl) break;
     }
-    this.logSelection(`navidrome:${state.user}`, `source=navidrome artist=${JSON.stringify(artworkArtist)} track=${JSON.stringify(state.title)}`, artwork ?? state.artwork, state.albumArtUrl,
-      `configured order=${this.config.navidrome.artwork.order.join(",")}; enabled sources fill missing backdrop/logo`);
+    this.logSelection(`subsonic:${state.user}`, `source=subsonic artist=${JSON.stringify(artworkArtist)} track=${JSON.stringify(state.title)}`, artwork ?? state.artwork, state.albumArtUrl,
+      `configured order=${this.config.subsonic.artwork.order.join(",")}; enabled sources fill missing backdrop/logo`);
     return { ...state, artworkArtist, artwork: artwork ?? state.artwork };
   }
 
@@ -193,8 +214,8 @@ export class ExternalArtworkResolver {
   private async resolveLocalArtist(artists: string[]) {
     let artwork: ArtworkRef | undefined;
     for (const artist of artists) {
-      const candidate = (this.config.navidrome.artwork.jellyfin_fallback ? await this.jellyfin.artworkForArtistName(artist).catch(() => undefined) : undefined)
-        ?? (this.config.navidrome.artwork.local_files ? this.navidrome.localArtistArtworks(artist)[0] : undefined);
+      const candidate = (this.config.subsonic.artwork.jellyfin_fallback ? await this.jellyfin.artworkForArtistName(artist).catch(() => undefined) : undefined)
+        ?? (this.config.subsonic.artwork.local_files ? this.subsonic.localArtistArtworks(artist)[0] : undefined);
       artwork = mergeArtwork(artwork, candidate);
       if (artwork?.backdropUrl && artwork.logoUrl) break;
     }
@@ -205,8 +226,8 @@ export class ExternalArtworkResolver {
     return this.resolveArtistCandidates(artists, (artist) => this.jellyfin.artworkForArtistName(artist).catch(() => undefined));
   }
 
-  private async resolveNavidromeLocalArtist(artists: string[]) {
-    return this.resolveArtistCandidates(artists, async (artist) => this.navidrome.localArtistArtworks(artist)[0]);
+  private async resolveSubsonicLocalArtist(artists: string[]) {
+    return this.resolveArtistCandidates(artists, async (artist) => this.subsonic.localArtistArtworks(artist)[0]);
   }
 
   private async resolveArtistCandidates(
@@ -231,7 +252,7 @@ export class ExternalArtworkResolver {
     const local = async () => {
       for (const artist of artists) {
         const cover = await this.jellyfin.albumCoverForName(album, artist).catch(() => undefined)
-          ?? await this.navidrome.albumCoverForName(album, artist).catch(() => undefined);
+          ?? await this.subsonic.albumCoverForName(album, artist).catch(() => undefined);
         if (cover) return cover;
       }
       return undefined;

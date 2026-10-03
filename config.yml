@@ -16,9 +16,11 @@ jellyfin:
   url: "${JELLYFIN_URL}"
   api_key: "${JELLYFIN_API_KEY}"
 
-navidrome:
+subsonic:
+  name: "Navidrome"
+  icon: "navidrome"
   enabled: false
-  url: "${NAVIDROME_URL}"
+  url: "${SUBSONIC_URL}"
   artwork:
     jellyfin_fallback: true
     local_files: false
@@ -26,7 +28,7 @@ navidrome:
       - jellyfin
       - local
     path_mappings:
-      - navidrome: "/music"
+      - subsonic: "/music"
         mediawall: "/navidrome_music"
 
 external_music:
@@ -57,15 +59,16 @@ image_providers:
 users:
   bob:
     jellyfin_user: "${JELLYFIN_BOB_USER}"
-    navidrome_user: "${NAVIDROME_BOB_USER}"
-    navidrome_password: "${NAVIDROME_BOB_PASSWORD}"
+    subsonic_user: "${SUBSONIC_BOB_USER}"
+    subsonic_password: "${SUBSONIC_BOB_PASSWORD}"
     external_music_token: "${EXTERNAL_MUSIC_BOB_TOKEN}"
-  alice:
-    jellyfin_user: "${JELLYFIN_ALICE_USER}"
-    navidrome_user: "${NAVIDROME_ALICE_USER}"
-    navidrome_password: "${NAVIDROME_ALICE_PASSWORD}"
-    external_music_token: "${EXTERNAL_MUSIC_ALICE_TOKEN}"
-  charlie: # Example user that follows every Jellyfin account.
+  bob2:
+    jellyfin_user: "${JELLYFIN_BOB2_USER}"
+    subsonic_user: "${SUBSONIC_BOB2_USER}"
+    subsonic_password: "${SUBSONIC_BOB2_PASSWORD}"
+    external_music_token: "${EXTERNAL_MUSIC_BOB2_TOKEN}"
+  charlie:
+    # Example user that follows every Jellyfin account.
     jellyfin_user: "All"
 
 spaces:
@@ -78,7 +81,7 @@ spaces:
     anonymous_mode:
       enabled: false
       shown: []
-      not_shown: [All]
+      not_shown: [ All ]
       anonymous_username: someone
       now_playing_info:
         show_anonymous_username: true
@@ -150,15 +153,17 @@ spaces:
       sounds:
         enabled: true
         jellyfin: true
-        navidrome: true
+        subsonic: true
         quiet_hours:
           enabled: false
           start: "23:00"
           end: "08:00"
         continuous_sessions:
-          navidrome: true
+          subsonic: true
           jellyfin_libraries:
             - Music
+            - Music Videos
+          external_music: true
         session_start:
           retrigger_after_inactive_seconds: 30
         session_end:
@@ -206,7 +211,7 @@ spaces:
           enabled: true
           size: 96
         show_jellyfin_username: true
-        show_navidrome_username: true
+        show_subsonic_username: true
         user_font_size: 13
       screensaver_text:
         enabled: true
@@ -225,6 +230,8 @@ spaces:
         order: written
         styles:
           - crossfade
+      # Inherits album_art.size; set size here to override it for music videos.
+      music_video_album_art: {}
 
   office:
     playback_source: All
@@ -292,15 +299,17 @@ spaces:
       sounds:
         enabled: true
         jellyfin: true
-        navidrome: true
+        subsonic: true
         quiet_hours:
           enabled: false
           start: "23:00"
           end: "08:00"
         continuous_sessions:
-          navidrome: true
+          subsonic: true
           jellyfin_libraries:
             - Music
+            - Music Videos
+          external_music: true
         session_start:
           retrigger_after_inactive_seconds: 30
         session_end:
@@ -348,7 +357,7 @@ spaces:
           enabled: true
           size: 96
         show_jellyfin_username: true
-        show_navidrome_username: true
+        show_subsonic_username: true
         user_font_size: 13
       screensaver_text:
         enabled: true
@@ -367,6 +376,8 @@ spaces:
         order: written
         styles:
           - crossfade
+      # Inherits album_art.size; set size here to override it for music videos.
+      music_video_album_art: {}
 
   homelab:
     playback_source: All
@@ -435,15 +446,17 @@ spaces:
       sounds:
         enabled: true
         jellyfin: true
-        navidrome: true
+        subsonic: true
         quiet_hours:
           enabled: false
           start: "23:00"
           end: "08:00"
         continuous_sessions:
-          navidrome: true
+          subsonic: true
           jellyfin_libraries:
             - Music
+            - Music Videos
+          external_music: true
         session_start:
           retrigger_after_inactive_seconds: 30
         session_end:
@@ -491,7 +504,7 @@ spaces:
           enabled: true
           size: 96
         show_jellyfin_username: true
-        show_navidrome_username: true
+        show_subsonic_username: true
         user_font_size: 13
       screensaver_text:
         enabled: true
@@ -510,6 +523,8 @@ spaces:
         order: written
         styles:
           - All
+      # Inherits album_art.size; set size here to override it for music videos.
+      music_video_album_art: {}
 
 aliases:
   artists:

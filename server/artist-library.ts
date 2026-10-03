@@ -7,7 +7,7 @@ import { logger } from "./logger.js";
 export type LibraryImage = { file: string; provider: string; sourceUrl: string; width?: number; height?: number };
 export type ArtistRecord = { edited?: boolean; version: 2; configuration: string; resolvedAt: number; artist: string; artistMbid?: string; providers: string[]; logo?: LibraryImage; backdrops: LibraryImage[] };
 const imageName = /^(logo|backdrop(?:-?\d+)?)\.(png|jpe?g|webp|gif|avif)$/i;
-export const libraryWarning = "Clear MediaWall Library images? This deletes artist logos and backdrops, including manually added images and saved selections. It doesn't delete music, video, Jellyfin artwork, or Navidrome artwork.";
+export const libraryWarning = "Clear MediaWall Library images? This deletes artist logos and backdrops, including manually added images and saved selections. It doesn't delete music, video, Jellyfin artwork, or Subsonic artwork.";
 export class ArtistLibrary {
   readonly artists: string;
   private directories = new Map<string, string>();

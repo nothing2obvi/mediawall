@@ -35,5 +35,5 @@ test("legacy migration preserves images and order and does not repeat on restart
 test("removed configuration names explain their replacements together",async t=>{
  const {root}=await fixture(t);const file=path.join(root,"config.yml"),previous=process.env.MEDIAWALL_CONFIG;t.after(()=>{if(previous===undefined)delete process.env.MEDIAWALL_CONFIG;else process.env.MEDIAWALL_CONFIG=previous;});process.env.MEDIAWALL_CONFIG=file;
  await fs.writeFile(file,"external_music:\n  artwork:\n    cache_directory: /old\n    cache_ttl_days: 30\nspaces:\n  wall:\n    playback_source: both\n    playback_user: primary\n");
- assert.throws(()=>loadConfig(),error=>{const message=String(error);return ["album_cache_directory","album_cache_ttl_days","jellyfin, navidrome, external-music, All","users: [primary]"].every(s=>message.includes(s));});
+ assert.throws(()=>loadConfig(),error=>{const message=String(error);return ["album_cache_directory","album_cache_ttl_days","jellyfin, subsonic, external-music, All","users: [primary]"].every(s=>message.includes(s));});
 });

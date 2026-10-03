@@ -4,14 +4,14 @@ Anonymous Mode lets a display say **someone started watching** or **someone star
 
 ## Where it goes
 
-Define your users and their Jellyfin/Navidrome accounts or external-music tokens under `users`, as usual. Then add `anonymous_mode` to a space. Its lists refer to those same MediaWall user keys, so one rule covers all of a user's services. Each space can have a different policy.
+Define your users and their Jellyfin/Subsonic accounts or external-music tokens under `users`, as usual. Then add `anonymous_mode` to a space. Its lists refer to those same MediaWall user keys, so one rule covers all of a user's services. Each space can have a different policy.
 
 ```yaml
 users:
   bob:
     jellyfin_user: bob-jellyfin
-    navidrome_user: bob-navidrome
-    navidrome_password: "${NAVIDROME_BOB_PASSWORD}"
+    subsonic_user: bob-subsonic
+    subsonic_password: "${SUBSONIC_BOB_PASSWORD}"
     external_music_token: "${EXTERNAL_MUSIC_BOB_TOKEN}"
 
 spaces:

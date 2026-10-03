@@ -19,10 +19,10 @@ test("anonymous rules are case insensitive with shown taking precedence",()=>{
  assert.equal(anonymousIdentity({...policy,not_shown:["bob"]},"unlisted"),undefined);
 });
 test("source accounts resolve to one MediaWall key, including All-user mappings",()=>{
- const user={key:"bob",name:"Display label",jellyfin_user:"video-account",navidrome_user:"audio-account"};
- for(const source of ["jellyfin","navidrome","spotify","external_music"] as const){const state={source,user:"source-account"} as NowPlayingState;assert.equal(mappedUserKey(state,user,{bob:user}),"bob");}
+ const user={key:"bob",name:"Display label",jellyfin_user:"video-account",subsonic_user:"audio-account"};
+ for(const source of ["jellyfin","subsonic","spotify","external_music"] as const){const state={source,user:"source-account"} as NowPlayingState;assert.equal(mappedUserKey(state,user,{bob:user}),"bob");}
  assert.equal(mappedUserKey({source:"jellyfin",user:"VIDEO-ACCOUNT"} as NowPlayingState,{name:"all",jellyfin_user:"All"},{bob:user}),"bob");
- assert.equal(mappedUserKey({source:"navidrome",user:"AUDIO-ACCOUNT"} as NowPlayingState,{name:"all",navidrome_user:"All"},{bob:user}),"bob");
+ assert.equal(mappedUserKey({source:"subsonic",user:"AUDIO-ACCOUNT"} as NowPlayingState,{name:"all",subsonic_user:"All"},{bob:user}),"bob");
 });
 test("anonymous UI paths never use real fallback identities for any toggle combination",()=>{
  for(const showName of [false,true])for(const showAvatar of [false,true])for(const transitionAvatar of [false,true])for(const avatar of [undefined,"/api/avatars/anonymous"]){

@@ -1,6 +1,6 @@
 ## External Music Images
 
-MediaWall keeps its own artist logos and backdrops in **Library**. These are permanent library images, not disposable cache files. You can browse them in the grid and use them for Wallpaper/Screensaver mode, even without a Jellyfin or Navidrome library.
+MediaWall keeps its own artist logos and backdrops in **Library**. These are permanent library images, not disposable cache files. You can browse them in the grid and use them for Wallpaper/Screensaver mode, even without a Jellyfin or Subsonic library.
 
 ### Set up the folder
 
@@ -40,7 +40,7 @@ MediaWall scans Library at startup and during scheduled library scans. Adding, r
 
 ### Where images come from
 
-With `external_music.artwork.preference: local`, enabled Jellyfin and local-file sources are tried first. When those don't supply artwork, MediaWall uses Library images or downloads artist images from the configured providers. Set `preference: fetched` to prefer Library/provider artwork. The existing `navidrome.artwork.jellyfin_fallback` and `local_files` switches also control those lookups for external music.
+With `external_music.artwork.preference: local`, enabled Jellyfin and local-file sources are tried first. When those don't supply artwork, MediaWall uses Library images or downloads artist images from the configured providers. Set `preference: fetched` to prefer Library/provider artwork. The existing `subsonic.artwork.jellyfin_fallback` and `local_files` switches also control those lookups for external music.
 
 Use the [provider API key setup](external-music.md#image-provider-api-keys) to enable downloads. Existing Library images don't expire. You can also add your own images or use [Edit images](image-editor.md). Saved edits take priority over automatic selections.
 

@@ -9,7 +9,7 @@ type Model = EditorModel & { id: string };
 type SearchState = EditorSearchPage & { type: ImageType; provider: string; allLanguages: boolean };
 type Preview = { image: EditorImage; result: boolean; index: number };
 export function ImageEditorButton(props: { hidden?: boolean; source?: string; endpoint: string; mediaUrl: (url?: string) => string | undefined; onChanged: () => void }) {
-  const source = props.source === "jellyfin" ? "jellyfin" : props.source === "navidrome" ? "local" : "external";
+  const source = props.source === "jellyfin" ? "jellyfin" : props.source === "subsonic" ? "local" : "external";
   const [model, setModel] = useState<Model>();
   const [searchState, setSearchState] = useState<SearchState>();
   const [enlarged, setEnlarged] = useState<Preview>();
