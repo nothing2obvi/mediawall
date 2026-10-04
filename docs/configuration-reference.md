@@ -2,7 +2,7 @@
 
 MediaWall reads `config.yml` when it starts. Leave out optional settings to use the defaults below. Keep secrets in `.env` and reference them with `${ENV_VAR}`.
 
-For a fuller setup, see [config.yml.example](../config.yml.example). Copy it to `config.yml`, set the referenced variables in your `.env`, and adjust the users, libraries, mounts, and enabled features for your setup. The example uses port `1222`, so match your Compose port mapping.
+For a fuller setup, see [config.yml.example](../config.yml.example). Copy it to `config.yml`, set the referenced variables in your `.env`, and adjust the users, libraries, mounts, and enabled features for your setup. The example uses the default port `1221`. See the [Jones household walkthrough](configuration.md#bob-alice-and-jacob).
 
 ## Sections
 
@@ -76,7 +76,7 @@ Primarily tested with Navidrome. [Existing Navidrome configs remain supported](j
 | `url` | Subsonic base URL. | `""` | Required if Subsonic enabled | Use `${SUBSONIC_URL}`. |
 | `artwork.jellyfin_fallback` | Lets Subsonic playback use matching Jellyfin artist artwork. | `true` | No | Requires Jellyfin to be configured. |
 | `artwork.local_files` | Enables local artist artwork for Subsonic-only setups. | `true` | No | If using Subsonic without Jellyfin, enable this for backdrop/logo-based grids. |
-| `artwork.order` | Artwork source priority for Subsonic playback. | `["jellyfin", "local"]` | No | Options are `jellyfin`, `local`, and `fetched`. The first complete source wins; lower-priority sources may fill a missing logo or backdrop. |
+| `artwork.order` | Artwork source priority for Subsonic playback. | `["jellyfin", "local", "fetched"]` | No | Options are `jellyfin`, `local`, and `fetched`. The first complete source wins; lower-priority sources may fill a missing logo or backdrop. |
 | `artwork.path_mappings` | Maps Subsonic paths to paths visible inside the MediaWall container. | `[]` | No | Each mapping has `subsonic` and `mediawall`. |
 | `path_mappings.subsonic` | Subsonic-side path prefix. | unset | Required per mapping | Example: `/music`. |
 | `path_mappings.mediawall` | MediaWall-container path prefix. | `/navidrome_music` | No | Used for local artist artwork lookup. Older configs using `jellyfin` are still accepted for compatibility. |
@@ -88,7 +88,8 @@ Primarily tested with Navidrome. [Existing Navidrome configs remain supported](j
 | `enabled` | Enables the ListenBrainz-compatible receiver. | `false` | No | Multi-Scrobbler should use the base URL `/apis/listenbrainz`; it appends `/1/submit-listens`. |
 | `track_transition_grace_seconds` | Extra time to retain the current external track while waiting for the next update. | `10` | No | Range: `0`–`60` seconds. Avoids brief fallback between tracks. A new track replaces the old one immediately for the same user/service. Stopping playback also delays fallback by this amount, plus the space's missing-session grace. |
 | `session_timeout_seconds` | Minimum lifetime for a received `playing_now` event. | `90` | No | Minimum: `5`. If a track duration is supplied, the longer of this timeout and the track duration (capped at 12 hours) is used, plus transition grace. A later update refreshes or replaces it. |
-| `artwork.preference` | Chooses whether to prefer Jellyfin/local or Library/provider artwork. | `local` | No | Options: `local`, `fetched`. Other sources fill missing artwork. Jellyfin/local lookups follow the `subsonic.artwork.jellyfin_fallback` and `local_files` switches. |
+| `artwork.order` | Artwork source priority. | `["jellyfin", "local", "fetched"]` | No | Matching Jellyfin art, local artist files, then MediaWall Library/provider art. Lower sources fill gaps. Jellyfin/local follow the Subsonic artwork switches. |
+| `artwork.preference` | Legacy artwork preference. | unset | No | `local` preserves the old grouped Jellyfin/local-first lookup; `fetched` puts Library/provider art first. An explicit `order` wins. |
 | `artwork.minimum_backdrop_resolution` | Minimum accepted fetched backdrop dimensions. | `1920x1080` | No | This filters candidates; images are not resized to this value. |
 | `artwork.backdrop_count` | Maximum backdrops downloaded for a new artist. | `3` | No | Providers may return fewer usable images. Doesn’t limit images you add yourself. |
 | `artwork.album_cache_directory` | Album-cover cache and old artist-cache migration source. | `/app/data/external-artwork` | No | Keep `/app/data` persistent. Replaces `cache_directory`; artist images now live under `library.directory`. |
@@ -97,7 +98,7 @@ Primarily tested with Navidrome. [Existing Navidrome configs remain supported](j
 
 External sources must send live `playing_now` updates. Playback history alone won’t appear as Now Playing.
 
-Spotify avatars may be placed at `app/avatars/spotify/<username>.png`, `.jpg`, `.jpeg`, or `.webp`. MediaWall uses that file first, then a same-user Jellyfin avatar, then the normal no-avatar fallback. Avatars appear as circles; the original files aren’t changed.
+See [User avatars](#user-avatars) for Jellyfin-first avatars across playback sources.
 
 ### Image Providers
 
@@ -124,7 +125,9 @@ aliases:
 
 ### MediaWall Users
 
-Use names like `bob` and `bob2` for MediaWall users. Map each one to their service accounts, such as `bob-jellyfin` and `bob-subsonic`, using the fields below.
+Bob, Alice, and Jacob each need a Jellyfin username, their own Subsonic username/password, and a separate external-music token. Jellyfin uses the global admin API key; MediaWall does not need their Jellyfin passwords. A top-level `All: {jellyfin_user: All}` mapping catches other Jellyfin users without adding Subsonic or external identities. `All` in Anonymous Mode remains a wildcard, not an individual identity.
+
+Use names like `bob`, `alice`, and `jacob` for MediaWall users. Map each one to their service accounts, such as `bob-jellyfin` and `bob-subsonic`, using the fields below.
 
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
@@ -144,10 +147,34 @@ Per-user sounds override the global tones for any space where that MediaWall use
 | --- | --- | --- | --- | --- |
 | `playback_source` | Sources watched for Now Playing. | `All` | No | Options: `jellyfin`, `subsonic`, `external-music`, `All`. External playback must also be enabled under `external_music`. `All` watches all enabled services. |
 | `theme` | UI theme for this space. | `All` | No | Use `All` (or omit the setting) for interactive selection, or lock the space to `default`, `Dracula`, `Nord`, `Catppuccin Latte`, `Catppuccin Mocha`, `Gruvbox Dark`, `Gruvbox Light`, `Solarized Dark`, `Solarized Light`, `Tokyo Night`, `One Dark`, `Monokai`, `Rose Pine`, `Everforest`, `Kanagawa`, `Synthwave 84`, `Material Palenight`, `Night Owl`, `Ayu Mirage`, `GitHub Light`, or `Tomorrow Night`. Fixed themes hide and disable interactive controls. The active interactive theme is synchronized and persisted per space. |
-| `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use the identifiers defined under `users:`, for example `[bob, bob2]`. `[All]` includes every configured user. If omitted, the first configured user is used. |
+| `users` | MediaWall users allowed in this space. | `[]` | Usually yes | Use the identifiers defined under `users:`, for example `[bob, alice, jacob]`. `[All]` includes every configured user, including a literal `All` mapping. Specific service mappings take priority over catch-all mappings without duplicate sessions. If omitted, the first configured user is used. |
 | `password` | Optional URL password. | unset | No | If omitted or `""`, no `?password=` is required. |
-| `libraries` | Libraries shown in grid, selection, shuffle, and Wallpaper/Screensaver. | `[]` | Recommended | Use Jellyfin library names; `All` allows all Jellyfin libraries. |
+| `libraries` | Libraries shown in grid, selection, shuffle, and Wallpaper/Screensaver. | `[]` | Recommended | Controls Wallpaper/Screensaver, grid, library selection, and shuffle browsing only. It does not filter active Now Playing sessions. Use Jellyfin library names; `All` allows all Jellyfin libraries. |
 | `idle_timeout` | Playback record cleanup window in seconds. | `30` | No | Mostly internal display/session housekeeping. |
+
+### Space Jellyfin user filters
+
+`spaces.<space>.jellyfin` controls Jellyfin behavior for one display space. The top-level `jellyfin` block still holds the server URL and API key.
+
+| Setting under `spaces.<space>.jellyfin` | Purpose | Default | Notes |
+| --- | --- | --- | --- |
+| `included_jellyfin_users` | Optional Jellyfin username allowlist for this space. | `[]` | When non-empty, only listed usernames pass. Empty or omitted adds no restriction. |
+| `excluded_jellyfin_users` | Optional Jellyfin username denylist for this space. | `[]` | Listed usernames never appear. Exclusion always wins over inclusion. |
+
+Use actual Jellyfin usernames, not MediaWall user keys. Matching is exact, case-insensitive, and ignores surrounding whitespace: `Monica` matches ` monica `, but not `Monica2` or `Monica Jones`. `All` isn't a wildcard in these lists; it would match a Jellyfin account literally named All.
+
+```yaml
+spaces:
+  homelab:
+    users: [All]
+    jellyfin:
+      excluded_jellyfin_users:
+        - monica
+```
+
+Monica's Jellyfin playback won't appear in `homelab`, even through a named mapping or catch-all. It won't become `someone`, count as a session, cycle, trigger transitions or start/end sounds, participate in collections, or delay fallback. Her playback in Jellyfin and eligibility in other spaces are unaffected.
+
+These are additional filters. Existing `spaces.<space>.users` rules still apply, and allowed sessions must also pass `now_playing.ignored_libraries` and the existing playback rules. Anonymous Mode controls how an eligible user's identity is presented; these filters decide whether that Jellyfin session is eligible at all. Omitting the whole per-space `jellyfin` block preserves existing behavior. Subsonic and external music are unaffected.
 
 ### Space Anonymous Mode
 
@@ -185,7 +212,7 @@ spaces:
 | --- | --- | --- | --- | --- |
 | `fallback` | What Now Playing shows when nothing is playing. | `mediawall` | No | Options: `mediawall`, `shuffle`, `immich_kiosk`. Immich Kiosk is optional and configured per space; it isn't the default. |
 | `immich_kiosk.url` | Full URL handed to Immich Kiosk while this space is idle. | `""` | Required only when fallback is `immich_kiosk` | Prefer an environment reference such as `${HOMELAB_IMMICH_KIOSK_URL}` because Kiosk URLs may contain passwords. |
-| `ignored_libraries` | Jellyfin libraries ignored for Now Playing. | `["Feature Pre-Rolls"]` | No | Exact names, case-insensitive. Good for Cinema Mode intro/trailer/pre-roll libraries. |
+| `ignored_libraries` | Jellyfin libraries ignored for Now Playing. | `["Feature Pre-Rolls"]` | No | Exact names, ignoring case and surrounding whitespace. `[Fitness]` excludes Fitness, not Fitness Videos. Excluded sessions do not count, cycle, or trigger transitions/start/end sounds. Jellyfin playback is unaffected. |
 | `fallback_shuffle_interval_seconds` | Idle fallback shuffle interval. | `45` | No | Used only when fallback is `shuffle`. |
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
 | `cycle_interval_seconds` | Now Playing session cycle interval. | `15` | No | Used for natural session cycling and the timer ring. |
@@ -198,7 +225,7 @@ spaces:
 | `user_transition.enabled` | Shows a user-intro screen the first time a session becomes visible. | `true` | No | It does not repeat when session cycling comes back to that same session. The sound starts at this same visible-session moment when sounds are enabled and allowed. |
 | `user_transition.duration_seconds` | User-intro duration. | `5` | No | Separate from the normal session display interval. |
 | `user_transition.background_color` | User-intro background color. | `#000000` | No | Use a hex color. |
-| `user_transition.avatar_size` | User-intro Jellyfin avatar size. | `240` | No | Pixels. Subsonic intros do not show avatars. |
+| `user_transition.avatar_size` | User-intro avatar size. | `240` | No | Pixels. Uses the shared avatar priority below. |
 | `user_transition.username_font_size` | User-intro username font size. | `126` | No | Pixels. MediaWall constrains it responsively on smaller screens. |
 | `user_transition.message_font_size` | User-intro message font size. | `71` | No | Controls the `started watching` / `started listening to` line. MediaWall constrains it responsively on smaller screens. |
 | `user_transition.source_icon_size` | User-intro Jellyfin/Subsonic source icon size. | `150` | No | Pixels. MediaWall constrains it responsively on smaller screens. |
@@ -327,12 +354,12 @@ display:
 | `font_size` | Badge label font size. | `16` | No | Pixels. |
 | `show_source_icon` | Shows Jellyfin/Subsonic icon. | `true` | No | Can be disabled independently. |
 | `icon_size` | Source icon size. | `24` | No | Pixels. |
-| `show_user_avatar` | Shows Jellyfin avatar. | `false` | No | Subsonic does not provide avatars. |
+| `show_user_avatar` | Shows the resolved user avatar. | `false` | No | Uses mapped Jellyfin or custom avatars; Subsonic itself does not supply them. |
 | `user_avatar_size` | Jellyfin avatar size. | `24` | No | Pixels. |
 | `user_avatar_resize.enabled` | Downloads smaller Jellyfin avatars. | `true` | No | Helpful for animated GIF avatars and older devices such as older iPads. |
 | `user_avatar_resize.size` | Requested Jellyfin avatar image size. | `96` | No | Pixels. This affects the image fetched from Jellyfin, not the rendered UI size. |
 | `show_jellyfin_username` | Shows Jellyfin username. | `false` | No | Aligns cleanly if avatar/text/icon are disabled. |
-| `show_subsonic_username` | Shows Subsonic username. | `false` | No | Useful because Subsonic has no avatars. |
+| `show_subsonic_username` | Shows Subsonic username. | `false` | No | Independent of the shared avatar display setting. |
 | `user_font_size` | Username font size. | `13` | No | Pixels. |
 
 ### Screensaver Text
@@ -368,3 +395,30 @@ For older tablets, `crossfade`, `fade`, and `blur_fade` are usually the safest c
 ### Artwork source logging
 
 At `LOG_LEVEL=info`, logs tell you where backdrops, logos, and album covers came from, including Library and named providers. They also show how many images were downloaded and why candidates were skipped. Reused images report `downloaded=0`. MusicBrainz identifies artists and albums; it doesn’t supply images. Credentials and full remote image URLs aren’t included in source descriptions.
+
+
+### User avatars
+
+For Jellyfin, Subsonic/Navidrome, and Spotify/external playback, MediaWall first uses the avatar on the user's mapped Jellyfin account. If none is available, it uses a source-specific custom avatar, then the normal no-avatar fallback. This applies to both the Now Playing badge and user transitions. Subsonic doesn't provide native user avatars here; MediaWall supplies them through the user mapping.
+
+Put custom images in `./app/avatars/<source>/<mediawall-user>.ext`, for example `spotify/bob.png` or `subsonic/alice.webp`. Source directories are `jellyfin`, `subsonic`, `spotify`, `apple_music`, and `external_music`. Names match the MediaWall user key, not the service username. Older files named after an optional display-name override are still tried if no key-named file exists. Supported formats are PNG, JPG, JPEG, and WebP; filenames match without regard to case. If several formats exist for the same user, the first filename in alphabetical order wins. Keep just one per user. The existing `./app/avatars:/app/avatars:ro` mount covers all of them.
+
+Anonymous Mode overrides real and custom avatars. Anonymous users only receive the anonymous avatar, when enabled, or no avatar. Normal `show_user_avatar` and user-transition settings still control visible users' presentation. Images aren't cropped or rewritten on disk.
+
+### Built-in and custom icons
+
+For native Subsonic playback, set `subsonic.name` to your server's display name and `subsonic.icon` to a filename without its extension. Both default to Navidrome. Packaged server keys are `navidrome`, `gonic`, `subsonic`, `airsonic-advanced`, `ampache`, `nextcloud`, `funkwhale`, and `lms`.
+
+External playback selects an icon from the incoming service name. Built-in keys include `spotify`, `apple_music`, `jellyfin`, `google-cast`, `jriver`, `kodi`, `mopidy`, `mpd`, `musikcube`, `plex`, `sonos`, `vlc`, `yamaha-musiccast`, `yandex-music`, `webscrobbler`, `librefm`, `lastfm`, `icecast`, `azuracast`, and the server keys above. Chromecast uses `google-cast`; the older `chromecast` image also remains packaged. Icons don't imply tested playback compatibility.
+
+Custom icons go in `./app/server-icons`, mounted with `./app/server-icons:/app/server-icons:ro`. For `my-server.png`, use `subsonic.icon: my-server`. External sources use their known icon key, or a lowercase service name with spaces/punctuation replaced by hyphens: `My Server` uses `my-server.png`. No extra external-source config setting is required. Existing built-in external icons can be overridden the same way.
+
+Custom files take priority over packaged icons. Keys are case-insensitive. Supported extensions, in priority order, are WebP, PNG, JPG, JPEG, SVG, and GIF. Missing native server icons fall back to Navidrome; unknown external sources without a custom icon use MediaWall's logo. Mount this small directory, not the application source tree.
+
+### Jellyfin music-video artwork
+
+`jellyfin.music_videos.artwork.order` defaults to `["jellyfin", "fetched"]`, even when omitted. This is a server setting, separate from per-space Jellyfin user filters. `local` isn’t supported.
+
+`jellyfin` uses the Music Videos artist-folder backdrops and logos, plus album covers from matching tracks in music-type libraries. `fetched` uses MediaWall’s Library and `image_providers` to fill gaps. Album covers can come from Cover Art Archive or TheAudioDB when the release or album can be identified reliably. Cover Art Archive needs no key; MusicBrainz helps identify releases. Set `["jellyfin"]` to disable fetched artwork for music videos.
+
+Live TV isn’t a browsable library and can’t be included in `spaces.<space>.libraries`. Use `now_playing.ignored_libraries: [Live TV]` in a space to hide its live channels.

@@ -1,3 +1,4 @@
+import { jellyfinUserAllowed } from "./jellyfin-user-filter.js";
 import type { AppConfig, ArtworkRef, DisplayConfig, NowPlayingState } from "./types.js";
 import { logger } from "./logger.js";
 import fs from "node:fs/promises";
@@ -114,14 +115,15 @@ export class JellyfinClient {
     const activeSessions = sessions.filter((entry) => {
       const userName = entry.UserName ?? entry.User?.Name;
       const item = entry.NowPlayingItem;
-      return (includeAllUsers || userName?.toLowerCase() === displayConfig.source_user.toLowerCase())
+      return jellyfinUserAllowed(userName, displayConfig.jellyfin)
+        && (includeAllUsers || userName?.toLowerCase() === displayConfig.source_user.toLowerCase())
         && item;
     });
     const playbacks: NowPlayingState[] = [];
     for (const session of activeSessions) {
       const item = session.NowPlayingItem as JellyfinItem;
       const libraryName = isLiveChannel(item) ? "Live TV" : await this.nowPlayingLibraryName(item);
-      if (libraryName && normalizedNameSet(displayConfig.now_playing.ignored_libraries).has(libraryName.toLowerCase())) {
+      if (libraryName && normalizedNameSet(displayConfig.now_playing.ignored_libraries).has(libraryName.trim().toLowerCase())) {
         const userName = String(session.UserName ?? session.User?.Name ?? displayConfig.source_user);
         const title = String(item.Name ?? "Unknown item");
         logger.info(`Ignoring Jellyfin Now Playing session from library "${libraryName}" for user "${userName}": ${title}`);
@@ -201,6 +203,7 @@ export class JellyfinClient {
           artists: displayItem.Artists ?? displayItem.ArtistItems?.map((artist: JellyfinItem) => artist.Name).filter(Boolean),
           albumArtist: displayItem.AlbumArtist ?? displayItem.AlbumArtists?.[0]?.Name,
           album: displayItem.Album,
+          externalIds: {releaseMbid: displayItem.ProviderIds?.MusicBrainzAlbum, artistMbids: displayItem.ProviderIds?.MusicBrainzArtist},
           albumArtUrl: displayItem.AlbumId && displayItem.AlbumPrimaryImageTag
             ? this.imageUrl(displayItem.AlbumId, "Primary", 0, displayItem.AlbumPrimaryImageTag) : undefined
         } : {}),

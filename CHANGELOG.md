@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.5.1 - 2026-10-03
+
+### Changes
+
+- Unified default artwork orders: Subsonic and external music use `jellyfin, local, fetched`; Jellyfin music videos use `jellyfin, fetched`. Missing sections inherit these defaults, disabled sources are skipped, and lower sources fill artwork gaps.
+- Added music-video artist artwork and conservative album-cover fallback through MediaWall’s providers, including Cover Art Archive. Existing Jellyfin artist-folder artwork and music-track matching keep priority. Canonical release IDs win; text matching requires the album and artist, and ambiguous matches are skipped.
+- Updated the README intro, household walkthrough, artwork reference, and Live TV exclusion guidance.
+- Added optional per-space Jellyfin username filters: `spaces.<space>.jellyfin.included_jellyfin_users` and `excluded_jellyfin_users`. They match actual Jellyfin usernames exactly, ignoring case and surrounding whitespace. Exclusions win; omitted or empty lists add no restrictions.
+- Filtered Jellyfin sessions never enter the space's playback candidates, so they don't appear anonymously, affect counts/cycling/fallback, or trigger transitions, sounds, or collection presentation. Other spaces and actual Jellyfin playback are unaffected.
+- Fixed a literal top-level `All` user mapping being skipped when named users existed. Specific mappings win over the catch-all without duplicate sessions.
+- Unified avatars across Jellyfin, Subsonic, and external music: mapped Jellyfin avatar first, custom source avatar second, then no avatar. Anonymous Mode overrides real avatars. Added custom Subsonic avatars alongside existing Spotify support, including cache-busted image URLs.
+- Added automatic WebScrobbler, Libre.fm, Last.fm, Icecast, Google Cast/Chromecast, AzuraCast, and LMS icons. Custom external-source icons can use the same small `app/server-icons` mount as Subsonic server icons. Matching uses known aliases rather than arbitrary partial matches.
+- Cleaned identifying metadata from the supplied icon files where present without changing their image content. Normalized the LMS filename to `lms.png`; Nextcloud retains its packaged PNG.
+- Reworked configuration examples around Bob, Alice, and Jacob, with a detailed privacy-conscious living room and a minimal homelab dashboard. Added a full walkthrough, synchronized YAML example, three-user Multi-Scrobbler routing, and a source compatibility table distinguishing expected support from tested support.
+
+### Upgrade notes and legacy behavior
+
+No existing configuration syntax is removed. The new Jellyfin filters are optional and leave existing space-user selection, Anonymous Mode, and ignored-library rules intact when unused. All legacy Navidrome configuration aliases remain supported.
+
+Review these behavior changes:
+
+- **Changed artwork defaults:** Subsonic now tries fetched art after Jellyfin/local when order is omitted. Use `[jellyfin, local]` to retain its former default. External music defaults to the same three-source order; explicit legacy `preference: local` or `preference: fetched` preserves the previous grouped lookup, and explicit `order` wins.
+- **Music-video artwork:** missing art can now be filled from MediaWall’s providers. Set `jellyfin.music_videos.artwork.order: [jellyfin]` to keep Jellyfin-only artwork. No local-files source is supported. Providers use your MediaWall `image_providers` settings, not Jellyfin’s private credentials. Without reliable album metadata or a release ID, no album is guessed.
+- A literal top-level `All` mapping now participates in `users: [All]` alongside named mappings. If it maps `jellyfin_user: All`, additional Jellyfin users may now appear. Use an explicit space user list or the new Jellyfin username filters to restrict them.
+- Mapped Jellyfin avatars now take priority over custom source avatars. Existing Spotify avatars remain supported. Custom filenames based on an optional display-name override remain a fallback after filenames based on the MediaWall user key.
+- The examples now use Bob, Alice, and Jacob environment-variable names. Preserve your own config and `.env`; update both together only if adopting the examples.
+- External icon matching is stricter. Known service names, aliases, and supported service URLs still work; arbitrary names containing a service name may use a custom or generic icon instead.
+
+To hide Monica's Jellyfin playback entirely in one space, use `spaces.homelab.jellyfin.excluded_jellyfin_users: [monica]`. Anonymous Mode alone would still show her playback as someone. These filters do not block her Subsonic or external-music sessions.
+
+See [Upgrading](https://github.com/nothing2obvi/mediawall/blob/v0.5.1/docs/upgrading.md) and the [Configuration Reference](https://github.com/nothing2obvi/mediawall/blob/v0.5.1/docs/configuration-reference.md).
+
+### Validation and Docker images
+
+120 automated tests and the production build passed. Tests cover filtering precedence, backward compatibility, catch-all resolution, anonymous identity safety, avatars, collections, source icons, documentation/example synchronization, artwork ordering, legacy preferences, conservative album identification, and Live TV exclusion.
+
+Images for **linux/amd64** and **linux/arm64**:
+
+- `ghcr.io/nothing2obvi/mediawall:v0.5.1`
+- `ghcr.io/nothing2obvi/mediawall:latest`
+
 ## 0.5.0 - 2026-10-03
 
 ## New features

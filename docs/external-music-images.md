@@ -40,7 +40,7 @@ MediaWall scans Library at startup and during scheduled library scans. Adding, r
 
 ### Where images come from
 
-With `external_music.artwork.preference: local`, enabled Jellyfin and local-file sources are tried first. When those don't supply artwork, MediaWall uses Library images or downloads artist images from the configured providers. Set `preference: fetched` to prefer Library/provider artwork. The existing `subsonic.artwork.jellyfin_fallback` and `local_files` switches also control those lookups for external music.
+`external_music.artwork.order` defaults to `[jellyfin, local, fetched]`: matching Jellyfin art, local artist files, then Library/provider images. Reorder sources to change priority. `subsonic.artwork.jellyfin_fallback` and `local_files` still control those lookups. Legacy `preference: local` or `preference: fetched` keeps its previous behavior unless you specify an explicit `order`.
 
 Use the [provider API key setup](external-music.md#image-provider-api-keys) to enable downloads. Existing Library images don't expire. You can also add your own images or use [Edit images](image-editor.md). Saved edits take priority over automatic selections.
 

@@ -70,6 +70,8 @@ Subsonic connections use username/password authentication. Now Playing depends o
 
 ### Live TV and radio channels
 
+Live TV can’t be listed in `libraries`. To hide live channels in a space, add `Live TV` to `now_playing.ignored_libraries`.
+
 Active Jellyfin TV/radio channels appear as Now Playing sessions. MediaWall centers the channel image on the display and uses the channel name as text with “Live TV” beneath it, without a separate title logo. Missing channel images leave the text visible. Set the image bounding-box size per space (pixels; default 713):
 
 ```yaml
@@ -90,10 +92,22 @@ Some Jellyfin clients keep reporting the same few seconds as playing after you s
 
 ### Music videos
 
-Jellyfin music videos use the backdrops and logo on their artist folder inside the Music Videos library, including multiple backdrops with the usual cycling settings. Artist artwork from a separate Music library or external providers doesn’t replace this folder artwork. MediaWall reads artist and album details from Jellyfin's metadata, including NFO information imported by Jellyfin. For album covers, MediaWall first searches Jellyfin libraries identified as music libraries for the same artist and song. Exact titles win across all libraries. If there's no exact match, it removes trailing parenthetical groups one at a time, so `Song (Remix) (Video)` prefers `Song (Remix)` before `Song`. Matching ignores casing and extra whitespace and uses configured artist aliases, without fuzzy matching. The video's displayed metadata stays unchanged. If no matching artwork is found, MediaWall uses its existing album lookup and configured image providers. The video's poster isn't treated as an album cover. If no cover is found, playback and artist backdrops still work.
+Jellyfin music videos use the backdrops and logo on their artist folder inside the Music Videos library, including multiple backdrops with the usual cycling settings. With the default `jellyfin.music_videos.artwork.order: [jellyfin, fetched]`, MediaWall’s own providers can fill missing backdrops or logos. Complete Jellyfin artwork keeps priority. There’s no local-files source for music videos. MediaWall reads artist and album details from Jellyfin's metadata, including NFO information imported by Jellyfin. For album covers, MediaWall first searches Jellyfin libraries identified as music libraries for the same artist and song. Exact titles win across all libraries. If there's no exact match, it removes trailing parenthetical groups one at a time, so `Song (Remix) (Video)` prefers `Song (Remix)` before `Song`. Matching ignores casing and extra whitespace and uses configured artist aliases, without fuzzy matching. The video's displayed metadata stays unchanged. If no matching artwork is found, MediaWall can use Cover Art Archive or TheAudioDB when album metadata or a MusicBrainz release ID identifies a reliable match. It won’t guess an album from the song title alone. The video's poster isn't treated as an album cover. If no cover is found, playback and artist backdrops still work.
 
 Album and track text use the same styling, font-size settings, and Music info controls as music tracks.
 
 Album covers use the same show/hide button and `a` shortcut as music tracks. Their size follows `display.album_art.size`; set `display.music_video_album_art.size` to override it for music videos.
 
 Session sounds treat the `Music` and `Music Videos` Jellyfin libraries as continuous by default. Adjust `now_playing.sounds.continuous_sessions.jellyfin_libraries` to match your library names. Subsonic and external music each have a separate `continuous_sessions` switch, both enabled by default.
+
+### User avatars and external icons
+
+MediaWall can reuse a mapped Jellyfin avatar for Subsonic playback. If it's unavailable, add a custom image such as `./app/avatars/subsonic/bob.png`. These are MediaWall avatars, not avatars provided by Navidrome. See [user avatars](configuration-reference.md#user-avatars) for the shared priority and formats.
+
+The same custom server-icon directory also supports external-music source icons. See the [complete icon reference](configuration-reference.md#built-in-and-custom-icons) for packaged keys, custom filenames, and formats.
+
+### Filtering Jellyfin playback by user
+
+Each space can optionally include or exclude actual Jellyfin usernames under `jellyfin.included_jellyfin_users` and `jellyfin.excluded_jellyfin_users`. Empty lists leave existing behavior unchanged; exclusions win. These filters apply before library exclusions and presentation, so excluded users don't appear anonymously or affect sounds, counts, collections, or fallback. See the [configuration reference](configuration-reference.md#space-jellyfin-user-filters).
+
+Subsonic artwork defaults to `jellyfin -> local -> fetched`, including when the artwork block is omitted. Jellyfin is optional; unavailable sources and those disabled by `jellyfin_fallback` or `local_files` are skipped. Set `subsonic.artwork.order` to change priority. Fetched sources use MediaWall’s `image_providers` settings, never Jellyfin’s private provider keys.

@@ -109,21 +109,30 @@ export class ExternalArtworkResolver {
     if (!artworkArtist) return state;
     const lookupArtists = artistLookupNames(artworkArtist, this.config.aliases.artists);
     const base = { ...state, artworkArtist, logoText: state.logoText ?? artworkArtist };
+    const settings = this.config.external_music.artwork;
+    const order = settings.order ?? ["jellyfin", "local", "fetched"];
     const pinned = await this.editedArtist(lookupArtists);
-    if (pinned) return { ...base, artwork: pinned, albumArtUrl: state.albumArtUrl ?? await this.resolveAlbumCover(lookupArtists, state.album, state.externalIds, this.config.external_music.artwork.preference) };
     const local = () => this.resolveLocalArtist(lookupArtists);
     const fetched = () => this.resolveFetchedArtist(lookupArtists, state.externalIds);
-    const artwork = this.config.external_music.artwork.preference === "fetched"
-      ? await completeArtwork(fetched, local)
-      : await completeArtwork(local, fetched);
-    const albumArtUrl = state.albumArtUrl ?? await this.resolveAlbumCover(
-      lookupArtists,
-      state.album,
-      state.externalIds,
-      this.config.external_music.artwork.preference
-    );
+    // Legacy preference grouped Jellyfin/local together, including its partial-match behavior.
+    const artwork = pinned ?? (settings.preference
+      ? await (settings.preference === "fetched" ? completeArtwork(fetched, local) : completeArtwork(local, fetched))
+      : await this.resolveOrderedArtist(lookupArtists, state.externalIds, order));
+    let albumArtUrl = state.albumArtUrl;
+    if (!albumArtUrl && settings.preference) albumArtUrl = await this.resolveAlbumCover(lookupArtists, state.album, state.externalIds, settings.preference);
+    if (!albumArtUrl && !settings.preference && state.album) {
+      for (const source of order) {
+        for (const artist of lookupArtists) {
+          if (source === "jellyfin" && this.config.subsonic.artwork.jellyfin_fallback) albumArtUrl = await this.jellyfin.albumCoverForName(state.album, artist).catch(() => undefined);
+          if (source === "local" && this.config.subsonic.artwork.local_files) albumArtUrl = await this.subsonic.albumCoverForName(state.album, artist).catch(() => undefined);
+          if (source === "fetched") albumArtUrl = await this.resolveFetchedAlbum(artist, state.album, state.externalIds);
+          if (albumArtUrl) break;
+        }
+        if (albumArtUrl) break;
+      }
+    }
     this.logSelection(`external:${state.source}:${state.user}`, `source=${state.source} artist=${JSON.stringify(artworkArtist)} track=${JSON.stringify(state.title)}`, artwork ?? state.artwork, albumArtUrl,
-      `preference=${this.config.external_music.artwork.preference}; secondary sources fill missing backdrop/logo; incoming album cover wins when supplied`);
+      `order=${order.join(",")}; legacy preference=${settings.preference ?? "none"}; incoming album cover wins when supplied`);
     return { ...base, artwork: artwork ?? state.artwork, albumArtUrl };
   }
 
@@ -134,17 +143,29 @@ export class ExternalArtworkResolver {
     await this.ready;
     if (this.clearing) await this.clearing;
     const names = artistLookupNames(artist, this.config.aliases.artists);
-    let artwork = state.artwork;
-    let albumArtUrl = state.albumArtUrl;
-    try {
-      albumArtUrl = await this.jellyfin.albumCoverForMusicVideo(state.title ?? "", names, state.user) ?? albumArtUrl;
-    } catch (error) { logger.warn("Music video Jellyfin track artwork lookup failed; trying existing artwork sources", error); }
-    if (!albumArtUrl && state.album) {
-      try {
-        albumArtUrl = await this.resolveAlbumCover(names, state.album, undefined, this.config.external_music.artwork.preference);
-      } catch (error) { logger.warn("Music video album cover lookup failed; keeping artist artwork", error); }
+    const order = this.config.jellyfin.music_videos?.artwork.order ?? ["jellyfin", "fetched"];
+    let artwork: ArtworkRef | undefined;
+    let albumArtUrl: string | undefined;
+    for (const source of order) {
+      if (!artwork?.backdropUrl || !artwork.logoUrl) {
+        const candidate = source === "jellyfin" ? state.artwork : await this.resolveFetchedArtist(names, state.externalIds);
+        artwork = mergeArtwork(artwork, candidate);
+      }
+      if (!albumArtUrl) {
+        try {
+          if (source === "jellyfin") {
+            albumArtUrl = await this.jellyfin.albumCoverForMusicVideo(state.title ?? "", names, state.user) ?? state.albumArtUrl;
+          } else if (state.album || firstId(state.externalIds?.releaseMbid)) {
+            for (const name of names) {
+              albumArtUrl = await this.resolveFetchedAlbum(name, state.album ?? "", state.externalIds, true);
+              if (albumArtUrl) break;
+            }
+          }
+        } catch (error) { logger.warn("Music video album artwork lookup failed; continuing with configured sources", error); }
+      }
     }
-    this.logSelection(`music-video:${state.itemId}`, `source=jellyfin music_video=${JSON.stringify(state.title)} artist=${JSON.stringify(artist)}`, artwork, albumArtUrl, "Jellyfin Music Videos artist-folder backdrops and logo; album metadata lookup when available");
+    artwork = artwork ? {...artwork, mediaType: "MusicVideo"} : {...state.artwork, backdropUrl: undefined, logoUrl: undefined};
+    this.logSelection(`music-video:${state.itemId}`, `source=jellyfin music_video=${JSON.stringify(state.title)} artist=${JSON.stringify(artist)}`, artwork, albumArtUrl, `configured order=${order.join(",")}; artist-folder artwork and matching music-track album cover before fetched sources by default`);
     return { ...state, artworkArtist: artist, artwork, albumArtUrl };
   }
 
@@ -156,22 +177,27 @@ export class ExternalArtworkResolver {
     const lookupArtists = artistLookupNames(artworkArtist, this.config.aliases.artists);
     const pinned = await this.editedArtist(lookupArtists);
     if (pinned) return { ...state, artworkArtist, artwork: pinned };
+    const artwork = await this.resolveOrderedArtist(lookupArtists, state.externalIds, this.config.subsonic.artwork.order);
+    this.logSelection(`subsonic:${state.user}`, `source=subsonic artist=${JSON.stringify(artworkArtist)} track=${JSON.stringify(state.title)}`, artwork ?? state.artwork, state.albumArtUrl,
+      `configured order=${this.config.subsonic.artwork.order.join(",")}; enabled sources fill missing backdrop/logo`);
+    return { ...state, artworkArtist, artwork: artwork ?? state.artwork };
+  }
+
+  private async resolveOrderedArtist(lookupArtists: string[], externalIds: Record<string, unknown> | undefined, order: ReadonlyArray<"jellyfin" | "local" | "fetched">) {
     let artwork: ArtworkRef | undefined;
-    for (const source of this.config.subsonic.artwork.order) {
+    for (const source of order) {
       let candidate: ArtworkRef | undefined;
       if (source === "local" && this.config.subsonic.artwork.local_files) {
         candidate = await this.resolveSubsonicLocalArtist(lookupArtists);
       } else if (source === "jellyfin" && this.config.subsonic.artwork.jellyfin_fallback) {
         candidate = await this.resolveJellyfinArtist(lookupArtists);
       } else if (source === "fetched") {
-        candidate = await this.resolveFetchedArtist(lookupArtists, state.externalIds);
+        candidate = await this.resolveFetchedArtist(lookupArtists, externalIds);
       }
       artwork = mergeArtwork(artwork, candidate);
       if (artwork?.backdropUrl && artwork.logoUrl) break;
     }
-    this.logSelection(`subsonic:${state.user}`, `source=subsonic artist=${JSON.stringify(artworkArtist)} track=${JSON.stringify(state.title)}`, artwork ?? state.artwork, state.albumArtUrl,
-      `configured order=${this.config.subsonic.artwork.order.join(",")}; enabled sources fill missing backdrop/logo`);
-    return { ...state, artworkArtist, artwork: artwork ?? state.artwork };
+    return artwork;
   }
 
   assetPath(scope: string, key: string, filename: string) {
@@ -462,13 +488,13 @@ export class ExternalArtworkResolver {
     };
   }
 
-  private async resolveFetchedAlbum(artist: string, album: string, externalIds?: Record<string, unknown>) {
+  private async resolveFetchedAlbum(artist: string, album: string, externalIds?: Record<string, unknown>, strict = false) {
     const suppliedReleaseMbid = firstId(
       externalIds?.releaseMbid,
       nested(externalIds, "rawMbidMapping", "release_mbid"),
       nested(externalIds, "rawAdditionalInfo", "release_mbid")
     );
-    const key = cacheKey(`${suppliedReleaseMbid ?? artist}:${album}`);
+    const key = cacheKey(`${strict ? "strict:" : ""}${suppliedReleaseMbid ?? artist}:${album}`);
     const configuration = this.albumCacheConfiguration();
     const cache = await this.readFreshCache<AlbumCache>("albums", key, configuration);
     if (cache) {
@@ -479,16 +505,16 @@ export class ExternalArtworkResolver {
     }
     const pendingKey = `album:${key}`;
     const existing = this.inFlight.get(pendingKey) as Promise<AlbumCache> | undefined;
-    const pending = existing ?? this.fetchAlbum(artist, album, suppliedReleaseMbid, key);
+    const pending = existing ?? this.fetchAlbum(artist, album, suppliedReleaseMbid, key, strict);
     if (!existing) this.trackPending(pendingKey, pending);
     const result = await pending;
     this.rememberImage("albums", key, result.cover);
     return result.cover ? fetchedUrl("albums", key, result.cover.file) : undefined;
   }
 
-  private async fetchAlbum(artist: string, album: string, suppliedReleaseMbid: string | undefined, key: string): Promise<AlbumCache> {
+  private async fetchAlbum(artist: string, album: string, suppliedReleaseMbid: string | undefined, key: string, strict = false): Promise<AlbumCache> {
     logger.info(`Album artwork lookup artist=${JSON.stringify(artist)} album=${JSON.stringify(album)} reason=no Library images found; Cover Art Archive=${this.config.image_providers.cover_art_archive.enabled ? "enabled" : "disabled"} TheAudioDB=${!this.config.image_providers.theaudiodb.enabled ? "disabled" : !this.config.image_providers.theaudiodb.api_key ? "missing credential" : "enabled"}`);
-    const releaseMbid = suppliedReleaseMbid ?? await this.resolveReleaseMbid(artist, album);
+    const releaseMbid = suppliedReleaseMbid ?? await this.resolveReleaseMbid(artist, album, strict);
     if (!releaseMbid) logger.info("Album artwork: Cover Art Archive skipped: no MusicBrainz release ID");
     const candidates: ImageCandidate[] = [];
     const providers = new Set<string>();
@@ -504,12 +530,13 @@ export class ExternalArtworkResolver {
       }
       if (images.length) providers.add("cover-art-archive");
     }
-    if (this.config.image_providers.theaudiodb.enabled && this.config.image_providers.theaudiodb.api_key) {
+    if (album && this.config.image_providers.theaudiodb.enabled && this.config.image_providers.theaudiodb.api_key) {
       const url = new URL(`https://www.theaudiodb.com/api/v1/json/${encodeURIComponent(this.config.image_providers.theaudiodb.api_key)}/searchalbum.php`);
       url.searchParams.set("s", artist);
       url.searchParams.set("a", album);
       const payload = await this.fetchJson<{ album?: Array<Record<string, unknown>> | null }>(url).catch(() => undefined);
-      const match = payload?.album?.[0];
+      const matches = payload?.album?.filter(entry => !strict || (artworkText(entry.strAlbum) === artworkText(album) && artworkText(entry.strArtist) === artworkText(artist))) ?? [];
+      const match = strict && matches.length !== 1 ? undefined : matches[0];
       if (match) {
         providers.add("theaudiodb");
         addStringCandidate(candidates, match.strAlbumThumbHQ ?? match.strAlbumThumb, "theaudiodb", 100);
@@ -544,13 +571,19 @@ export class ExternalArtworkResolver {
       ?? payload?.artists?.find((entry) => (entry.score ?? 0) >= 90)?.id;
   }
 
-  private async resolveReleaseMbid(artist: string, album: string) {
-    if (!this.config.image_providers.musicbrainz.enabled) return undefined;
+  private async resolveReleaseMbid(artist: string, album: string, strict = false) {
+    if (!album || !this.config.image_providers.musicbrainz.enabled) return undefined;
     const url = new URL("https://musicbrainz.org/ws/2/release");
     url.searchParams.set("query", `release:\"${escapeMusicBrainz(album)}\" AND artist:\"${escapeMusicBrainz(artist)}\"`);
     url.searchParams.set("fmt", "json");
     url.searchParams.set("limit", "10");
-    const payload = await this.fetchMusicBrainz<{ releases?: Array<{ id?: string; title?: string; score?: number }> }>(url).catch(() => undefined);
+    const payload = await this.fetchMusicBrainz<{ releases?: Array<{ id?: string; title?: string; score?: number; "artist-credit"?: Array<{name?: string; artist?: {name?: string}}>; "release-group"?: {id?: string} }> }>(url).catch(() => undefined);
+    if (strict) {
+      const matches = (payload?.releases ?? []).filter(entry => firstId(entry.id) && artworkText(entry.title) === artworkText(album) && entry["artist-credit"]?.some(credit => artworkText(credit.artist?.name ?? credit.name) === artworkText(artist)));
+      const groups = new Set(matches.map(entry => entry["release-group"]?.id));
+      if (matches.length === 1 || (matches.length > 1 && groups.size === 1 && !groups.has(undefined))) return matches.sort((a,b) => a.id!.localeCompare(b.id!))[0].id;
+      return undefined;
+    }
     const normalized = album.trim().toLowerCase();
     return payload?.releases?.find((entry) => entry.title?.trim().toLowerCase() === normalized)?.id
       ?? payload?.releases?.find((entry) => (entry.score ?? 0) >= 90)?.id;
@@ -908,4 +941,8 @@ export function imageDimensions(buffer: Buffer): { width: number; height: number
     }
   }
   return undefined;
+}
+
+function artworkText(value: unknown) {
+  return typeof value === "string" ? value.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase() : "";
 }

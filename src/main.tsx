@@ -13,7 +13,7 @@ import subsonicLogo from "./logos/subsonic.png";
 import vlcLogo from "./logos/vlc.png";
 import musiccastLogo from "./logos/yamaha-musiccast.svg";
 import yandexMusicLogo from "./logos/yandex-music.png";
-import { externalServiceKey } from "./external-service";
+import { externalServiceKey, externalIconKey } from "./external-service";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { cycleLiveTvInfo } from "./live-tv-info";
 import { createRoot } from "react-dom/client";
@@ -3490,10 +3490,10 @@ const externalServiceLogos: Record<string, string> = {
   "yandex-music": yandexMusicLogo,
 };
 function sourceIcon(source: NowPlayingSource | undefined, service?: string, server?: {name: string; iconUrl: string}) {
-  if (source === "external_music") return externalServiceLogos[externalServiceKey(service) ?? ""] ?? mediaWallLogo;
+  if (source === "external_music") return mediaUrl(`/api/external-source-icon/${encodeURIComponent(externalIconKey(service) || "logo")}`);
   if (source === "subsonic") return server?.iconUrl ? mediaUrl(server.iconUrl) : navidromeLogo;
-  if (source === "spotify") return spotifyLogo;
-  if (source === "apple_music") return appleMusicLogo;
+  if (source === "spotify") return mediaUrl("/api/external-source-icon/spotify");
+  if (source === "apple_music") return mediaUrl("/api/external-source-icon/apple_music");
   return jellyfinLogo;
 }
 

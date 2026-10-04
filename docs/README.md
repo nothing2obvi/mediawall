@@ -2,6 +2,7 @@
 
 - [Quick Start](quick-start.md)
 - [Configuration](configuration.md)
+  - [Bob, Alice, and Jacob](configuration.md#bob-alice-and-jacob)
   - [Environment Variables](configuration.md#environment-variables)
 - [Configuration Reference](configuration-reference.md)
 - [Anonymous Mode](anonymous-mode.md)

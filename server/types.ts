@@ -17,6 +17,10 @@ export interface MediaWallUser {
 }
 
 export interface DisplayConfig {
+  jellyfin?: {
+    included_jellyfin_users: string[];
+    excluded_jellyfin_users: string[];
+  };
   anonymous_mode?: AnonymousMode;
   playback_source: PlaybackSource;
   theme: string;
@@ -232,6 +236,7 @@ export interface AppConfig {
   jellyfin: {
     url: string;
     api_key: string;
+    music_videos?: { artwork: { order: Array<"jellyfin" | "fetched"> } };
   };
   subsonic: {
     name: string;
@@ -250,7 +255,8 @@ export interface AppConfig {
     session_timeout_seconds: number;
     track_transition_grace_seconds: number;
     artwork: {
-      preference: "local" | "fetched";
+      order?: ReadonlyArray<"jellyfin" | "local" | "fetched">;
+      preference?: "local" | "fetched";
       minimum_backdrop_width: number;
       minimum_backdrop_height: number;
       backdrop_count: number;

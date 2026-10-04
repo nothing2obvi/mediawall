@@ -1,5 +1,18 @@
 ## Upgrading
 
+### Upgrading from v0.5.0 to v0.5.1
+
+- **Changed artwork defaults:** Subsonic now tries fetched art after Jellyfin/local when order is omitted. Use `[jellyfin, local]` to retain its former default. External music defaults to the same three-source order; explicit legacy `preference: local` or `preference: fetched` preserves the previous grouped lookup, and explicit `order` wins.
+- **Music-video artwork:** missing art can now be filled from MediaWall’s providers. Set `jellyfin.music_videos.artwork.order: [jellyfin]` to keep Jellyfin-only artwork. No local-files source is supported. Providers use your MediaWall `image_providers` settings, not Jellyfin’s private credentials. Without reliable album metadata or a release ID, no album is guessed.
+
+Optional per-space `jellyfin.included_jellyfin_users` and `jellyfin.excluded_jellyfin_users` now filter actual Jellyfin usernames before presentation. Empty or omitted lists leave existing behavior unchanged; exclusions win. No configuration paths were removed, and legacy Navidrome aliases still work. See [Jellyfin user filters](configuration-reference.md#space-jellyfin-user-filters).
+
+A literal top-level user named `All` now participates in a space's `users: [All]` selection alongside named users. Previously it was skipped when other mappings existed. If that mapping has `jellyfin_user: All`, other Jellyfin users can now appear; specific mappings still win and sessions aren't duplicated. Use an explicit space user list if you don't want the catch-all.
+
+Mapped Jellyfin avatars now take priority over custom source avatars for Jellyfin, Subsonic, and external playback. Custom Spotify avatars remain supported, and Subsonic custom avatars can go in `app/avatars/subsonic/<mediawall-user>.ext`. Anonymous Mode overrides both. Existing optional display-name filenames remain a fallback for older custom avatars.
+
+The household example and `.env.example` now use Bob, Alice, and Jacob. Keep your existing environment variables and personal config; only change references if you're adopting the new example.
+
 ### Upgrading from v0.4.3 to v0.5.0
 
 Existing Navidrome configs still work. New examples use `subsonic` keys and `SUBSONIC_*` environment variables. Keep your current variable names if your YAML still references them; don't replace your config wholesale.

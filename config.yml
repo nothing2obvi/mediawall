@@ -62,11 +62,11 @@ users:
     subsonic_user: "${SUBSONIC_BOB_USER}"
     subsonic_password: "${SUBSONIC_BOB_PASSWORD}"
     external_music_token: "${EXTERNAL_MUSIC_BOB_TOKEN}"
-  bob2:
-    jellyfin_user: "${JELLYFIN_BOB2_USER}"
-    subsonic_user: "${SUBSONIC_BOB2_USER}"
-    subsonic_password: "${SUBSONIC_BOB2_PASSWORD}"
-    external_music_token: "${EXTERNAL_MUSIC_BOB2_TOKEN}"
+  alice:
+    jellyfin_user: "${JELLYFIN_ALICE_USER}"
+    subsonic_user: "${SUBSONIC_ALICE_USER}"
+    subsonic_password: "${SUBSONIC_ALICE_PASSWORD}"
+    external_music_token: "${EXTERNAL_MUSIC_ALICE_TOKEN}"
   charlie:
     # Example user that follows every Jellyfin account.
     jellyfin_user: "All"

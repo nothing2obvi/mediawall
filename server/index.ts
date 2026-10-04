@@ -1,3 +1,4 @@
+import { playbackOwner, userAvatar, dedupePlaybackCandidates } from "./user-presentation.js";
 import { normalizeSubsonicState } from "./subsonic-compat.js";
 import { resolveServerIcon, serverIconPresentation } from "./server-icons.js";
 import { anonymousIdentity, mappedUserKey } from "./anonymous-mode.js";
@@ -63,6 +64,14 @@ app.get("/api/subsonic/server-icon", (_req,res) => {
   if(!file) {res.sendStatus(404);return;}
   res.setHeader("Cache-Control","no-cache");
   res.setHeader("Content-Security-Policy","sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:");
+  res.sendFile(file);
+});
+app.get("/api/external-source-icon/:key", (req, res) => {
+  const file = resolveServerIcon(String(req.params.key), customServerIcons, packagedServerIcons)
+    ?? resolveServerIcon("logo", "", packagedServerIcons);
+  if (!file) { res.sendStatus(404); return; }
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:");
   res.sendFile(file);
 });
 const favoritesShuffleLibrary = "Favorites";
@@ -1912,6 +1921,11 @@ async function controlCommandFromRequest(body: unknown, displayConfig: DisplayCo
     const requestedUser = displayConfig.users.find((user) => (user.key ?? user.name).toLowerCase() === name.toLowerCase() || user.name.toLowerCase() === name.toLowerCase());
     const username = requestedUser?.name || name || firstUser?.name || displayConfig.source_user || "MediaWall";
     const identity=anonymousIdentity(displayConfig.anonymous_mode,requestedUser?.key ?? (name || firstUser?.key || username),sourceAvatars.anonymousUrl());
+    const avatarUser = requestedUser ?? (!name ? firstUser : undefined);
+    const avatar = identity ? identity.transitionAvatarUrl : avatarUser
+      ? await userAvatar({source: "jellyfin", user: avatarUser.jellyfin_user ?? username,
+          playing: true, paused: false, mediaWallUserKey: avatarUser.key}, avatarUser, displayConfig, jellyfin, sourceAvatars)
+      : undefined;
     return {
       ok: true,
       command: {
@@ -1922,7 +1936,7 @@ async function controlCommandFromRequest(body: unknown, displayConfig: DisplayCo
         startedAt,
         source: "jellyfin",
         username: identity?.username ?? username,
-        avatarUrl: identity?.transitionAvatarUrl,
+        avatarUrl: avatar,
         verb: "started watching",
         expiresAt
       }
@@ -2585,14 +2599,18 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
           ...displayConfig,
           source_user: user.jellyfin_user ?? user.name,
           users: [user]
-        })).map((playback) => withMediaWallUserSound({...playback,mediaWallUserKey:mappedUserKey(playback,user,config.users)}, user.name, user.sound, user.end_sound));
+        })).map((playback) => {
+          const owner = playbackOwner(playback, user, config.users);
+          return withMediaWallUserSound({...playback, mediaWallUserKey: owner.key,
+            displayUser: owner.user.jellyfin_user?.toLowerCase() === "all" ? playback.user : owner.user.name}, owner.user.name, owner.user.sound, owner.user.end_sound);
+        });
         const resolved = await Promise.all(playbacks.map((playback) => externalArtwork.resolveMusicVideo(playback)));
-        candidates.push(...resolved.map((playback) => applyCollectionPresentation(playback, space, displayConfig, user.name)));
+        candidates.push(...resolved.map((playback) => applyCollectionPresentation(playback, space, displayConfig, playback.mediaWallUser ?? user.name)));
       } catch (error) {
         logger.warn("Jellyfin playback source poll failed", error);
       }
     }
-    if (watchesSource(displayConfig.playback_source, "subsonic")) {
+    if (watchesSource(displayConfig.playback_source, "subsonic") && (user.subsonic_user || user.subsonic_password)) {
       try {
         const playbacks = await subsonic.activePlaybacks({
           ...displayConfig,
@@ -2606,26 +2624,14 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
       }
     }
     if (config.external_music.enabled && (watchesSource(displayConfig.playback_source, "external-music"))) {
-      const jellyfinAvatarNames = [
-        user.name,
-        user.jellyfin_user && user.jellyfin_user.toLowerCase() !== "all" ? user.jellyfin_user : undefined
-      ].filter((name, index, names): name is string => Boolean(name) && names.indexOf(name) === index);
-      let jellyfinAvatarUrl: string | undefined;
-      for (const name of jellyfinAvatarNames) {
-        jellyfinAvatarUrl = await jellyfin.userAvatarUrl(name, displayConfig).catch(() => undefined);
-        if (jellyfinAvatarUrl) break;
-      }
-      const playbacks = await Promise.all(externalMusic.activePlaybacks(user.name).map(async (playback) => {
-        const displayUserAvatarUrl = sourceAvatars.avatarUrl(playback.source, user.name) ?? jellyfinAvatarUrl;
-        return {
-          ...await externalArtwork.resolveExternal(playback),
-          displayUserAvatarUrl
-        };
-      }));
+      const playbacks = await Promise.all(externalMusic.activePlaybacks(user.name).map(playback => externalArtwork.resolveExternal(playback)));
       candidates.push(...playbacks.map((playback) => withMediaWallUserSound({...playback,mediaWallUserKey:mappedUserKey(playback,user,config.users)}, user.name, user.sound, user.end_sound)));
     }
   }
-  return dedupePlaybackCandidates(candidates);
+  return Promise.all(dedupePlaybackCandidates(candidates).map(async playback => {
+    const user = config.users[playback.mediaWallUserKey ?? ""] ?? displayConfig.users.find(user => user.name === playback.mediaWallUser);
+    return user ? {...playback, displayUserAvatarUrl: await userAvatar(playback, user, displayConfig, jellyfin, sourceAvatars)} : playback;
+  }));
 }
 
 function applyCollectionPresentation(state: NowPlayingState, space: string, displayConfig: DisplayConfig, mediaWallUser: string): NowPlayingState {
@@ -2650,25 +2656,6 @@ function applyCollectionPresentation(state: NowPlayingState, space: string, disp
     collectionTransitionImages: images,
     soundTone: match.sound || state.soundTone
   };
-}
-
-function dedupePlaybackCandidates(candidates: NowPlayingState[]) {
-  const seen = new Set<string>();
-  const deduped: NowPlayingState[] = [];
-  for (const candidate of candidates) {
-    const key = [
-      candidate.source,
-      candidate.user,
-      candidate.sessionKey,
-      candidate.itemId,
-      candidate.artistId,
-      candidate.signature
-    ].filter(Boolean).join(":");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(candidate);
-  }
-  return deduped;
 }
 
 function updateRecentPlayback(displayKey: string, candidates: NowPlayingState[], displayConfig: DisplayConfig, state: DisplaySnapshot["state"], manualDirection?: -1 | 1) {

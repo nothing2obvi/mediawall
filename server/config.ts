@@ -69,6 +69,10 @@ const anonymousModeSchema = z.object({
   user_transition_info: z.object({show_anonymous_avatar:z.boolean().default(true)}).default({show_anonymous_avatar:true})
 });
 const spaceSchema = z.object({
+  jellyfin: z.object({
+    included_jellyfin_users: z.array(z.string()).default([]),
+    excluded_jellyfin_users: z.array(z.string()).default([])
+  }).default({ included_jellyfin_users: [], excluded_jellyfin_users: [] }),
   anonymous_mode: anonymousModeSchema.optional(),
   playback_source: z.enum(["jellyfin", "subsonic", "external-music", "All"]).default("All"),
   theme: z.enum([...themeNames, "All"]).default("All"),
@@ -463,8 +467,13 @@ const configSchema = z.object({
   }),
   jellyfin: z.object({
     url: z.string().default(""),
-    api_key: z.string().default("")
-  }).default({ url: "", api_key: "" }),
+    api_key: z.string().default(""),
+    music_videos: z.object({
+      artwork: z.object({
+        order: z.array(z.enum(["jellyfin", "fetched"])).default(["jellyfin", "fetched"])
+      }).default({ order: ["jellyfin", "fetched"] })
+    }).default({ artwork: { order: ["jellyfin", "fetched"] } })
+  }).default({ url: "", api_key: "", music_videos: {artwork: {order: ["jellyfin", "fetched"]}} }),
   subsonic: z.object({
     name: z.string().trim().min(1).default("Navidrome"),
     icon: z.string().regex(/^[a-zA-Z0-9_-]+$/).default("navidrome"),
@@ -473,7 +482,7 @@ const configSchema = z.object({
     artwork: z.object({
       jellyfin_fallback: z.boolean().default(true),
       local_files: z.boolean().default(true),
-      order: z.array(z.enum(["jellyfin", "local", "fetched"])).default(["jellyfin", "local"]),
+      order: z.array(z.enum(["jellyfin", "local", "fetched"])).default(["jellyfin", "local", "fetched"]),
       path_mappings: z.array(z.object({
         subsonic: z.string(),
         mediawall: z.string().optional(),
@@ -483,19 +492,20 @@ const configSchema = z.object({
         mediawall: mapping.mediawall ?? mapping.jellyfin ?? "/navidrome_music",
         jellyfin: mapping.jellyfin
       }))).default([])
-    }).default({ jellyfin_fallback: true, local_files: true, order: ["jellyfin", "local"], path_mappings: [] })
+    }).default({ jellyfin_fallback: true, local_files: true, order: ["jellyfin", "local", "fetched"], path_mappings: [] })
   }).default({
     name: "Navidrome", icon: "navidrome",
     enabled: false,
     url: "",
-    artwork: { jellyfin_fallback: true, local_files: true, order: ["jellyfin", "local"], path_mappings: [] }
+    artwork: { jellyfin_fallback: true, local_files: true, order: ["jellyfin", "local", "fetched"], path_mappings: [] }
   }),
   external_music: z.object({
     enabled: z.boolean().default(false),
     session_timeout_seconds: z.number().min(5).default(90),
     track_transition_grace_seconds: z.number().min(0).max(60).default(10),
     artwork: z.object({
-      preference: z.enum(["local", "fetched"]).default("local"),
+      order: z.array(z.enum(["jellyfin", "local", "fetched"])).optional(),
+      preference: z.enum(["local", "fetched"]).optional(),
       minimum_backdrop_resolution: z.string().regex(/^\d+x\d+$/i).default("1920x1080"),
       backdrop_count: z.number().int().min(1).max(20).default(3),
       album_cache_directory: z.string().default("/app/data/external-artwork"),
@@ -503,7 +513,8 @@ const configSchema = z.object({
     }).transform((artwork) => {
       const [width, height] = artwork.minimum_backdrop_resolution.toLowerCase().split("x").map(Number);
       return {
-        preference: artwork.preference,
+        order: artwork.order ?? (artwork.preference === "fetched" ? ["fetched", "jellyfin", "local"] as const : ["jellyfin", "local", "fetched"] as const),
+        preference: artwork.order ? undefined : artwork.preference,
         minimum_backdrop_width: width,
         minimum_backdrop_height: height,
         backdrop_count: artwork.backdrop_count,
@@ -511,7 +522,8 @@ const configSchema = z.object({
         album_cache_ttl_days: artwork.album_cache_ttl_days
       };
     }).default({
-      preference: "local",
+      order: ["jellyfin", "local", "fetched"],
+      preference: undefined,
       minimum_backdrop_width: 1920,
       minimum_backdrop_height: 1080,
       backdrop_count: 3,
@@ -539,7 +551,8 @@ const configSchema = z.object({
     session_timeout_seconds: 90,
     track_transition_grace_seconds: 10,
     artwork: {
-      preference: "local",
+      order: ["jellyfin", "local", "fetched"],
+      preference: undefined,
       minimum_backdrop_width: 1920,
       minimum_backdrop_height: 1080,
       backdrop_count: 3,
@@ -648,8 +661,7 @@ function normalizeSpaces(input: Record<string, z.infer<typeof spaceSchema>>, use
     const userNames = raw.users.length ? raw.users : Object.keys(users).slice(0, 1);
     const useAllUsers = userNames.some((name) => name.toLowerCase() === "all");
     const configuredUserNames = Object.keys(users);
-    const concreteUserNames = configuredUserNames.filter((name) => name.toLowerCase() !== "all");
-    const sourceUsers = useAllUsers ? (concreteUserNames.length ? concreteUserNames : configuredUserNames) : userNames;
+    const sourceUsers = useAllUsers ? configuredUserNames : userNames;
     const resolvedUsers = sourceUsers.map((name) => users[name] ?? {
       name,
       jellyfin_user: name,

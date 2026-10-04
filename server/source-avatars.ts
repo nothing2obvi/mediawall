@@ -39,13 +39,14 @@ export class SourceAvatarStore {
   }
 
   avatarUrl(source: NowPlayingSource, username: string) {
-    return this.avatarPath(source, username)
-      ? `/api/avatars/${encodeURIComponent(source)}/${encodeURIComponent(username)}`
-      : undefined;
+    const file = this.avatarPath(source, username);
+    if (!file) return undefined;
+    const version = crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex").slice(0, 24);
+    return `/api/avatars/${encodeURIComponent(source)}/${encodeURIComponent(username)}?v=${version}`;
   }
 
   avatarPath(source: string, username: string) {
-    if (source !== "spotify" || !safeSegment(username)) return undefined;
+    if (!["spotify", "subsonic", "jellyfin", "apple_music", "external_music"].includes(source) || !safeSegment(username)) return undefined;
     const directory = path.resolve(this.root, source);
     if (!directory.startsWith(`${this.root}${path.sep}`) || !fs.existsSync(directory)) return undefined;
     const normalizedUsername = username.trim().toLowerCase();
@@ -56,7 +57,8 @@ export class SourceAvatarStore {
     if (!filename) return undefined;
     const candidate = path.resolve(directory, filename);
     if (!candidate.startsWith(`${directory}${path.sep}`)) return undefined;
-    return fs.statSync(candidate).isFile() ? candidate : undefined;
+    const stat = fs.lstatSync(candidate);
+    return stat.isFile() && !stat.isSymbolicLink() ? candidate : undefined;
   }
 }
 

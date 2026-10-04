@@ -13,6 +13,8 @@ users:
     subsonic_user: bob-subsonic
     subsonic_password: "${SUBSONIC_BOB_PASSWORD}"
     external_music_token: "${EXTERNAL_MUSIC_BOB_TOKEN}"
+  All:
+    jellyfin_user: All
 
 spaces:
   livingroom:
@@ -65,7 +67,7 @@ If several files exist, MediaWall uses **WebP, JPG, JPEG, then PNG**, in that or
 
 Replacing the image updates anonymous badges and any open anonymous transitions across all spaces automatically, normally within a few seconds. You don't need to restart, refresh, or change user mappings or Anonymous Mode rules.
 
-Turn off `show_anonymous_avatar` separately under `now_playing_info` or `user_transition_info` wherever you don't want an avatar. Hidden users never fall back to real Jellyfin or custom Spotify avatars. If neither a custom nor bundled image is available, no avatar appears. Users allowed by `shown` keep their existing settings.
+Turn off `show_anonymous_avatar` separately under `now_playing_info` or `user_transition_info` wherever you don't want an avatar. Hidden users never fall back to real Jellyfin or custom source avatars. If neither a custom nor bundled image is available, no avatar appears. Users allowed by `shown` keep their existing settings.
 
 ## Don't show any real identities
 
@@ -89,3 +91,23 @@ spaces:
 The badge shows no username or avatar. Transitions say `someone` and show no avatar. To show a generic name or image, turn on the corresponding switch. To let `bob` remain visible, change `shown` to `[bob]`.
 
 This controls identity presentation on the display and remote. It doesn't anonymize administrator logs, the underlying media services, or every API field. Custom sounds and collection images are unchanged, so choose neutral ones if they could identify a person.
+
+## Keeping a user off the display entirely
+
+Anonymous Mode doesn't exclude playback. Putting `monica` in `not_shown` still shows her session anonymously.
+
+To keep Monica's Jellyfin playback off a space entirely while keeping everyone else eligible:
+
+```yaml
+spaces:
+  homelab:
+    users: [All]
+    jellyfin:
+      excluded_jellyfin_users: [monica]
+```
+
+Use her actual Jellyfin username. Exclusions win over inclusions and run before Anonymous Mode, so Monica never becomes `someone` in this space. Other spaces keep their own rules. See [Jellyfin user filters](configuration-reference.md#space-jellyfin-user-filters).
+
+These filters only affect Jellyfin. To limit every source, use an explicit space user list such as `users: [bob, alice, jacob]` without a catch-all mapping, and route external sources to the correct individual tokens.
+
+Visible users share the [Jellyfin-first avatar priority](configuration-reference.md#user-avatars) across sources. Anonymous users never fall back to a real or custom user avatar.

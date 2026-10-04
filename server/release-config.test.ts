@@ -52,7 +52,7 @@ spaces:
 });
 
 test("external service names and URLs select the added logos", () => {
-  const cases: Record<string,string> = {Spotify:"spotify", "https://open.spotify.com":"spotify", "Apple Music":"apple_music", Chromecast:"chromecast", "JRiver Media Center":"jriver", Kodi:"kodi", Mopidy:"mopidy", MPD:"mpd", Musikcube:"musikcube", Plex:"plex", Sonos:"sonos", "Subsonic-compatible":"subsonic", Airsonic:"subsonic", VLC:"vlc", "Yamaha MusicCast":"yamaha-musiccast", "Yandex Music":"yandex-music", "https://music.yandex.ru":"yandex-music"};
+  const cases: Record<string,string> = {Spotify:"spotify", "https://open.spotify.com":"spotify", "Apple Music":"apple_music", Chromecast:"google-cast", "JRiver Media Center":"jriver", Kodi:"kodi", Mopidy:"mopidy", MPD:"mpd", Musikcube:"musikcube", Plex:"plex", Sonos:"sonos", "Subsonic-compatible":"subsonic", Airsonic:"subsonic", VLC:"vlc", "Yamaha MusicCast":"yamaha-musiccast", "Yandex Music":"yandex-music", "https://music.yandex.ru":"yandex-music"};
   for (const [name,key] of Object.entries(cases)) assert.equal(externalServiceKey(name),key,name);
   assert.equal(externalServiceKey("unknown service"), undefined);
 });
@@ -77,4 +77,29 @@ test("continuous sound defaults and music video cover sizing remain configurable
     if(previous===undefined)delete process.env.MEDIAWALL_CONFIG;else process.env.MEDIAWALL_CONFIG=previous;
     fs.rmSync(dir,{recursive:true,force:true});
   }
+});
+
+test("artwork orders default at every nesting level and retain legacy precedence", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mediawall-order-"));
+  const old = process.env.MEDIAWALL_CONFIG;
+  process.env.MEDIAWALL_CONFIG = path.join(dir, "config.yml");
+  const read = (body: string) => {fs.writeFileSync(process.env.MEDIAWALL_CONFIG!, body + "\nspaces: {wall: {}}\n"); return loadConfig();};
+  try {
+    for (const body of ["", "subsonic: {}\nexternal_music: {}\njellyfin: {}", "subsonic: {artwork: {}}\nexternal_music: {artwork: {}}\njellyfin: {music_videos: {artwork: {}}}"]) {
+      const cfg = read(body);
+      assert.deepEqual(cfg.subsonic.artwork.order, ["jellyfin", "local", "fetched"]);
+      assert.deepEqual(cfg.external_music.artwork.order, ["jellyfin", "local", "fetched"]);
+      assert.deepEqual(cfg.jellyfin.music_videos?.artwork.order, ["jellyfin", "fetched"]);
+    }
+    for (const preference of ["local", "fetched"] as const) {
+      const cfg = read(`external_music: {artwork: {preference: ${preference}}}`);
+      assert.equal(cfg.external_music.artwork.preference, preference);
+      assert.deepEqual(cfg.external_music.artwork.order, preference === "local" ? ["jellyfin","local","fetched"] : ["fetched","jellyfin","local"]);
+      const explicit = read(`external_music: {artwork: {preference: ${preference}, order: [local]}}\nsubsonic: {artwork: {order: [fetched]}}`);
+      assert.equal(explicit.external_music.artwork.preference, undefined);
+      assert.deepEqual(explicit.external_music.artwork.order, ["local"]);
+      assert.deepEqual(explicit.subsonic.artwork.order, ["fetched"]);
+    }
+    assert.throws(() => read("jellyfin: {music_videos: {artwork: {order: [local]}}}"));
+  } finally {if(old === undefined) delete process.env.MEDIAWALL_CONFIG; else process.env.MEDIAWALL_CONFIG=old;fs.rmSync(dir,{recursive:true,force:true});}
 });
