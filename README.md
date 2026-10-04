@@ -116,11 +116,10 @@ That's really the idea behind MediaWall: it can be a Now Playing display, a home
 - Falls back to a default MediaWall screen, shuffled artwork, or an optional per-space Immich Kiosk display when nothing is playing.
 - Provides a full-screen Wallpaper/Screensaver mode with library browsing, favorites, shuffle, logos, media info, transitions, and subtle backdrop motion.
 - Uses Jellyfin, Subsonic-compatible servers (e.g. Navidrome), and Multi-Scrobbler supported services (e.g. Spotify) backdrops/logos where available.
-- Can use Subsonic playback for music-focused setups, and Subsonic servers can use Jellyfin's images when both services are configured.
-- Can use local artist backdrop and logo files for Subsonic-only artwork.
+- Subsonic-compatible servers (e.g. Navidrome) can drive a music-only wall using matching Jellyfin artist images, local artist files, or fetched artwork. Jellyfin is optional.
 - Includes an image editor for logos and backdrops, with provider search, uploads, enlarged previews, ordering, and deletion across Jellyfin, local artwork, and the external artwork cache.
 
-Subsonic-compatible servers (e.g. Navidrome) such as Navidrome can drive a music-only wall using local artist artwork or matching Jellyfin artist images. Jellyfin is recommended because MediaWall can use its rich backdrop, logo, user avatar, movie, series, and artist metadata.
+For ordinary Jellyfin media, MediaWall uses artwork from your server, and manual image searches use Jellyfin’s configured providers. Jellyfin music videos can also fill missing artwork through MediaWall’s image providers. Subsonic and external music can use matching Jellyfin artwork, local files, or fetched images using provider API keys you supply to MediaWall.
 
 ## [Documentation](docs/README.md)
 
