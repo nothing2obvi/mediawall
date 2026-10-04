@@ -111,3 +111,5 @@ The same custom server-icon directory also supports external-music source icons.
 Each space can optionally include or exclude actual Jellyfin usernames under `jellyfin.included_jellyfin_users` and `jellyfin.excluded_jellyfin_users`. Empty lists leave existing behavior unchanged; exclusions win. These filters apply before library exclusions and presentation, so excluded users don't appear anonymously or affect sounds, counts, collections, or fallback. See the [configuration reference](configuration-reference.md#space-jellyfin-user-filters).
 
 Subsonic artwork defaults to `jellyfin -> local -> fetched`, including when the artwork block is omitted. Jellyfin is optional; unavailable sources and those disabled by `jellyfin_fallback` or `local_files` are skipped. Set `subsonic.artwork.order` to change priority. Fetched sources use MediaWall’s `image_providers` settings, never Jellyfin’s private provider keys.
+
+Music-video titles show `[MV]` after the quoted song name by default. Use `display.music_video_indicator.enabled: false` to hide it, or change `display.music_video_indicator.text` in a space. The label hides along with the song title.

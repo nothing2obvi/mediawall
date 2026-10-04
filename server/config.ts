@@ -1,3 +1,4 @@
+import { normalizeSoundSources } from "./sound-config.js";
 import { normalizeSubsonicConfig } from "./subsonic-compat.js";
 import { logger } from "./logger.js";
 import fs from "node:fs";
@@ -178,8 +179,11 @@ const spaceSchema = z.object({
     }),
     sounds: z.object({
       enabled: z.boolean().default(true),
-      jellyfin: z.boolean().default(true),
-      subsonic: z.boolean().default(true),
+      sources: z.object({
+        jellyfin: z.boolean().default(true),
+        subsonic: z.boolean().default(true),
+        external_music: z.boolean().default(true)
+      }).default({ jellyfin: true, subsonic: true, external_music: true }),
       quiet_hours: z.object({
         enabled: z.boolean().default(false),
         start: z.string().default("23:00"),
@@ -203,8 +207,7 @@ const spaceSchema = z.object({
       volume: z.number().min(0).max(1).default(0.35)
     }).default({
       enabled: true,
-      jellyfin: true,
-      subsonic: true,
+      sources: { jellyfin: true, subsonic: true, external_music: true },
       quiet_hours: { enabled: false, start: "23:00", end: "08:00" },
       continuous_sessions: { subsonic: true, external_music: true, jellyfin_libraries: ["Music", "Music Videos"] },
       session_start: { retrigger_after_inactive_seconds: 30 },
@@ -250,8 +253,7 @@ const spaceSchema = z.object({
     },
     sounds: {
       enabled: true,
-      jellyfin: true,
-      subsonic: true,
+      sources: { jellyfin: true, subsonic: true, external_music: true },
       quiet_hours: { enabled: false, start: "23:00", end: "08:00" },
       continuous_sessions: { subsonic: true, external_music: true, jellyfin_libraries: ["Music", "Music Videos"] },
       session_start: { retrigger_after_inactive_seconds: 30 },
@@ -298,6 +300,10 @@ const spaceSchema = z.object({
     logo: z.object({
       max_width: z.number().default(520)
     }).default({ max_width: 520 }),
+    music_video_indicator: z.object({
+      enabled: z.boolean().default(true),
+      text: z.string().default("[MV]")
+    }).default({ enabled: true, text: "[MV]" }),
     music_video_album_art: z.object({ size: z.number().min(1).optional() }).default({}),
     album_art: z.object({
       size: z.number().default(300)
@@ -411,6 +417,7 @@ const spaceSchema = z.object({
     animations: { enabled: true, style: "kenburns", scale: 1.08, duration_seconds: 26 },
     logo: { max_width: 520 },
     live_tv: { channel_image_size: 713 },
+    music_video_indicator: { enabled: true, text: "[MV]" },
     music_video_album_art: {},
     album_art: { size: 300 },
     fallback_title: { font_size: 86 },
@@ -595,7 +602,7 @@ export function loadConfig(): AppConfig {
   const configPath = path.resolve(process.env.MEDIAWALL_CONFIG ?? "config.yml");
   const raw = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "{}";
   const expanded = expandEnv(raw);
-  const rawConfig = normalizeSubsonicConfig(YAML.parse(expanded) ?? {});
+  const rawConfig = normalizeSoundSources(normalizeSubsonicConfig(YAML.parse(expanded) ?? {}), message => logger.warn(message));
   const errors: string[] = [];
   const removed = (present: boolean, message: string) => { if (present) {logger.error(`Configuration migration: ${message}`);errors.push(message);} };
   removed("displays" in rawConfig, "displays is deprecated and removed. Define display routes under spaces instead.");

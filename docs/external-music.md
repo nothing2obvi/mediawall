@@ -159,3 +159,7 @@ MediaWall includes icons for Spotify, Apple Music, Jellyfin, Google Cast/Chromec
 To override an icon, put its key and extension, such as `lastfm.png`, in `./app/server-icons` and mount `./app/server-icons:/app/server-icons:ro`. Unknown service `My Server` uses `my-server.png`. Formats are WebP, PNG, JPG, JPEG, SVG, and GIF, in that priority order. See the [icon reference](configuration-reference.md#built-in-and-custom-icons) for every key and fallback.
 
 User avatars are separate from service logos. MediaWall uses the mapped Jellyfin avatar first, then a custom source avatar such as `./app/avatars/spotify/bob.png`, then no avatar. Anonymous Mode overrides both. See [user avatars](configuration-reference.md#user-avatars).
+
+### Sounds
+
+Set `now_playing.sounds.sources.external_music: false` in a space to mute external-music notifications without muting Jellyfin or Subsonic. It defaults to `true`. `sounds.continuous_sessions.external_music` separately controls whether track changes count as one sound session. The inactivity interval before another start sound is eligible is `sounds.session_start.retrigger_after_inactive_seconds` (default `30` seconds).

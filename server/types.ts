@@ -94,8 +94,7 @@ export interface DisplayConfig {
     };
     sounds: {
       enabled: boolean;
-      jellyfin: boolean;
-      subsonic: boolean;
+      sources: { jellyfin: boolean; subsonic: boolean; external_music: boolean };
       quiet_hours: {
         enabled: boolean;
         start: string;
@@ -149,6 +148,7 @@ export interface DisplayConfig {
     logo: {
       max_width: number;
     };
+    music_video_indicator: { enabled: boolean; text: string };
     music_video_album_art: { size?: number };
     album_art: {
       size: number;

@@ -1,3 +1,5 @@
+import { MusicSongTitle, type MusicVideoIndicator } from "./music-song-title";
+import { soundSourceAllowed } from "./sound-sources";
 import { badgeIdentity, transitionIdentity } from "./identity-presentation";
 import type { AnonymousIdentity } from "../server/anonymous-mode";
 import mediaWallLogo from "./logos/logo.png";
@@ -299,8 +301,7 @@ type Snapshot = {
       };
       sounds: {
         enabled: boolean;
-        jellyfin: boolean;
-        subsonic: boolean;
+        sources: { jellyfin: boolean; subsonic: boolean; external_music: boolean };
         quiet_hours: {
           enabled: boolean;
           start: string;
@@ -332,7 +333,8 @@ type Snapshot = {
       backdrop_background_color: string;
       live_tv?: { channel_image_size: number };
       logo: { max_width: number };
-      music_video_album_art: { size?: number };
+      music_video_indicator: { enabled: boolean; text: string };
+    music_video_album_art: { size?: number };
       album_art: { size: number };
       fallback_title: { font_size: number };
       nowplaying_text: {
@@ -2560,7 +2562,7 @@ function Identity({ snapshot, artwork }: { snapshot?: Snapshot; artwork?: Artwor
       )}
       {showInfo && (
         <div className="now">
-          <MediaInfo now={now} artwork={artwork} prefs={mediaInfoPrefs!} />
+          <MediaInfo now={now} artwork={artwork} prefs={mediaInfoPrefs!} musicVideoIndicator={snapshot?.config.display.music_video_indicator} />
         </div>
       )}
     </section>
@@ -3252,7 +3254,7 @@ function IconButton({ label, active, flash, onClick, children }: {
   );
 }
 
-function MediaInfo({ now, artwork, prefs }: { now?: Snapshot["nowPlaying"]; artwork?: ArtworkRef; prefs: DisplayState["mediaInfo"] }) {
+function MediaInfo({ now, artwork, prefs, musicVideoIndicator }: { now?: Snapshot["nowPlaying"]; artwork?: ArtworkRef; prefs: DisplayState["mediaInfo"]; musicVideoIndicator?: MusicVideoIndicator }) {
   const kind = mediaKind(artwork, now);
   if (kind === "live-tv") return <div className="live-tv-info">
     {prefs.live_tv_channel && <div className="text-logo">{now?.logoText ?? artwork?.title ?? now?.title}</div>}
@@ -3268,7 +3270,7 @@ function MediaInfo({ now, artwork, prefs }: { now?: Snapshot["nowPlaying"]; artw
     return (
       <div className={prefs.music_album && prefs.music_song_title ? "music-info music-info-both" : "music-info"}>
         {prefs.music_album && now?.album && <div className="music-album">{now.album}</div>}
-        {prefs.music_song_title && now?.title && <div className="music-song-title">"{now.title}"</div>}
+        {prefs.music_song_title && now?.title && <MusicSongTitle title={now.title} musicVideo={(now.artwork?.mediaType ?? artwork?.mediaType)?.toLowerCase() === "musicvideo"} indicator={musicVideoIndicator} />}
       </div>
     );
   }
@@ -3519,11 +3521,6 @@ function safeToneName(tone: string | undefined, available: string[]) {
   return available.includes(tone) ? tone : undefined;
 }
 
-function soundSourceAllowed(source: NowPlayingSource, sounds: Snapshot["config"]["now_playing"]["sounds"]) {
-  if (source === "jellyfin") return sounds.jellyfin;
-  if (source === "subsonic") return sounds.subsonic;
-  return true;
-}
 
 function quietHoursActive(quietHours: Snapshot["config"]["now_playing"]["sounds"]["quiet_hours"]) {
   if (!quietHours.enabled) return false;

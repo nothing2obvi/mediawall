@@ -263,11 +263,16 @@ For one collection, the first eligible group in written config order wins. If an
 
 ### Space Sounds
 
+Set these under `spaces.<space>.now_playing.sounds`. The flat `jellyfin`, `subsonic`, and `external_music` switches are legacy aliases for `sources.<source>`. They still work, but explicit `sources` values win. The older `navidrome` alias also continues to work.
+
+A continuous session groups successive items from the same user/source (and Jellyfin library) for sounds. The inactivity interval is configurable with `session_start.retrigger_after_inactive_seconds`, default `30`. It isn’t a maximum playback duration: uninterrupted playback stays continuous. Set `0` to allow a new start sound after any detected inactive gap. Source switches mute sounds independently of continuity.
+
 | Setting | Purpose | Default | Required | Notes |
 | --- | --- | --- | --- | --- |
 | `enabled` | Master switch for session sounds. | `true` | No | Does not affect visual behavior. |
-| `jellyfin` | Allows Jellyfin sounds. | `true` | No | Applies to start and end sounds. |
-| `subsonic` | Allows Subsonic sounds. | `true` | No | Applies to start and end sounds. |
+| `sources.jellyfin` | Allows Jellyfin sounds. | `true` | No | Applies to start and end sounds. |
+| `sources.subsonic` | Allows Subsonic sounds. | `true` | No | Applies to start and end sounds. |
+| `sources.external_music` | Allows Spotify and other external-music sounds. | `true` | No | Applies to start and end sounds. |
 | `quiet_hours.enabled` | Suppresses sounds during quiet hours. | `false` | No | Suppresses start and end sounds; no retroactive sounds after quiet hours end. |
 | `quiet_hours.start` | Quiet-hours start. | `23:00` | No | `HH:MM`, local system time. |
 | `quiet_hours.end` | Quiet-hours end. | `08:00` | No | Cross-midnight ranges are supported. |
@@ -422,3 +427,7 @@ Custom files take priority over packaged icons. Keys are case-insensitive. Suppo
 `jellyfin` uses the Music Videos artist-folder backdrops and logos, plus album covers from matching tracks in music-type libraries. `fetched` uses MediaWall’s Library and `image_providers` to fill gaps. Album covers can come from Cover Art Archive or TheAudioDB when the release or album can be identified reliably. Cover Art Archive needs no key; MusicBrainz helps identify releases. Set `["jellyfin"]` to disable fetched artwork for music videos.
 
 Live TV isn’t a browsable library and can’t be included in `spaces.<space>.libraries`. Use `now_playing.ignored_libraries: [Live TV]` in a space to hide its live channels.
+
+### Music-video indicator
+
+Under `spaces.<space>.display.music_video_indicator`, `enabled` defaults to `true` and `text` defaults to `"[MV]"`. Music-video song titles appear as `"Darjeeling" [MV]`. Set `enabled: false` to hide the label, or change `text` to use your own. It follows the song-title visibility control and doesn’t appear on ordinary music tracks.

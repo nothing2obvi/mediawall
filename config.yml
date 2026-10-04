@@ -152,8 +152,10 @@ spaces:
         groups: []
       sounds:
         enabled: true
-        jellyfin: true
-        subsonic: true
+        sources:
+          jellyfin: true
+          subsonic: true
+          external_music: true
         quiet_hours:
           enabled: false
           start: "23:00"
@@ -231,6 +233,9 @@ spaces:
         styles:
           - crossfade
       # Inherits album_art.size; set size here to override it for music videos.
+      music_video_indicator:
+        enabled: true
+        text: "[MV]"
       music_video_album_art: {}
 
   office:
@@ -298,8 +303,10 @@ spaces:
         groups: []
       sounds:
         enabled: true
-        jellyfin: true
-        subsonic: true
+        sources:
+          jellyfin: true
+          subsonic: true
+          external_music: true
         quiet_hours:
           enabled: false
           start: "23:00"
@@ -377,6 +384,9 @@ spaces:
         styles:
           - crossfade
       # Inherits album_art.size; set size here to override it for music videos.
+      music_video_indicator:
+        enabled: true
+        text: "[MV]"
       music_video_album_art: {}
 
   homelab:
@@ -445,8 +455,10 @@ spaces:
         groups: []
       sounds:
         enabled: true
-        jellyfin: true
-        subsonic: true
+        sources:
+          jellyfin: true
+          subsonic: true
+          external_music: true
         quiet_hours:
           enabled: false
           start: "23:00"
@@ -524,6 +536,9 @@ spaces:
         styles:
           - All
       # Inherits album_art.size; set size here to override it for music videos.
+      music_video_indicator:
+        enabled: true
+        text: "[MV]"
       music_video_album_art: {}
 
 aliases:

@@ -1,5 +1,11 @@
 ## Upgrading
 
+### Upgrading from v0.5.1 to v0.5.2
+
+Use `now_playing.sounds.sources.jellyfin`, `.subsonic`, and `.external_music` for source sound switches. All default to `true`. Existing flat switches (including `navidrome`) remain accepted; explicit `sources` values win. External music can now be muted separately. Continuous-session inactivity still uses `sounds.session_start.retrigger_after_inactive_seconds`, with a configurable default of 30 seconds.
+
+Music-video titles now show `[MV]` by default. Set `display.music_video_indicator.enabled: false` in a space to hide it, or customize `display.music_video_indicator.text`.
+
 ### Upgrading from v0.5.0 to v0.5.1
 
 - **Changed artwork defaults:** Subsonic now tries fetched art after Jellyfin/local when order is omitted. Use `[jellyfin, local]` to retain its former default. External music defaults to the same three-source order; explicit legacy `preference: local` or `preference: fetched` preserves the previous grouped lookup, and explicit `order` wins.

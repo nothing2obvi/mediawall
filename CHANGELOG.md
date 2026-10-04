@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2 - 2026-10-04
+
+- Grouped sound switches under `sounds.sources`, including an independent external-music switch. Flat Jellyfin, Subsonic, and external-music switches remain legacy aliases; explicit nested values win. Continuous-session inactivity remains configurable with a 30-second default.
+- Added per-space `display.music_video_indicator` with `enabled: true` and `text: "[MV]"` defaults. The label follows the quoted music-video song title and its visibility control.
+
+No configuration syntax was removed. Legacy flat sound switches log a migration notice; explicit `sounds.sources` settings win. Music-video labels are enabled by default; set `display.music_video_indicator.enabled: false` to retain the previous appearance.
+
 ## 0.5.1 - 2026-10-03
 
 ### Changes
