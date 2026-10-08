@@ -17,6 +17,7 @@
   - [Artist folders and image names](external-music-images.md#artist-folders-and-image-names)
   - [Clearing Library images](external-music-images.md#clearing-library-images)
 - [Display Setup](display-setup.md)
+  - [Custom logos](display-setup.md#custom-logos)
   - [Apple Devices](display-setup.md#apple-devices)
   - [Android Devices](display-setup.md#android-devices)
   - [Raspberry Pi](display-setup.md#raspberry-pi)

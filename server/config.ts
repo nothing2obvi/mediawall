@@ -1,3 +1,4 @@
+import { normalizeSessionCount } from "./session-count-config.js";
 import { normalizeSoundSources } from "./sound-config.js";
 import { normalizeSubsonicConfig } from "./subsonic-compat.js";
 import { logger } from "./logger.js";
@@ -57,6 +58,7 @@ const mediaWallUserSchema = z.object({
   subsonic_user: z.string().optional(),
   subsonic_password: z.string().optional(),
   external_music_token: z.string().optional(),
+  custom_avatar: z.string().trim().min(1).optional(),
   sound: z.string().optional(),
   end_sound: z.string().optional()
 });
@@ -98,17 +100,17 @@ const spaceSchema = z.object({
     cycle_users: z.boolean().default(false),
     cycle_interval_seconds: z.number().default(15),
     session_cleanup: z.object({
-      paused_after_seconds: z.number().min(0).default(15),
+      paused_after_seconds: z.number().min(0).default(5),
       missing_after_seconds: z.number().min(0).default(5)
-    }).default({ paused_after_seconds: 15, missing_after_seconds: 5 }),
+    }).default({ paused_after_seconds: 5, missing_after_seconds: 5 }),
     session_timer: z.object({
       enabled: z.boolean().default(true),
       size: z.number().default(42)
     }).default({ enabled: true, size: 42 }),
     session_count: z.object({
-      enabled: z.boolean().default(true),
-      font_size: z.number().default(13)
-    }).default({ enabled: true, font_size: 13 }),
+      mode: z.union([z.enum(["small", "large"]), z.literal(false)]).default("small"),
+      font_size: z.number().optional()
+    }).default({ mode: "small" }),
     user_transition: z.object({
       enabled: z.boolean().default(true),
       duration_seconds: z.number().min(0.5).default(5),
@@ -224,9 +226,9 @@ const spaceSchema = z.object({
     fallback_shuffle_interval_seconds: 45,
     cycle_users: false,
     cycle_interval_seconds: 15,
-    session_cleanup: { paused_after_seconds: 15, missing_after_seconds: 5 },
+    session_cleanup: { paused_after_seconds: 5, missing_after_seconds: 5 },
     session_timer: { enabled: true, size: 42 },
-    session_count: { enabled: true, font_size: 13 },
+    session_count: { mode: "small" },
     user_transition: {
       enabled: true,
       duration_seconds: 5,
@@ -454,6 +456,7 @@ const spaceSchema = z.object({
 });
 
 const configSchema = z.object({
+  avatars: z.object({ prefer_custom_avatars: z.boolean().default(false) }).default({ prefer_custom_avatars: false }),
   library: z.object({ directory: z.string().default("/library") }).default({directory:"/library"}),
   server: z.object({ port: z.number().default(1221) }).default({ port: 1221 }),
   library_scan: z.object({
@@ -602,7 +605,7 @@ export function loadConfig(): AppConfig {
   const configPath = path.resolve(process.env.MEDIAWALL_CONFIG ?? "config.yml");
   const raw = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "{}";
   const expanded = expandEnv(raw);
-  const rawConfig = normalizeSoundSources(normalizeSubsonicConfig(YAML.parse(expanded) ?? {}), message => logger.warn(message));
+  const rawConfig = normalizeSessionCount(normalizeSoundSources(normalizeSubsonicConfig(YAML.parse(expanded) ?? {}), message => logger.warn(message)), message => logger.warn(message));
   const errors: string[] = [];
   const removed = (present: boolean, message: string) => { if (present) {logger.error(`Configuration migration: ${message}`);errors.push(message);} };
   removed("displays" in rawConfig, "displays is deprecated and removed. Define display routes under spaces instead.");
@@ -623,10 +626,14 @@ export function loadConfig(): AppConfig {
     if (mapping.jellyfin !== undefined) logger.warn("Configuration migration: subsonic.artwork.path_mappings[].jellyfin is deprecated. Rename it to mediawall; keep subsonic as the source path.");
   }
   if (errors.length) throw new Error(errors.join("\n"));
+  for (const [name, space] of Object.entries(rawConfig.spaces ?? {}) as Array<[string, any]>) {
+    if (space?.now_playing?.session_cleanup?.paused_after_seconds === undefined) logger.info(`Configuration defaults for ${name}: session_cleanup.paused_after_seconds is now 5 seconds for sources that report pause/stale state. Set 15 to retain the previous default; explicit values remain supported. ListenBrainz does not report Spotify pause state.`);
+  }
   const parsed = configSchema.parse(rawConfig);
   const users = normalizeUsers(parsed.users);
   const spaces = normalizeSpaces(parsed.spaces, users);
   const appConfig: AppConfig = {
+    avatars: parsed.avatars,
     server: parsed.server,
     library: parsed.library,
     library_scan: parsed.library_scan,
@@ -655,6 +662,7 @@ function normalizeUsers(input: Record<string, z.infer<typeof mediaWallUserSchema
       subsonic_user: user.subsonic_user,
       subsonic_password: user.subsonic_password,
       external_music_token: user.external_music_token,
+      custom_avatar: user.custom_avatar,
       sound: user.sound,
       end_sound: user.end_sound
     };

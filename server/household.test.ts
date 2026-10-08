@@ -62,12 +62,12 @@ test('livingroom keeps family visible and prevents guest identity or avatar fall
 
 for(const source of ['jellyfin','subsonic','spotify','external_music'] as const)test(`${source} uses mapped Jellyfin avatar before custom avatar`,async()=>{
  const cfg=fixture(),space=cfg.spaces.livingroom,user=cfg.users.bob;let customCalls=0;
- const avatars={avatarUrl:()=>{customCalls++;return '/custom';},anonymousUrl:()=>'/anonymous'};
+ const avatars={customAvatarUrl:()=>{customCalls++;return '/custom';},avatarUrl:()=>{customCalls++;return '/legacy';},anonymousUrl:()=>'/anonymous'};
  const state={...playing('service-user',source),mediaWallUserKey:'bob'};
  const jellyfin={userAvatarUrl:async(name:string)=>{assert.equal(name,'bob-jellyfin');return '/jellyfin';}};
  assert.equal(await userAvatar(state,user,space,jellyfin as any,avatars),'/jellyfin');assert.equal(customCalls,0);
  assert.equal(await userAvatar(state,user,space,{userAvatarUrl:async()=>undefined} as any,avatars),'/custom');
- assert.equal(await userAvatar(state,user,space,{userAvatarUrl:async()=>undefined} as any,{...avatars,avatarUrl:()=>undefined}),undefined);
+ assert.equal(await userAvatar(state,user,space,{userAvatarUrl:async()=>undefined} as any,{...avatars,avatarUrl:()=>undefined,customAvatarUrl:()=>undefined}),undefined);
 });
 
 test('anonymous avatar resolution never queries real/custom identities',async()=>{

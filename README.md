@@ -17,13 +17,13 @@
 
 ## TL;DR
 
-MediaWall is a self-hosted display for Jellyfin, Subsonic-compatible music servers, and external music sources like Spotify. Subsonic support is primarily tested with Navidrome.
+MediaWall is a self-hosted display for [Jellyfin](https://jellyfin.org), [Subsonic](https://www.subsonic.org)-compatible music servers, and external music sources like [Spotify](https://www.spotify.com). Subsonic support is primarily tested with [Navidrome](https://www.navidrome.org).
 
-MediaWall is a way to take advantage of an old iPad, a Raspberry Pi with a display, or any spare screen by turning it into a live window into your Jellyfin and Subsonic-compatible music servers. It can show what you and your users are currently watching or listening to, cycle through artwork from your libraries as a screensaver, or display favorite media as wallpapers. With Multi-Scrobbler, it can also show Now Playing from external music sources such as Spotify. It also supports custom sounds, layouts, and fallback screens. Basically, it's a fun little project that's an overengineered way to view active sessions and make your media library visible instead of leaving all that artwork buried in storage.
+MediaWall is a way to take advantage of an old iPad, a [Raspberry Pi](https://www.raspberrypi.com) with a display, or any spare screen by turning it into a live window into your Jellyfin and Subsonic-compatible music servers. It can show what you and your users are currently watching or listening to, cycle through artwork from your libraries as a screensaver, or display favorite media as wallpapers. With [Multi-Scrobbler](https://github.com/FoxxMD/multi-scrobbler), it can also show Now Playing from external music sources such as Spotify. It also supports custom sounds, layouts, and fallback screens. It also has an optional fallback to an [Immich Kiosk](https://github.com/damongolding/immich-kiosk) instance, so when nothing's playing, it displays photos from [Immich](https://immich.app). Basically, it's a fun little project that's an overengineered way to view active sessions and make your media library visible instead of leaving all that artwork buried in storage.
 
 ## What's your use case for MediaWall?
 
-Personally I use it as a “What’s now playing on the server?” passive display, with sounds so I know when a session starts. We might be doing something else, hear a pleasant chime, then go, “Ooh, someone started the new season of Ted Lasso.” I have about 25 regular users, so it’s just like a fun little thing that happens randomly. Sounds, of course, are optional. Showing usernames and avatars is completely optional, too. There's also an Anonymous Mode.
+Personally I use it as a “What’s now playing on the server?” passive display, with sounds so I know when a session starts. We might be doing something else, hear a pleasant chime, then go, “Ooh, someone started the new season of Ted Lasso.” I have about 25 regular users, so it’s just like a fun little thing that happens randomly. You can choose which users are allowed to appear on MediaWall, and Anonymous Mode lets you show others under a shared anonymous identity instead. Sounds, usernames, and avatars are all optional.
 
 It’s also been particularly useful when my wife and I host parties. One of us plays music via Bluetooth on our speakers, and the display shows us what’s playing, complete with backdrop artwork, album cover, and media info, whether I play music from Navidrome or my wife plays music from Spotify. When someone asks what’s playing, we just tell them to check the screen.
 
@@ -34,6 +34,8 @@ And when nothing’s playing at all, it falls back to [Immich Kiosk](https://git
 ![MediaWall monitor setup](src/screenshots/monitor_3.jpg)
 
 ![MediaWall on a monitor](src/screenshots/monitor_1.jpg)
+
+![MediaWall on a monitor, alternate view](src/screenshots/monitor_4.jpg)
 
 ![MediaWall monitor detail](src/screenshots/monitor_2.jpg)
 
@@ -55,19 +57,13 @@ And when nothing’s playing at all, it falls back to [Immich Kiosk](https://git
 
 ![MediaWall Grid](src/screenshots/ui_2.png)
 
-## ⚠️ Disclaimers
-
-MediaWall is under active development. There may be breaking changes, which will be highlighted in every release.
-
-Like [Pixelfin](https://github.com/nothing2obvi/pixelfin), this project is vibecoded with Codex. It's built with security in mind, but because it's a vibecoded self-hosted app, I can't promise it's hardened for hostile public exposure. Prioritize running it locally or behind access controls you trust.
-
 ## Intro
 
-In line with my ongoing obsession with Jellyfin artwork, as seen in my other project, [Pixelfin](https://github.com/nothing2obvi/pixelfin), I wanted to combine my appreciation for the Jellyfin Android TV screensaver with being able to glance over and see what people are watching or listening to on my Jellyfin and Navidrome servers.
+In line with my ongoing obsession with [Jellyfin](https://jellyfin.org) artwork, as seen in my other project, [Pixelfin](https://github.com/nothing2obvi/pixelfin), I wanted to combine my appreciation for the [Jellyfin Android TV](https://github.com/jellyfin/jellyfin-androidtv) screensaver with being able to glance over and see what people are watching or listening to on my Jellyfin and [Navidrome](https://www.navidrome.org) servers.
 
-Then I realized I had an old iPad doing absolutely nothing. I wanted something that could run on that, a Raspberry Pi connected to a display, or really any device with a browser. MediaWall was born.
+Then I realized I had an old iPad doing absolutely nothing. I wanted something that could run on that, a [Raspberry Pi](https://www.raspberrypi.com) connected to a display, or really any device with a browser. MediaWall was born.
 
-MediaWall is a display app for Jellyfin, Subsonic-compatible music servers (e.g. Navidrome), and external music sources (e.g. Spotify) via Multi-Scrobbler, built around three main features. Each display space also has a phone-friendly remote at the same route with `-remote` appended.
+MediaWall is a display app for Jellyfin, [Subsonic](https://www.subsonic.org)-compatible music servers (e.g. Navidrome), and external music sources (e.g. [Spotify](https://www.spotify.com)) via **[Multi-Scrobbler](https://github.com/FoxxMD/multi-scrobbler)**, built around three main features. Each display space also has a phone-friendly remote at the same route with `-remote` appended.
 
 The first, and most prominent, is **Now Playing**. It shows what's currently being watched or listened to, along with artwork, user information, media details, and optional sounds when sessions start or end. You can choose which users are allowed to appear, or use Anonymous Mode to hide selected users behind a shared anonymous identity (e.g. "someone"). Sounds can be global, assigned to individual users, or customized for Jellyfin collections, which can also use their own transition images.
 
@@ -75,9 +71,13 @@ The second is **Screensaver mode**, inspired by the Jellyfin Android TV screensa
 
 Third is **Wallpaper mode**. You can pause on an item you like and leave it as a static wallpaper, or favorite items and have MediaWall cycle through your own curated selection.
 
-When nothing is playing, MediaWall can cycle through library artwork, show the bundled MediaWall screensaver or your own custom logo, or hand the display over to an **Immich Kiosk** setup so it can double as a digital photo frame.
+When nothing is playing, MediaWall can cycle through library artwork, show the bundled MediaWall screensaver or your own [custom logo](docs/display-setup.md#custom-logos), or hand the display over to an **[Immich Kiosk](https://github.com/damongolding/immich-kiosk)** setup so it can double as a digital photo frame.
 
 Depending on how you use it, MediaWall can be a live window into your media servers, a Jellyfin-powered art display, or a very overengineered way to give an old iPad, Raspberry Pi, or spare screen something useful to do.
+
+**Disclaimer:** MediaWall is vibecoded with Codex. I use it regularly, it works well for me, and other people have found it useful too. That said, it’s still a self-hosted project built around my own media-server setup and ideas, not a hardened production app.
+
+**Security Note:** MediaWall is not built with internet-facing security as its primary use case. Run it locally or on a trusted private network unless you know how to secure it appropriately.
 
 ## Use Cases
 
@@ -85,13 +85,13 @@ Depending on how you use it, MediaWall can be a live window into your media serv
 
 Put MediaWall on an iPad, tablet, TV, or Raspberry Pi display in a shared room and use it as a live window into your media server.
 
-If someone is watching something on Jellyfin or listening to music through a Subsonic-compatible server, MediaWall can automatically show active sessions with backdrop artwork, logos, playback information, source icons, and, if you want, the name or avatar of the person using it.
+If someone is watching something on Jellyfin, listening through a Subsonic-compatible server, or using an external music service supported through Multi-Scrobbler, MediaWall can automatically show the active session with backdrop artwork, logos, playback information, source icons, and, if you want, the name or avatar of the person using it.
 
-So instead of asking, "What are we listening to?" or checking Jellyfin manually, you can just glance at the display.
+So instead of asking, "What are we listening to?" or checking your services manually, you can just glance at the display.
 
 ### Turn It Into a Homelab Playback Dashboard
 
-If you run Jellyfin for multiple people, MediaWall can also act as a simple visual dashboard for your server. Set it to watch all Jellyfin users, and the display will automatically show all active sessions.
+If you run Jellyfin for multiple people, MediaWall can also act as a simple visual dashboard for your server. You can show everyone or choose which Jellyfin users are allowed to appear. Anonymous Mode also lets you keep selected users on the display while replacing their identity with `someone`, or any other anonymous username you choose.
 
 It's an easy way to make activity on your server feel a little more visible and alive without opening an admin dashboard or staring at a list of sessions.
 
@@ -113,7 +113,7 @@ That's really the idea behind MediaWall: it can be a Now Playing display, a home
 - Shows active playback sessions from external music sources such as Spotify through Multi-Scrobbler.
 - Supports multiple MediaWall users per space, including Jellyfin `All` users.
 - Can show a configurable user-intro transition when a Now Playing session first appears.
-- Falls back to a default MediaWall screen, shuffled artwork, or an optional per-space Immich Kiosk display when nothing is playing.
+- Falls back to a default MediaWall screen with a bundled or [custom logo](docs/display-setup.md#custom-logos), shuffled artwork, or an optional per-space Immich Kiosk display when nothing is playing.
 - Provides a full-screen Wallpaper/Screensaver mode with library browsing, favorites, shuffle, logos, media info, transitions, and subtle backdrop motion.
 - Uses Jellyfin, Subsonic-compatible servers (e.g. Navidrome), and Multi-Scrobbler supported services (e.g. Spotify) backdrops/logos where available.
 - Subsonic-compatible servers (e.g. Navidrome) can drive a music-only wall using matching Jellyfin artist images, local artist files, or fetched artwork. Jellyfin is optional.
@@ -124,8 +124,6 @@ For ordinary Jellyfin media, MediaWall uses artwork from your server, and manual
 ## [Documentation](docs/README.md)
 
 We've included a full configuration example for a fictional family with two different MediaWall spaces. Start with [Bob, Alice, and Jacob](docs/configuration.md#bob-alice-and-jacob), then use [config.yml.example](config.yml.example) as a starting point for your own setup.
-
-Upgrading from v0.3.1? Read the [configuration migration notes](docs/upgrading.md) before starting v0.4.0.
 
 ## License
 

@@ -31,23 +31,37 @@ Use `LOG_LEVEL=debug` when troubleshooting playback, session cycling, scans, or 
 
 ## Bob, Alice, and Jacob
 
-Bob Jones runs Jellyfin and Navidrome for his wife Alice, their son Jacob, and a few other Jellyfin users. Each family member has a MediaWall user that joins their Jellyfin account, Navidrome credentials, and Spotify activity from Multi-Scrobbler. Bob supplies the global Jellyfin admin API key. Nobody's Jellyfin password goes into MediaWall.
+### General Notes
 
-Their living-room screen shows Bob, Alice, and Jacob by name, with avatars when available. Other Jellyfin users still appear, but as **someone** with the anonymous avatar. The `All` user mapping catches those Jellyfin sessions; it doesn't add other Navidrome or Spotify accounts. Specific family mappings take priority and don't create duplicate sessions. A space's `users: [All]` includes every configured mapping, including that catch-all.
+Bob Jones runs Jellyfin and Navidrome for his wife Alice, their son Jacob, and a few other Jellyfin users. Bob supplies the global Jellyfin admin API key. Nobody's individual Jellyfin password goes into MediaWall; Navidrome credentials belong to each mapped user.
 
-For Wallpaper and Screensaver browsing, the living room uses Shows, Anime, Movies, and Music. That list doesn't limit Now Playing. The separate `now_playing.ignored_libraries: [Fitness]` keeps workouts off this screen, including its session count, transitions, and sounds. When nothing's playing, it opens Immich Kiosk using a private URL from `.env`.
+Bob, Alice, and Jacob each have one MediaWall identity across Jellyfin, Navidrome, and Spotify. By default, MediaWall uses the avatar from their mapped Jellyfin account first, then their configured custom avatar. Setting `avatars.prefer_custom_avatars: true` reverses that priority and uses the custom avatar first across all sources.
 
-Bob likes Star Wars, so he supplies `app/sounds/starwars.mp3` and `app/collections/starwars.png`. In both spaces, a matching Jellyfin collection gets that sound and transition image. The rule's `users: [All]` applies to anyone whose session is eligible for that space; it doesn't bring in additional users. Collection titles match without regard to case.
+Their `custom_avatar` entries refer to files such as `app/avatars/bob.png`. See [user avatars](configuration-reference.md#user-avatars) for formats and legacy-supported paths. Service logos are separate; see [icons](configuration-reference.md#built-in-and-custom-icons).
 
-Bob's homelab display is different. He wants to see everyone by name, but excludes Alice's cousin Monica because all she ever watches is The Great British Bake Off, and he's tired of seeing it appear on MediaWall. Anonymous Mode would still show her playback as `someone`; `jellyfin.excluded_jellyfin_users: [monica]` removes her Jellyfin session from this space entirely. The idle screen uses MediaWall's DVD mode. The homelab doesn't inherit the living room's privacy or Fitness filter; each space stands on its own.
+The `All` mapping catches other Jellyfin users; it doesn't add Navidrome or Spotify accounts. Specific family mappings take priority without duplicating sessions. A space's `users: [All]` includes every configured mapping, including the catch-all.
 
-The detailed `livingroom` section shows the available settings, mostly at their defaults. `homelab` stays short to show how much you can leave out. Turn off optional artwork providers you don't use, provide the two Star Wars files, and adjust library names and music mounts for your server. Copy [config.yml.example](../config.yml.example) and [.env.example](../.env.example) to get started.
+For Spotify, each person has a separate secret. Route `spotify-bob` to `mediawall-bob`, `spotify-alice` to `mediawall-alice`, and `spotify-jacob` to `mediawall-jacob` in Multi-Scrobbler. The [External Music walkthrough](external-music.md#multiple-users) covers the client and token setup.
 
-Avatars use the mapped Jellyfin account first across all playback sources, then a source-specific custom image, then no avatar. Anonymous Mode replaces either real avatar with the anonymous one. See [user avatars](configuration-reference.md#user-avatars) for paths and supported formats, and [icons](configuration-reference.md#built-in-and-custom-icons) for packaged and custom source logos.
+Per-space Jellyfin filters use actual Jellyfin usernames. A non-empty `included_jellyfin_users` list limits eligibility; `excluded_jellyfin_users` wins if a name appears in both. Matching ignores case and surrounding spaces. Empty or omitted lists add no restriction, and neither filter affects other playback sources.
 
-For Spotify, use three separate secrets and route `spotify-bob` to `mediawall-bob`, `spotify-alice` to `mediawall-alice`, and `spotify-jacob` to `mediawall-jacob`. The [External Music walkthrough](external-music.md#multiple-users) covers this and explains which Multi-Scrobbler sources can supply live playback.
+### Living Room
 
-The new per-space Jellyfin filters use actual Jellyfin usernames, not MediaWall user keys. A non-empty `included_jellyfin_users` list limits eligibility to those usernames; `excluded_jellyfin_users` removes matches even if they're included. Matching ignores case and surrounding whitespace. Omitted or empty lists add no restrictions. These filters leave existing user mappings, catch-all behavior, library exclusions, and other playback sources alone. See the [filter reference](configuration-reference.md#space-jellyfin-user-filters).
+Bob, Alice, and Jacob appear normally, with avatars when available. Anonymous Mode shows other eligible Jellyfin users as `someone`, using the anonymous avatar instead of their real identity.
+
+The `libraries` list controls Wallpaper/Screensaver browsing, not which active playback sessions can appear.
+
+This screen browses Shows, Anime, Movies, and Music. The separate `now_playing.ignored_libraries: [Fitness]` keeps workouts out of Now Playing, including session counts, transitions, and sounds. When nothing's playing, it opens Immich Kiosk using the private URL in `.env`. The screensaver badge says `Featured on jones-server`.
+
+Bob likes Star Wars, so he supplies `app/sounds/starwars.mp3` and `app/collections/starwars.png`. Matching Jellyfin collections use that sound and transition image. The collection rule's `users: [All]` applies to anyone already eligible for the space; it doesn't add users. The title regex ignores case.
+
+### Homelab
+
+Bob wants his homelab display to show everyone by name, but he excludes Alice's cousin Monica because all she ever watches is **The Great British Bake Off**, and he's tired of seeing it appear on MediaWall. Anonymous Mode would still show her playback as `someone`; `excluded_jellyfin_users` removes her Jellyfin session from the space entirely.
+
+This space doesn't enable Anonymous Mode. It uses MediaWall's DVD fallback and the same Star Wars collection rule. It doesn't inherit the living room's privacy or Fitness filter; each space stands on its own.
+
+The detailed `livingroom` section shows the available settings, mostly at their defaults. `homelab` stays short to show how much you can leave out. Turn off providers you don't use, supply the Star Wars files, and adjust library names and music mounts. Copy [config.yml.example](../config.yml.example) and [.env.example](../.env.example) to get started.
 
 <!-- BEGIN CONFIG EXAMPLE: kept in sync by server/household.test.ts -->
 ```yaml
@@ -58,6 +72,10 @@ The new per-space Jellyfin filters use actual Jellyfin usernames, not MediaWall 
 # Most livingroom values are defaults. Privacy, identity display, libraries, collections,
 # the badge text, and Immich Kiosk are this family's choices.
 
+avatars:
+  # false: mapped Jellyfin avatar first, custom avatar as fallback.
+  # true: custom first across Jellyfin, Navidrome, Spotify, and other mapped sources.
+  prefer_custom_avatars: false
 server:
   port: 1221
 library:
@@ -127,20 +145,23 @@ image_providers:
 aliases:
   artists: {}
 users:
-  # Mapped Jellyfin avatars win across sources; custom avatars are the fallback.
+  # One identity and resolved avatar per person across sources.
   # Each person has their own Spotify source and token. Route spotify-bob to
   # mediawall-bob, spotify-alice to mediawall-alice, and spotify-jacob to mediawall-jacob.
   bob:
+    custom_avatar: bob # ./app/avatars/bob.png (or another supported format)
     jellyfin_user: ${JELLYFIN_BOB_USER}
     subsonic_user: ${SUBSONIC_BOB_USER}
     subsonic_password: ${SUBSONIC_BOB_PASSWORD}
     external_music_token: ${EXTERNAL_MUSIC_BOB_TOKEN}
   alice:
+    custom_avatar: alice # ./app/avatars/alice.png (or another supported format)
     jellyfin_user: ${JELLYFIN_ALICE_USER}
     subsonic_user: ${SUBSONIC_ALICE_USER}
     subsonic_password: ${SUBSONIC_ALICE_PASSWORD}
     external_music_token: ${EXTERNAL_MUSIC_ALICE_TOKEN}
   jacob:
+    custom_avatar: jacob # ./app/avatars/jacob.png (or another supported format)
     jellyfin_user: ${JELLYFIN_JACOB_USER}
     subsonic_user: ${SUBSONIC_JACOB_USER}
     subsonic_password: ${SUBSONIC_JACOB_PASSWORD}
@@ -179,14 +200,13 @@ spaces:
       cycle_users: false
       cycle_interval_seconds: 15
       session_cleanup:
-        paused_after_seconds: 15
+        paused_after_seconds: 5
         missing_after_seconds: 5
       session_timer:
         enabled: true
         size: 42
       session_count:
-        enabled: true
-        font_size: 13
+        mode: small
       user_transition:
         enabled: true
         duration_seconds: 5

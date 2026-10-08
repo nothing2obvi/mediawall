@@ -38,6 +38,27 @@ export class SourceAvatarStore {
     timer.unref();return ()=>clearInterval(timer);
   }
 
+  customAvatarPath(reference: string) {
+    if (!safeSegment(reference) || reference === "." || reference === "..") return undefined;
+    const extension = path.extname(reference);
+    const names = extension ? (supportedAvatarExtensions.has(extension.toLowerCase()) ? [reference] : [])
+      : [...supportedAvatarExtensions].map(extension => `${reference}${extension}`);
+    for (const name of names) {
+      const candidate = path.resolve(this.root, name);
+      if (path.dirname(candidate) !== this.root) continue;
+      const stat = fs.lstatSync(candidate, {throwIfNoEntry: false});
+      if (stat?.isFile() && !stat.isSymbolicLink()) return candidate;
+    }
+    return undefined;
+  }
+
+  customAvatarUrl(reference: string) {
+    const file = this.customAvatarPath(reference);
+    if (!file) return undefined;
+    const version = crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex").slice(0,24);
+    return `/api/avatars/custom/${encodeURIComponent(reference)}?v=${version}`;
+  }
+
   avatarUrl(source: NowPlayingSource, username: string) {
     const file = this.avatarPath(source, username);
     if (!file) return undefined;

@@ -1,3 +1,4 @@
+import { logger } from "./logger.js";
 import crypto from "node:crypto";
 import type { AppConfig, NowPlayingSource, NowPlayingState } from "./types.js";
 
@@ -13,7 +14,9 @@ type ExternalMusicSession = NowPlayingState & {
 export class ExternalMusicReceiver {
   private sessions = new Map<string, ExternalMusicSession>();
 
-  constructor(private readonly config: AppConfig) {}
+  constructor(private readonly config: AppConfig) {
+    if (config.external_music.enabled) logger.info("External music: ListenBrainz playing_now carries track metadata, not pause/stop state. Missing updates expire after the greater of session_timeout_seconds and track duration, plus track_transition_grace_seconds; this behavior remains supported.");
+  }
 
   configured() {
     return this.config.external_music.enabled;

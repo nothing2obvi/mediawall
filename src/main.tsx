@@ -1,3 +1,4 @@
+import { SessionCount } from "./session-count";
 import { MusicSongTitle, type MusicVideoIndicator } from "./music-song-title";
 import { soundSourceAllowed } from "./sound-sources";
 import { badgeIdentity, transitionIdentity } from "./identity-presentation";
@@ -252,8 +253,8 @@ type Snapshot = {
         size: number;
       };
       session_count: {
-        enabled: boolean;
-        font_size: number;
+        mode: "small" | "large" | false;
+        font_size?: number;
       };
       user_transition: {
         enabled: boolean;
@@ -565,8 +566,6 @@ function App() {
   const seenControlCommandSteps = useRef(new Set<string>());
   const quietSuppressedStarts = useRef(new Set<string>());
   const activeSoundSessions = useRef(new Map<string, NonNullable<Snapshot["soundSessions"]>[number]>());
-  const continuousInactiveSince = useRef(new Map<string, number>());
-  const continuousResumeEligible = useRef(new Map<string, boolean>());
   const lastVisibleNowPlayingKey = useRef<string | undefined>(undefined);
   const nowPlayingBackdropSignatures = useRef(new Map<string, string>());
   const seenVisibleNowPlayingKeys = useRef(new Set<string>());
@@ -913,17 +912,14 @@ function App() {
     if (route.remote || !snapshot || !soundConfig?.enabled) {
       activeSoundSessions.current.clear();
       quietSuppressedStarts.current.clear();
-      continuousResumeEligible.current.clear();
       return;
     }
     if (snapshot.state.mode !== "now-playing") {
       activeSoundSessions.current.clear();
       quietSuppressedStarts.current.clear();
-      continuousResumeEligible.current.clear();
       return;
     }
 
-    const currentTimestamp = Date.now();
     const quiet = quietHoursActive(soundConfig.quiet_hours);
     const activeSessions = (snapshot.soundSessions ?? []).filter((session) => soundSourceAllowed(session.source, soundConfig));
     const activeKeys = new Set(activeSessions.map((session) => session.key));
@@ -933,8 +929,6 @@ function App() {
       if (activeKeys.has(key)) continue;
       previousSessions.delete(key);
       quietSuppressedStarts.current.delete(key);
-      continuousResumeEligible.current.delete(key);
-      if (session.continuous) continuousInactiveSince.current.set(key, currentTimestamp);
       if (soundsInitialized.current && soundConfig.session_end.enabled && soundSourceAllowed(session.source, soundConfig) && !quiet) {
         const tone = safeToneName(session.endSoundTone, soundConfig.available)
           ?? safeToneName(soundConfig.session_end.tone, soundConfig.available);
@@ -943,12 +937,6 @@ function App() {
     }
 
     for (const session of activeSessions) {
-      if (session.continuous && continuousInactiveSince.current.has(session.key)) {
-        const inactiveSince = continuousInactiveSince.current.get(session.key) ?? currentTimestamp;
-        const cooldownMs = Math.max(0, soundConfig.session_start.retrigger_after_inactive_seconds) * 1000;
-        continuousResumeEligible.current.set(session.key, currentTimestamp - inactiveSince >= cooldownMs);
-        continuousInactiveSince.current.delete(session.key);
-      }
       previousSessions.set(session.key, session);
     }
 
@@ -965,16 +953,12 @@ function App() {
     const wasQuietSuppressed = quietSuppressedStarts.current.has(visibleSession.key);
     const isDuplicateMedia = seenSoundMedia.current.has(mediaKey);
     const isNewUser = !seenSoundUsers.current.has(visibleSession.userKey);
-    const resumeEligible = continuousResumeEligible.current.get(visibleSession.key);
-    const continuousCooldownAllowsStart = !visibleSession.continuous || resumeEligible !== false;
-    const startEligible = visibleSession.continuous
-      ? isNewSoundSession || resumeEligible === true
-      : isNewSoundSession;
-
     const transitionEvent = snapshot.userTransitionEvent;
     const eventMatchesVisibleSession = transitionEvent?.sessionKey === visibleSession.key;
+    // The server emits a fresh event only for a new eligible lifecycle in this space.
+    const startEligible = visibleSession.continuous ? eventMatchesVisibleSession : isNewSoundSession;
+
     const initialSoundPass = !soundsInitialized.current;
-    continuousResumeEligible.current.delete(visibleSession.key);
     seenSoundSessions.current.add(visibleSession.key);
     seenSoundMedia.current.add(mediaKey);
     seenSoundUsers.current.add(visibleSession.userKey);
@@ -987,7 +971,6 @@ function App() {
     if (initialSoundPass && visibleSession.continuous && transitionEvent.startedAt < Date.now() - 10_000) return;
     if (!startEligible) return;
     if (wasQuietSuppressed) return;
-    if (!continuousCooldownAllowsStart) return;
     if (!visibleSession.continuous && isDuplicateMedia) return;
     if (soundConfig.trigger === "new_user_session" && !isNewUser) return;
     if (quiet) {
@@ -2582,7 +2565,7 @@ function SessionTimer({ snapshot }: { snapshot?: Snapshot }) {
     && !snapshot.state.nowPlayingCyclePaused
     && (sessionCount ?? 0) > 1;
   const showTimer = Boolean(canShow && timerConfig?.enabled);
-  const showCount = Boolean(canShow && countConfig?.enabled && sessionPosition && sessionCount);
+  const showCount = Boolean(canShow && countConfig?.mode !== false && sessionPosition && sessionCount);
   if (!showTimer && !showCount) return null;
   return (
     <div
@@ -2591,7 +2574,7 @@ function SessionTimer({ snapshot }: { snapshot?: Snapshot }) {
       aria-hidden="true"
       style={{
         "--session-timer-size": `${timerConfig?.size ?? 42}px`,
-        "--session-timer-count-size": `${countConfig?.font_size ?? 13}px`,
+        "--session-timer-count-size": `${countConfig?.mode === "large" ? 32 : countConfig?.font_size ?? 13}px`,
         "--session-timer-duration": `${Math.max(1, interval)}s`
       } as React.CSSProperties}
     >
@@ -2602,7 +2585,7 @@ function SessionTimer({ snapshot }: { snapshot?: Snapshot }) {
         </svg>
       )}
       {showCount && sessionPosition && sessionCount && (
-        <div className="session-timer-count">{formatSessionCount(sessionPosition, sessionCount)}</div>
+        <SessionCount mode={countConfig?.mode ?? "small"} position={sessionPosition} total={sessionCount} />
       )}
     </div>
   );
@@ -3462,10 +3445,6 @@ function mediaKind(artwork?: ArtworkRef, now?: Snapshot["nowPlaying"]): "movie" 
   if (isEpisode) return "episode";
   if (isMusic) return "music";
   return "other";
-}
-
-function formatSessionCount(position: number, count: number) {
-  return `${position} of ${count}`;
 }
 
 function sourceLabel(source: "jellyfin" | "subsonic" | "sounds" | "custom_images" | "library", serverName = "Navidrome") {

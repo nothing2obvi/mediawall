@@ -12,6 +12,7 @@ export interface MediaWallUser {
   subsonic_user?: string;
   subsonic_password?: string;
   external_music_token?: string;
+  custom_avatar?: string;
   sound?: string;
   end_sound?: string;
 }
@@ -48,8 +49,8 @@ export interface DisplayConfig {
       size: number;
     };
     session_count: {
-      enabled: boolean;
-      font_size: number;
+      mode: "small" | "large" | false;
+      font_size?: number;
     };
     user_transition: {
       enabled: boolean;
@@ -219,6 +220,7 @@ export type BackdropAnimation =
   | "zoom";
 
 export interface AppConfig {
+  avatars: { prefer_custom_avatars: boolean };
   library: { directory: string };
   server: {
     port: number;

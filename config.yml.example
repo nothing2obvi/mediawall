@@ -5,6 +5,10 @@
 # Most livingroom values are defaults. Privacy, identity display, libraries, collections,
 # the badge text, and Immich Kiosk are this family's choices.
 
+avatars:
+  # false: mapped Jellyfin avatar first, custom avatar as fallback.
+  # true: custom first across Jellyfin, Navidrome, Spotify, and other mapped sources.
+  prefer_custom_avatars: false
 server:
   port: 1221
 library:
@@ -74,20 +78,23 @@ image_providers:
 aliases:
   artists: {}
 users:
-  # Mapped Jellyfin avatars win across sources; custom avatars are the fallback.
+  # One identity and resolved avatar per person across sources.
   # Each person has their own Spotify source and token. Route spotify-bob to
   # mediawall-bob, spotify-alice to mediawall-alice, and spotify-jacob to mediawall-jacob.
   bob:
+    custom_avatar: bob # ./app/avatars/bob.png (or another supported format)
     jellyfin_user: ${JELLYFIN_BOB_USER}
     subsonic_user: ${SUBSONIC_BOB_USER}
     subsonic_password: ${SUBSONIC_BOB_PASSWORD}
     external_music_token: ${EXTERNAL_MUSIC_BOB_TOKEN}
   alice:
+    custom_avatar: alice # ./app/avatars/alice.png (or another supported format)
     jellyfin_user: ${JELLYFIN_ALICE_USER}
     subsonic_user: ${SUBSONIC_ALICE_USER}
     subsonic_password: ${SUBSONIC_ALICE_PASSWORD}
     external_music_token: ${EXTERNAL_MUSIC_ALICE_TOKEN}
   jacob:
+    custom_avatar: jacob # ./app/avatars/jacob.png (or another supported format)
     jellyfin_user: ${JELLYFIN_JACOB_USER}
     subsonic_user: ${SUBSONIC_JACOB_USER}
     subsonic_password: ${SUBSONIC_JACOB_PASSWORD}
@@ -126,14 +133,13 @@ spaces:
       cycle_users: false
       cycle_interval_seconds: 15
       session_cleanup:
-        paused_after_seconds: 15
+        paused_after_seconds: 5
         missing_after_seconds: 5
       session_timer:
         enabled: true
         size: 42
       session_count:
-        enabled: true
-        font_size: 13
+        mode: small
       user_transition:
         enabled: true
         duration_seconds: 5

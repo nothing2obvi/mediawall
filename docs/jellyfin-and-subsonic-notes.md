@@ -88,7 +88,7 @@ Changing channels doesn’t immediately send the display to fallback. MediaWall 
 
 ### Stopped sessions reported as playing
 
-Some Jellyfin clients keep reporting the same few seconds as playing after you stop or pause. MediaWall treats these sessions as inactive after `now_playing.session_cleanup.paused_after_seconds` (15 seconds by default). They reappear when playback actually continues. Rewinding normally still works.
+Some Jellyfin clients keep reporting the same few seconds as playing after you stop or pause. MediaWall treats these sessions as inactive after `now_playing.session_cleanup.paused_after_seconds` (5 seconds by default). They reappear when playback actually continues. Rewinding normally still works.
 
 ### Music videos
 
@@ -102,7 +102,7 @@ Session sounds treat the `Music` and `Music Videos` Jellyfin libraries as contin
 
 ### User avatars and external icons
 
-MediaWall can reuse a mapped Jellyfin avatar for Subsonic playback. If it's unavailable, add a custom image such as `./app/avatars/subsonic/bob.png`. These are MediaWall avatars, not avatars provided by Navidrome. See [user avatars](configuration-reference.md#user-avatars) for the shared priority and formats.
+Subsonic doesn't supply the avatar MediaWall displays. MediaWall resolves one through the mapped MediaWall identity. Use `custom_avatar: bob` with `./app/avatars/bob.png`; the global avatar preference selects Jellyfin-first or custom-first. Existing source-specific folders remain supported. See [user avatars](configuration-reference.md#user-avatars).
 
 The same custom server-icon directory also supports external-music source icons. See the [complete icon reference](configuration-reference.md#built-in-and-custom-icons) for packaged keys, custom filenames, and formats.
 

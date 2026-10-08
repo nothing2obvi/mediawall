@@ -7,6 +7,7 @@ import path from "node:path";
 type JellyfinItem = Record<string, any>;
 
 export class JellyfinClient {
+  private useItemQuery = false;
   private editedItems = new Set<string>();
   private editedItemsReady?: Promise<void>;
   private async loadEditedItems() {
@@ -222,7 +223,7 @@ export class JellyfinClient {
     const musicItem = await this.musicDisplayItem(item, displayConfig.display.music_artist_images);
     const artistRefs = this.artistRefs(musicItem, displayConfig.display.music_artist_images);
     const artistArtworks = await Promise.all(artistRefs.map(async (ref) => {
-      const artist = ref.id ? await this.getItem(ref.id).catch(() => undefined) : await this.findArtist(ref.name).catch(() => undefined);
+      const artist = await this.artistFromRef(ref).catch(() => undefined);
       const artwork = artist ? this.artworkFromItem(artist, artist.Name ?? ref.name ?? "Artist", "MusicArtist") : undefined;
       return { artist, artwork, name: artist?.Name ?? ref.name };
     }));
@@ -565,7 +566,18 @@ export class JellyfinClient {
 
   private async getItem(itemId: string) {
     await this.loadEditedItems();
-    return this.getJson<JellyfinItem>(`/Items/${encodeURIComponent(itemId)}`);
+    if (!this.useItemQuery) {
+      try { return await this.getJson<JellyfinItem>(`/Items/${encodeURIComponent(itemId)}`); }
+      catch (error) {
+        if (!/Jellyfin (400|404|405)\b/.test(String(error))) throw error;
+        this.useItemQuery = true;
+        logger.info("Jellyfin item-detail endpoint unavailable; using the supported Items query for metadata and artwork.");
+      }
+    }
+    const result = await this.getJson<{Items?: JellyfinItem[]}>(`/Items?${new URLSearchParams({Ids: itemId, Fields: "ImageTags,BackdropImageTags,Artists,ArtistItems,AlbumArtist,AlbumArtists,ProviderIds"})}`);
+    const item = result.Items?.find(item => String(item.Id).toLowerCase() === itemId.toLowerCase());
+    if (!item) throw new Error("Jellyfin item not found in Items query");
+    return item;
   }
 
   private async findSeries(name?: string) {
@@ -583,17 +595,19 @@ export class JellyfinClient {
   }
 
   private async findArtist(name?: string) {
-    if (!name) return undefined;
-    const params = new URLSearchParams({
-      SearchTerm: name,
-      IncludeItemTypes: "MusicArtist",
-      Recursive: "true",
-      Limit: "1",
-      Fields: "ImageTags,BackdropImageTags"
-    });
-    const response = await this.getJson<{ Items?: JellyfinItem[] }>(`/Items?${params}`);
-    return (response.Items ?? []).find((entry) => String(entry.Name ?? "").toLowerCase() === name.toLowerCase())
-      ?? response.Items?.[0];
+    if (!name?.trim() || !this.configured()) return undefined;
+    const normalize = (value: string) => value.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+    const params = new URLSearchParams({SearchTerm: name.trim(), IncludeItemTypes: "MusicArtist", Recursive: "true", Limit: "100", Fields: "ImageTags,BackdropImageTags"});
+    const rank = (item: JellyfinItem) => Number(Boolean(item.BackdropImageTags?.length)) * 2 + Number(Boolean(item.ImageTags?.Logo));
+    let matches: JellyfinItem[] = [];
+    for (const endpoint of ["/Items", "/Artists", "/Artists/AlbumArtists"]) {
+      const response = await this.getJson<{Items?: JellyfinItem[]}>(`${endpoint}?${params}`).catch(() => undefined);
+      matches.push(...(response?.Items ?? []).filter(item => normalize(String(item.Name ?? "")) === normalize(name)));
+      matches.sort((a,b) => rank(b) - rank(a));
+      if (matches[0] && rank(matches[0]) === 3) break;
+    }
+    // Never select the first unrelated search result just because Jellyfin ranked it first.
+    return matches[0];
   }
 
   private async musicDisplayItem(item: JellyfinItem, role: DisplayConfig["display"]["music_artist_images"]) {
@@ -908,12 +922,14 @@ export class JellyfinClient {
       ?? selectedArtist.artist?.Name
       ?? selectedArtist.name
       ?? this.artistName(musicItem, "albumartists");
-    const trackRefs = this.artistRefs(rawItem, "artists");
+    const rawRefs = this.artistRefs(rawItem, "artists");
+    const trackRefs = rawRefs.length ? rawRefs : this.artistRefs(musicItem, "artists");
     const hasMultipleArtistCredit = splitArtistCredit(text).length > 1;
-    const singleArtist = !hasMultipleArtistCredit && trackRefs.length === 1
+    const singleArtist = !hasMultipleArtistCredit && trackRefs.length > 0
       ? await this.artistFromRef(trackRefs[0]).catch(() => undefined)
       : undefined;
-    const logoArtist = singleArtist;
+    const sameArtist = (selectedArtist.artist?.Name ?? selectedArtist.name ?? "").trim().toLowerCase() === text?.trim().toLowerCase();
+    const logoArtist = singleArtist ?? (!hasMultipleArtistCredit && sameArtist ? selectedArtist.artist : undefined);
     const logoArtwork = logoArtist ? this.artworkFromItem(logoArtist, logoArtist.Name ?? text ?? "Artist", "MusicArtist") : undefined;
     return {
       text,
@@ -923,7 +939,10 @@ export class JellyfinClient {
   }
 
   private async artistFromRef(ref: { id?: string; name?: string }) {
-    if (ref.id) return this.getItem(ref.id);
+    if (ref.id) {
+      const item = await this.getItem(ref.id).catch(() => undefined);
+      if (item) return item;
+    }
     return this.findArtist(ref.name);
   }
 

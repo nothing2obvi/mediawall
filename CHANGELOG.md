@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.3 - 2026-10-08
+
+- Added `small`/`large` session counter modes; small retains the existing layout, and large shows the current number centered below the timer. Legacy counter settings remain functional with migration notices.
+- Added canonical per-user custom avatars and `avatars.prefer_custom_avatars`, preserving source-specific legacy paths and Anonymous Mode priority.
+- Fixed first-play events being consumed across spaces and continuous sessions never becoming eligible again after inactivity.
+- Fixed Jellyfin artist-detail fallback for servers returning 400 from `/Items/{id}`, duplicate artist references suppressing single-artist logos, and overly narrow artist searches. Artist searches now prefer exact normalized matches with artwork rather than the first fuzzy result.
+- Documented ListenBrainz pause/stop limitations and preserved duration-aware external expiry. Recommended a 5-second Multi-Scrobbler source interval, independently of its client update timing.
+- Changed the reported-pause/stale cleanup default from 15 to 5 seconds. Explicit values remain supported. This shared setting affects native sources reporting state; it does not enable unavailable Spotify pause detection. Set `15` to keep the old default.
+- Updated README wording/links, custom-logo instructions, avatar setup, and the Jones household walkthrough. No configuration settings were removed; see [Upgrading](docs/upgrading.md#upgrading-from-v052-to-v053) for counter migration and defaults.
+- Updated monitor and Navidrome screenshots, added another monitor view, and removed identifying screenshot metadata without re-encoding image data.
+
+### Upgrade notes
+
+No configuration keys were removed. Legacy session-counter settings remain supported with migration notices. The pause/stale cleanup default is now 5 seconds instead of 15; set `session_cleanup.paused_after_seconds: 15` to retain the previous default. Custom avatars take priority only when `avatars.prefer_custom_avatars` is enabled. Spotify pause detection remains unavailable through the current Multi-Scrobbler ListenBrainz payloads.
+
+Docker images: `ghcr.io/nothing2obvi/mediawall:v0.5.3` and `ghcr.io/nothing2obvi/mediawall:latest`, for Linux AMD64 and ARM64.
+
 ## 0.5.2 - 2026-10-04
 
 - Grouped sound switches under `sounds.sources`, including an independent external-music switch. Flat Jellyfin, Subsonic, and external-music switches remain legacy aliases; explicit nested values win. Continuous-session inactivity remains configurable with a 30-second default.

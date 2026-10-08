@@ -107,14 +107,13 @@ spaces:
       cycle_users: true
       cycle_interval_seconds: 15
       session_cleanup:
-        paused_after_seconds: 15
+        paused_after_seconds: 5
         missing_after_seconds: 5
       session_timer:
         enabled: true
         size: 42
       session_count:
-        enabled: true
-        font_size: 13
+        mode: small
       user_transition:
         enabled: true
         duration_seconds: 5
@@ -258,14 +257,13 @@ spaces:
       cycle_users: false
       cycle_interval_seconds: 15
       session_cleanup:
-        paused_after_seconds: 15
+        paused_after_seconds: 5
         missing_after_seconds: 5
       session_timer:
         enabled: true
         size: 42
       session_count:
-        enabled: true
-        font_size: 13
+        mode: small
       user_transition:
         enabled: true
         duration_seconds: 5
@@ -410,14 +408,13 @@ spaces:
       cycle_users: true
       cycle_interval_seconds: 15
       session_cleanup:
-        paused_after_seconds: 15
+        paused_after_seconds: 5
         missing_after_seconds: 5
       session_timer:
         enabled: true
         size: 42
       session_count:
-        enabled: true
-        font_size: 13
+        mode: small
       user_transition:
         enabled: true
         duration_seconds: 5

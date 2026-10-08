@@ -1,3 +1,5 @@
+import { soundSessionIdentity, soundSessionContinuous, soundUserIdentity, playbackSessionKey } from "./sound-sessions.js";
+import { SessionStarts } from "./session-starts.js";
 import { playbackOwner, userAvatar, dedupePlaybackCandidates } from "./user-presentation.js";
 import { normalizeSubsonicState } from "./subsonic-compat.js";
 import { resolveServerIcon, serverIconPresentation } from "./server-icons.js";
@@ -114,7 +116,7 @@ type SpaceRuntime = {
   startedAt: number;
   nextTransitionAt?: number;
   backdropIndex: number;
-  shownUserTransitions: Set<string>;
+  sessionStarts: SessionStarts;
   selectedSessionKey?: string;
   sessionBackdropIndexes: Map<string, number>;
   playbackPolls: number;
@@ -122,7 +124,6 @@ type SpaceRuntime = {
   userTransitionEvent?: { id: string; sessionKey: string; startedAt: number; expiresAt: number };
 };
 const spaceRuntimes = new Map<string, SpaceRuntime>();
-const shownRuntimeUserTransitions = new Set<string>();
 const spaceSubscribers = new Map<string, Set<express.Response>>();
 type CachedImageResult = {
   status: number;
@@ -265,7 +266,9 @@ app.use(["/api/jellyfin", "/api/subsonic", "/api/external-artwork", "/api/avatar
 });
 
 app.get("/api/avatars/:source/:username", (req, res) => {
-  const avatarPath = sourceAvatars.avatarPath(String(req.params.source), String(req.params.username));
+  const avatarPath = req.params.source === "custom"
+    ? sourceAvatars.customAvatarPath(String(req.params.username))
+    : sourceAvatars.avatarPath(String(req.params.source), String(req.params.username));
   if (!avatarPath) {
     res.sendStatus(404);
     return;
@@ -1121,6 +1124,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
     state = states.advanceTransition(space, undefined, displayConfig, { lastNowPlayingSignature: nowPlaying.signature });
   }
 
+  runtime.sessionStarts.observe(playbackDetails?.soundSessions ?? [], now, displayConfig.now_playing.sounds.session_start.retrigger_after_inactive_seconds * 1000);
   if (mode === "now-playing" && nowPlaying?.playing) {
     const sessionKey = nowPlaying.publicSoundSessionKey ?? nowPlaying.publicSessionId;
     if (sessionKey) {
@@ -1140,9 +1144,7 @@ async function buildSnapshot(space: string, displayConfig: DisplayConfig): Promi
         : Math.floor((now - runtime.startedAt) / (Math.max(1, displayConfig.now_playing.multiple_backdrops.interval_seconds) * 1000));
       if (selectedChanged) touchSpace(space);
     }
-    if (sessionKey && !shownRuntimeUserTransitions.has(sessionKey)) {
-      shownRuntimeUserTransitions.add(sessionKey);
-      runtime.shownUserTransitions.add(sessionKey);
+    if (sessionKey && runtime.sessionStarts.select(sessionKey)) {
       const duration = Math.max(0.5, displayConfig.now_playing.user_transition.duration_seconds) * 1000;
       runtime.userTransitionEvent = {
         id: crypto.randomUUID(),
@@ -1194,7 +1196,7 @@ function spaceRuntime(space: string): SpaceRuntime {
     revision: 1,
     startedAt: Date.now(),
     backdropIndex: 0,
-    shownUserTransitions: new Set(),
+    sessionStarts: new SessionStarts(),
     sessionBackdropIndexes: new Map(),
     playbackPolls: 0,
     playbackDetectionStartedAt: Date.now()
@@ -1924,7 +1926,7 @@ async function controlCommandFromRequest(body: unknown, displayConfig: DisplayCo
     const avatarUser = requestedUser ?? (!name ? firstUser : undefined);
     const avatar = identity ? identity.transitionAvatarUrl : avatarUser
       ? await userAvatar({source: "jellyfin", user: avatarUser.jellyfin_user ?? username,
-          playing: true, paused: false, mediaWallUserKey: avatarUser.key}, avatarUser, displayConfig, jellyfin, sourceAvatars)
+          playing: true, paused: false, mediaWallUserKey: avatarUser.key}, avatarUser, displayConfig, jellyfin, sourceAvatars, config.avatars.prefer_custom_avatars)
       : undefined;
     return {
       ok: true,
@@ -2630,7 +2632,7 @@ async function activePlaybackCandidates(space: string, displayConfig: DisplayCon
   }
   return Promise.all(dedupePlaybackCandidates(candidates).map(async playback => {
     const user = config.users[playback.mediaWallUserKey ?? ""] ?? displayConfig.users.find(user => user.name === playback.mediaWallUser);
-    return user ? {...playback, displayUserAvatarUrl: await userAvatar(playback, user, displayConfig, jellyfin, sourceAvatars)} : playback;
+    return user ? {...playback, displayUserAvatarUrl: await userAvatar(playback, user, displayConfig, jellyfin, sourceAvatars, config.avatars.prefer_custom_avatars)} : playback;
   }));
 }
 
@@ -2959,66 +2961,6 @@ function publicMediaKey(state: NowPlayingState) {
 
 function hashPublicKey(value: string) {
   return crypto.createHash("sha256").update(value).digest("hex").slice(0, 16);
-}
-
-function soundSessionIdentity(state: NowPlayingState, displayConfig: DisplayConfig) {
-  const user = soundUserIdentity(state);
-  if (state.source === "subsonic" && displayConfig.now_playing.sounds.continuous_sessions.subsonic) {
-    return `${user}:continuous:subsonic`;
-  }
-  if ((state.source === "spotify" || state.source === "apple_music" || state.source === "external_music") && displayConfig.now_playing.sounds.continuous_sessions.external_music) {
-    return `${user}:continuous:${state.source}`;
-  }
-  if (state.source === "jellyfin" && jellyfinContinuousSessionName(state, displayConfig)) {
-    return `${user}:continuous:jellyfin:${jellyfinContinuousSessionName(state, displayConfig)}`;
-  }
-  return `${user}:session:${playbackSessionKey(state)}`;
-}
-
-function soundSessionContinuous(state: NowPlayingState, displayConfig: DisplayConfig) {
-  if (state.source === "subsonic") return displayConfig.now_playing.sounds.continuous_sessions.subsonic;
-  if (state.source === "spotify" || state.source === "apple_music" || state.source === "external_music") return displayConfig.now_playing.sounds.continuous_sessions.external_music;
-  return Boolean(jellyfinContinuousSessionName(state, displayConfig));
-}
-
-function jellyfinContinuousSessionName(state: NowPlayingState, displayConfig: DisplayConfig) {
-  if (state.source !== "jellyfin") return undefined;
-  const continuousLibraries = normalizedNameSet(displayConfig.now_playing.sounds.continuous_sessions.jellyfin_libraries);
-  if (state.libraryName && continuousLibraries.has(state.libraryName.toLowerCase())) return state.libraryName.toLowerCase();
-  if (state.artwork?.mediaType?.toLowerCase() === "musicvideo") return !state.libraryName && continuousLibraries.has("music videos") ? "music videos" : undefined;
-  if (jellyfinMusicLike(state) && continuousLibraries.has("music")) return "music";
-  return undefined;
-}
-
-function jellyfinMusicLike(state: NowPlayingState) {
-  const mediaType = state.artwork?.mediaType?.toLowerCase() ?? "";
-  return Boolean(
-    state.album
-    || state.artist
-    || state.albumArtUrl
-    || mediaType === "audio"
-    || mediaType === "musicartist"
-  );
-}
-
-function soundUserIdentity(state: NowPlayingState) {
-  return `${state.source}:${state.user ?? state.displayUser ?? state.mediaWallUser ?? "unknown"}`;
-}
-
-function normalizedNameSet(names: string[]) {
-  return new Set(names.map((name) => name.trim().toLowerCase()).filter(Boolean));
-}
-
-function playbackSessionKey(state: NowPlayingState) {
-  return [
-    state.source,
-    state.user,
-    state.sessionKey,
-    state.itemId,
-    state.artistId,
-    state.signature,
-    state.title
-  ].filter(Boolean).join(":");
 }
 
 const supportedSoundExtensions = new Set([".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac"]);

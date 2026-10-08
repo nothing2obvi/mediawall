@@ -1,5 +1,13 @@
 ## Upgrading
 
+### Upgrading from v0.5.2 to v0.5.3
+
+- Session counters now use `now_playing.session_count.mode: small` or `large`; use YAML `false` to hide them. `small` preserves the old counter exactly. The old `enabled`/`font_size` interface is deprecated but still works, with a configuration-load warning. Explicit `mode` wins; legacy font sizes remain respected. No immediate migration is required.
+- Custom avatars can now use `users.<user>.custom_avatar` in the flat `app/avatars` directory. `avatars.prefer_custom_avatars` defaults to `false` (Jellyfin first). Source-specific folders are still supported and are not deprecated. Configured canonical references take precedence over legacy custom files.
+- The shared reported-pause/stale cleanup default is now 5 seconds, formerly 15. Explicit `session_cleanup.paused_after_seconds` values remain unchanged; set `15` to retain the former default. This affects sources reporting pause/stale state, including native Jellyfin/Subsonic. ListenBrainz does not carry Spotify pause/stop state, so external expiry remains unchanged.
+- First-play events are scoped per space and rearm after the configured continuous-session inactivity. Repeated updates and track changes within the same continuous session remain quiet.
+
+
 ### Upgrading from v0.5.1 to v0.5.2
 
 Use `now_playing.sounds.sources.jellyfin`, `.subsonic`, and `.external_music` for source sound switches. All default to `true`. Existing flat switches (including `navidrome`) remain accepted; explicit `sources` values win. External music can now be muted separately. Continuous-session inactivity still uses `sounds.session_start.retrigger_after_inactive_seconds`, with a configurable default of 30 seconds.

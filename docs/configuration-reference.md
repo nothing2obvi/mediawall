@@ -17,6 +17,7 @@ For a fuller setup, see [config.yml.example](../config.yml.example). Copy it to 
 | `external_music` | ListenBrainz-compatible receiver settings for external music bridges such as Multi-Scrobbler. |
 | `image_providers` | Settings for MediaWall’s image providers. |
 | `aliases` | Alternate artist names used to find artwork. |
+| `avatars` | Global custom-versus-Jellyfin avatar preference. |
 | `users` | MediaWall users that map Jellyfin and/or Subsonic accounts together. |
 | `spaces` | Display routes such as `/livingroom`, each with its own users, libraries, Now Playing behavior, and display settings. |
 
@@ -216,12 +217,11 @@ spaces:
 | `fallback_shuffle_interval_seconds` | Idle fallback shuffle interval. | `45` | No | Used only when fallback is `shuffle`. |
 | `cycle_users` | Cycles active users/sessions. | `false` | No | Multiple concurrent sessions are cycled like multiple users. |
 | `cycle_interval_seconds` | Now Playing session cycle interval. | `15` | No | Used for natural session cycling and the timer ring. |
-| `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `15` | No | Also handles Jellyfin sessions stuck repeating the same few seconds. Updates may take a little longer than this setting. |
+| `session_cleanup.paused_after_seconds` | Removes paused, stale, or non-progressing sessions from current Now Playing after this many seconds. | `5` | No | Also handles Jellyfin sessions stuck repeating the same few seconds. Updates may take a little longer than this setting. |
 | `session_cleanup.missing_after_seconds` | Keeps sessions visible through short playback gaps. | `5` | No | Prevents flicker to the fallback screen between tracks or episodes. Set to `0` to disable for ordinary sessions. Live TV uses its own short delay to allow channel changes. |
 | `session_timer.enabled` | Shows the countdown ring. | `true` | No | Only meaningful when multiple active sessions are cycling. |
 | `session_timer.size` | Countdown ring diameter. | `42` | No | Pixels. |
-| `session_count.enabled` | Shows `1 of 4` session count. | `true` | No | Independent from the timer ring. |
-| `session_count.font_size` | Session count font size. | `13` | No | Pixels. |
+| `session_count.mode` | Session counter style. | `small` | No | `small` keeps the existing `2 of 4` counter; `large` shows only `2` in larger text centered beneath the timer. Use YAML `false` to hide the counter. Independent from the timer ring. |
 | `user_transition.enabled` | Shows a user-intro screen the first time a session becomes visible. | `true` | No | It does not repeat when session cycling comes back to that same session. The sound starts at this same visible-session moment when sounds are enabled and allowed. |
 | `user_transition.duration_seconds` | User-intro duration. | `5` | No | Separate from the normal session display interval. |
 | `user_transition.background_color` | User-intro background color. | `#000000` | No | Use a hex color. |
@@ -404,11 +404,21 @@ At `LOG_LEVEL=info`, logs tell you where backdrops, logos, and album covers came
 
 ### User avatars
 
-For Jellyfin, Subsonic/Navidrome, and Spotify/external playback, MediaWall first uses the avatar on the user's mapped Jellyfin account. If none is available, it uses a source-specific custom avatar, then the normal no-avatar fallback. This applies to both the Now Playing badge and user transitions. Subsonic doesn't provide native user avatars here; MediaWall supplies them through the user mapping.
+MediaWall resolves avatars by MediaWall user rather than playback source. By default, it first uses the avatar from the user's mapped Jellyfin account, then the user's configured custom avatar, then the normal no-avatar fallback. Set `avatars.prefer_custom_avatars: true` to reverse the first two priorities and prefer the custom avatar across all playback sources.
 
-Put custom images in `./app/avatars/<source>/<mediawall-user>.ext`, for example `spotify/bob.png` or `subsonic/alice.webp`. Source directories are `jellyfin`, `subsonic`, `spotify`, `apple_music`, and `external_music`. Names match the MediaWall user key, not the service username. Older files named after an optional display-name override are still tried if no key-named file exists. Supported formats are PNG, JPG, JPEG, and WebP; filenames match without regard to case. If several formats exist for the same user, the first filename in alphabetical order wins. Keep just one per user. The existing `./app/avatars:/app/avatars:ro` mount covers all of them.
+Custom avatars live in `./app/avatars`. Set `custom_avatar` on the MediaWall user to the filename or basename, for example `custom_avatar: bob` for `./app/avatars/bob.png`. Supported references may include or omit the extension.
 
-Anonymous Mode overrides real and custom avatars. Anonymous users only receive the anonymous avatar, when enabled, or no avatar. Normal `show_user_avatar` and user-transition settings still control visible users' presentation. Images aren't cropped or rewritten on disk.
+Anonymous Mode always overrides real avatars. Anonymous playback uses the anonymous avatar, when enabled, and never falls back to the user's Jellyfin or custom avatar.
+
+| Setting | Default | Values and behavior |
+| --- | --- | --- |
+| `avatars.prefer_custom_avatars` | `false` | Boolean. `false`: Jellyfin, then custom. `true`: custom, then Jellyfin. Missing images fall through to the other source, then no avatar. |
+| `users.<user>.custom_avatar` | unset | Filename or basename inside `/app/avatars`. Exact filenames keep their extension; extensionless references try PNG, JPG, JPEG, then WebP. No fuzzy matching, subdirectories, or paths outside this directory. |
+
+Keep `./app/avatars:/app/avatars:ro` mounted. The same mapped identity uses the same resolved avatar in Now Playing and user transitions. Content-versioned URLs prevent old browser images from sticking after replacement. Nothing is cropped or rewritten.
+
+If `custom_avatar` is omitted, existing source-specific paths remain supported: `jellyfin/bob.png`, `subsonic/bob.png`, `spotify/bob.png`, `apple_music/bob.png`, and `external_music/bob.png`. These are legacy-supported, not deprecated. They retain their case-insensitive, alphabetical lookup and old display-name fallback. A configured canonical reference replaces that legacy lookup, even if its file is missing; Jellyfin fallback still applies. For consistent custom images across sources, configure `custom_avatar`.
+
 
 ### Built-in and custom icons
 
@@ -431,3 +441,7 @@ Live TV isn’t a browsable library and can’t be included in `spaces.<space>.l
 ### Music-video indicator
 
 Under `spaces.<space>.display.music_video_indicator`, `enabled` defaults to `true` and `text` defaults to `"[MV]"`. Music-video song titles appear as `"Darjeeling" [MV]`. Set `enabled: false` to hide the label, or change `text` to use your own. It follows the song-title visibility control and doesn’t appear on ordinary music tracks.
+
+### Session counter migration
+
+`now_playing.session_count.mode` replaces the deprecated `enabled`/`font_size` interface. Use `small` (default), `large`, or YAML `false` to hide it. Legacy `enabled: true` maps to `small`; `enabled: false` remains hidden unless an explicit `mode` overrides it. Existing `font_size` values still apply to `small`, so old sizing is preserved. `large` uses its own 32px size. New configs can omit it: small uses 13px and large uses 32px. Legacy settings log one concise migration notice per space when configuration loads, not on each playback update. No settings were removed.

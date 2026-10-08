@@ -28,3 +28,9 @@ Use the URL for the space you want to display. If the MediaWall container is run
 
 If you're not using kiosk mode, open the space in a regular browser and press `f` for fullscreen.
 
+
+### Custom logos
+
+Put one PNG or SVG in `./app/custom_logo` and keep the `./app/custom_logo:/app/custom_logo:ro` mount. In a space, set `now_playing.fallback: mediawall` and `now_playing.mediawall_fallback.image: custom`. Choose `mediawall_fallback.modes: [centered]` for a stationary logo, or another supported mode for animation.
+
+`now_playing.custom_logo.directory` defaults to `/app/custom_logo`. If it contains several PNG/SVG files, MediaWall uses the first filename alphabetically. Use one image to keep the choice predictable.

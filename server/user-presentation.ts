@@ -9,16 +9,23 @@ export function playbackOwner(state: NowPlayingState, fallback: MediaWallUser, u
 }
 
 export async function userAvatar(state: NowPlayingState, user: MediaWallUser, space: DisplayConfig,
-  jellyfin: Pick<JellyfinClient, "userAvatarUrl">, avatars: Pick<SourceAvatarStore, "avatarUrl" | "anonymousUrl">) {
+  jellyfin: Pick<JellyfinClient, "userAvatarUrl">, avatars: Pick<SourceAvatarStore, "avatarUrl" | "anonymousUrl"> & Partial<Pick<SourceAvatarStore, "customAvatarUrl">>, preferCustom = false) {
   const anonymous = anonymousIdentity(space.anonymous_mode, state.mediaWallUserKey ?? user.key ?? user.name, avatars.anonymousUrl());
   // Keep real avatars out of anonymous candidates, including transition-only cases.
   if (anonymous) return anonymous.avatarUrl ?? anonymous.transitionAvatarUrl;
   const mapped = user.jellyfin_user;
   const jellyfinName = mapped && mapped.trim().toLowerCase() !== "all" ? mapped
     : state.source === "jellyfin" ? state.user : undefined;
-  const image = jellyfinName ? await jellyfin.userAvatarUrl(jellyfinName, space).catch(() => undefined) : undefined;
-  return image ?? avatars.avatarUrl(state.source, user.key ?? user.name)
-    ?? (user.key && user.key !== user.name ? avatars.avatarUrl(state.source, user.name) : undefined);
+  const custom = () => {
+    try {
+      return user.custom_avatar !== undefined ? avatars.customAvatarUrl?.(user.custom_avatar)
+        : avatars.avatarUrl(state.source, user.key ?? user.name)
+          ?? (user.key && user.key !== user.name ? avatars.avatarUrl(state.source, user.name) : undefined);
+    } catch { return undefined; } // A removed/unreadable file must not block Jellyfin fallback.
+  };
+  const fromJellyfin = () => jellyfinName ? jellyfin.userAvatarUrl(jellyfinName, space).catch(() => undefined) : Promise.resolve(undefined);
+  if (preferCustom) return custom() ?? await fromJellyfin();
+  return await fromJellyfin() ?? custom();
 }
 
 export function dedupePlaybackCandidates(candidates: NowPlayingState[]) {

@@ -158,8 +158,46 @@ MediaWall includes icons for Spotify, Apple Music, Jellyfin, Google Cast/Chromec
 
 To override an icon, put its key and extension, such as `lastfm.png`, in `./app/server-icons` and mount `./app/server-icons:/app/server-icons:ro`. Unknown service `My Server` uses `my-server.png`. Formats are WebP, PNG, JPG, JPEG, SVG, and GIF, in that priority order. See the [icon reference](configuration-reference.md#built-in-and-custom-icons) for every key and fallback.
 
-User avatars are separate from service logos. MediaWall uses the mapped Jellyfin avatar first, then a custom source avatar such as `./app/avatars/spotify/bob.png`, then no avatar. Anonymous Mode overrides both. See [user avatars](configuration-reference.md#user-avatars).
+User avatars are separate from service logos. Configure `users.<user>.custom_avatar` for a shared image across mapped sources, with `avatars.prefer_custom_avatars` controlling its priority against Jellyfin. Anonymous Mode overrides both. Existing source folders still work. See [user avatars](configuration-reference.md#user-avatars).
 
 ### Sounds
 
 Set `now_playing.sounds.sources.external_music: false` in a space to mute external-music notifications without muting Jellyfin or Subsonic. It defaults to `true`. `sounds.continuous_sessions.external_music` separately controls whether track changes count as one sound session. The inactivity interval before another start sound is eligible is `sounds.session_start.retrigger_after_inactive_seconds` (default `30` seconds).
+
+### Multi-Scrobbler polling
+
+**Use a short source polling interval, around 5 seconds, where supported.** This is a Multi-Scrobbler setting, not a MediaWall setting. For the Spotify source from the one-user example:
+
+```json
+{
+  "sources": [
+    {
+      "type": "spotify",
+      "enable": true,
+      "id": "spotify-bob",
+      "name": "Spotify",
+      "clients": ["mediawall-bob"],
+      "data": {
+        "clientId": "YOUR_CLIENT_ID",
+        "clientSecret": "YOUR_CLIENT_SECRET",
+        "redirectUri": "http://localhost:9078/callback",
+        "interval": 5
+      }
+    }
+  ]
+}
+```
+
+A shorter interval lets Multi-Scrobbler detect new playback, track changes, pauses, and other supported changes sooner. Its outgoing client has separate update timing, so MediaWall may not receive an update every five seconds. Faster polling doesn't add pause/stop events to an interface that can't send them.
+
+### Pauses, stops, and first-play behavior
+
+Multi-Scrobbler's Spotify source knows when Spotify pauses, but its ListenBrainz client sends `playing_now` track metadata, without a pause or stop state. On pause/stop it normally sends no clearing event. A completed `single` scrobble is listening history, not proof that playback just stopped; MediaWall ignores it for Now Playing.
+
+MediaWall therefore can't reliably remove a paused Spotify session after five seconds through this connection. It keeps the existing expiry: the greater of `external_music.session_timeout_seconds` (default 90) and the reported track duration, plus `track_transition_grace_seconds` (default 10), measured from the last accepted update. This is why a paused track can remain visible for several minutes. Shortening the general timeout to five seconds would interrupt valid playback between ListenBrainz updates.
+
+A new `playing_now` updates the current track for that user/service; repeated updates don't create extra sessions. A later track replaces the previous one immediately. After expiry and the space's missing-session grace, the old session stops counting, cycling, and blocking fallback. A fresh update reactivates it normally. Start sounds and transitions follow the space's continuous-session inactivity setting; brief gaps don't replay them.
+
+First-play events are now tracked independently per space and can become eligible again after continuous-session inactivity. One display no longer consumes another's event. Existing sound switches, quiet hours, user tones, and transition settings still apply; browsers may require an initial tap before allowing audio.
+
+This limitation is verified against Multi-Scrobbler's [ListenBrainz client](https://github.com/FoxxMD/multi-scrobbler/blob/master/src/backend/scrobblers/ListenbrainzScrobbler.ts), [outgoing payload](https://github.com/FoxxMD/multi-scrobbler/blob/master/src/backend/common/vendor/listenbrainz/lzUtils.ts), and [Spotify source](https://github.com/FoxxMD/multi-scrobbler/blob/master/src/backend/sources/SpotifySource.ts). Sources that report actual pause/stale state use `now_playing.session_cleanup.paused_after_seconds`, now defaulting to 5; explicit values are preserved. That setting cannot manufacture a Spotify pause signal.
